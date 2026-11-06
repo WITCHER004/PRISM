@@ -1,0 +1,202 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum UserRole {
+  READER
+  WRITER
+  PUBLICATION_EDITOR
+  ADMIN
+}
+
+enum PostStatus {
+  DRAFT
+  SCHEDULED
+  PUBLISHED
+  ARCHIVED
+}
+
+enum PaywallTier {
+  FREE
+  METERED
+  SUBSCRIBER
+  PAID
+}
+
+enum TrustLevel {
+  UNVERIFIED
+  EMAIL_VERIFIED
+  DOMAIN_VERIFIED
+  PEER_REVIEWED
+  STAFF_APPROVED
+}
+
+model User {
+  id                String      @id @default(cuid())
+  supabaseId        String?     @unique
+  email             String      @unique
+  username          String      @unique
+  displayName       String
+  bio               String?
+  avatarUrl         String?
+  headerImageUrl    String?
+  websiteUrl        String?
+  twitterHandle     String?
+  githubHandle      String?
+  role              UserRole    @default(READER)
+  trustLevel        TrustLevel  @default(UNVERIFIED)
+  isVerifiedHuman   Boolean     @default(false)
+  
+  // Custom Domain
+  customDomain          String?  @unique
+  customDomainVerified  Boolean  @default(false)
+
+  // Stripe & Monetization
+  stripeCustomerId        String?  @unique
+  stripeConnectAccountId  String?  @unique
+  stripeConnectOnboarded  Boolean  @default(false)
+
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  posts             Post[]
+  claps             Clap[]
+  bookmarks         Bookmark[]
+  comments          Comment[]
+  readSessions      ReadSession[]
+  followers         Follow[]     @relation("FollowerUser")
+  following         Follow[]     @relation("FollowingUser")
+
+  @@index([username])
+  @@index([email])
+}
+
+model Post {
+  id              String       @id @default(cuid())
+  authorId        String
+  title           String
+  subtitle        String?
+  slug            String       @unique
+  excerpt         String?
+  contentHtml     String
+  contentText     String?
+  coverImageUrl   String?
+  readingTimeMin  Int          @default(1)
+  wordCount       Int          @default(0)
+  status          PostStatus   @default(DRAFT)
+  paywallTier     PaywallTier  @default(FREE)
+  paywallPrice    Float?       @default(0)
+  trustScore      Int          @default(90)
+  
+  // Stats (denormalized)
+  clapCount       Int          @default(0)
+  commentCount    Int          @default(0)
+  bookmarkCount   Int          @default(0)
+  viewCount       Int          @default(0)
+
+  publishedAt     DateTime?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  author          User         @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  tags            PostTag[]
+  claps           Clap[]
+  bookmarks       Bookmark[]
+  comments        Comment[]
+  readSessions    ReadSession[]
+
+  @@index([authorId, status])
+  @@index([slug])
+}
+
+model Tag {
+  id        String    @id @default(cuid())
+  name      String    @unique
+  slug      String    @unique
+  posts     PostTag[]
+}
+
+model PostTag {
+  postId  String
+  tagId   String
+  post    Post  @relation(fields: [postId], references: [id], onDelete: Cascade)
+  tag     Tag   @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([postId, tagId])
+}
+
+model Clap {
+  id        String   @id @default(cuid())
+  userId    String
+  postId    String
+  count     Int      @default(1)
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, postId])
+  @@index([postId])
+}
+
+model Bookmark {
+  id        String   @id @default(cuid())
+  userId    String
+  postId    String
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, postId])
+  @@index([userId])
+}
+
+model Comment {
+  id        String    @id @default(cuid())
+  authorId  String
+  postId    String
+  parentId  String?
+  body      String
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  author    User      @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  post      Post      @relation(fields: [postId], references: [id], onDelete: Cascade)
+  parent    Comment?  @relation("CommentReplies", fields: [parentId], references: [id])
+  replies   Comment[] @relation("CommentReplies")
+
+  @@index([postId])
+}
+
+model ReadSession {
+  id            String   @id @default(cuid())
+  userId        String?
+  postId        String
+  durationSec   Int      @default(0)
+  scrollDepth   Float    @default(0)
+  createdAt     DateTime @default(now())
+
+  user          User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  post          Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@index([postId])
+  @@index([userId])
+}
+
+model Follow {
+  followerId    String
+  followingId   String
+  createdAt     DateTime @default(now())
+
+  follower      User     @relation("FollowerUser", fields: [followerId], references: [id], onDelete: Cascade)
+  following     User     @relation("FollowingUser", fields: [followingId], references: [id], onDelete: Cascade)
+
+  @@id([followerId, followingId])
+}
+

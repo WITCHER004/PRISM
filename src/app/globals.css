@@ -1,26 +1,345 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
+/* ── Typography definitions ─────────────────────────────────────────────────── */
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-display: var(--font-source-serif), "Playfair Display", "Times New Roman", Georgia, serif;
+  --font-serif:   var(--font-source-serif), "Newsreader", "Charter", "Iowan Old Style", Georgia, serif;
+  --font-sans:    var(--font-geist), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono:    var(--font-geist-mono), ui-monospace, "SFMono-Regular", Consolas, monospace;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+/* ── Broadsheet Design Tokens (Ice Silver, Deep Aubergine, Marigold) ─── */
+:root {
+  /* Ice Silver & Newsprint Paper */
+  --bg:            #F7F8FA;  /* Ice silver newsprint paper */
+  --bg-secondary:  #EEF1F6;  /* Secondary cool silver stock */
+  --panel:         #FFFFFF;  /* Crisp printing panel */
+  --surface:       #E8EDF5;  /* Ice silver surface */
+  --surface-hover: #DDE4EE;
+  
+  /* Hairline Rules in Ice Silver & Deep Aubergine */
+  --border:        #D3DAE4;  /* Crisp ice-silver hairline divider */
+  --border-strong: #1A0A24;  /* Deep aubergine authoritative ink rule */
+  --border-muted:  #E2E8F0;  /* Subtle vertical column rule */
+  
+  /* Deep Aubergine Typography */
+  --fg:            #1A0A24;  /* Deep aubergine press-ink */
+  --fg-secondary:  #341B44;  /* Secondary rich aubergine */
+  --fg-muted:      #5E4A6E;  /* Muted carbon-aubergine reporter & deck text */
+  --fg-subtle:     #8C7B99;  /* Sub-meta and wire indices */
+  
+  /* Spot Ink Accent (Marigold) */
+  --accent:        #D97706;  /* Vibrant warm marigold spot color */
+  --accent-hover:  #B45309;
+  --accent-subtle: #FEF3C7;
+  --on-accent:     #FFFFFF;
+  
+  --ice-silver:    #E2E8F0;
+  --ice-silver-bg: #F1F5F9;
+  --aubergine:     #1A0A24;
+  --marigold:      #D97706;
+  --marigold-gold: #F59E0B;
+
+  --warning:       #D97706;
+  --warning-subtle:#FEF3C7;
+  --error:         #B91C1C;
+
+  /* Classic Print Line Weight & Measure */
+  --hairline:      1px solid var(--border);
+  --rule-ink:      1px solid var(--fg);
+  --measure:       68ch;
+  --radius-card:   0px;      /* Strict crisp zero radius broadsheet */
+  --radius-ctl:    0px;
+
+  --font-body:     var(--font-serif);
+  --font-ui:       var(--font-sans);
+  --text-body:     1.125rem;
+  --line-height:   1.75;
+}
+
+[data-theme="dark"] {
+  /* Architectural Charcoal Slate & Ice Silver Night Edition (Zero Purple) */
+  --bg:            #0D1117;  /* Deep charcoal-carbon newsprint paper */
+  --bg-secondary:  #141922;  /* Cool slate secondary stock */
+  --panel:         #161B24;  /* Crisp carbon panel */
+  --surface:       #1C232E;  /* Ice-slate surface */
+  --surface-hover: #242D3B;
+  
+  --border:        #252E3B;  /* Hairline divider in cool slate */
+  --border-strong: #E2E8F0;  /* Crisp ice silver authoritative rule */
+  --border-muted:  #1B212B;
+
+  /* Ice Silver Typography */
+  --fg:            #F1F5F9;  /* Radiant ice silver text */
+  --fg-secondary:  #CBD5E1;  /* Secondary ice silver */
+  --fg-muted:      #94A3B8;  /* Muted cool reporter text */
+  --fg-subtle:     #64748B;
+
+  /* Marigold Accent */
+  --accent:        #F59E0B;  /* Luminous golden marigold */
+  --accent-hover:  #FBBF24;
+  --accent-subtle: #281F0C;
+  --on-accent:     #0D1117;
+
+  --ice-silver:    #E2E8F0;
+  --ice-silver-bg: #1B222D;
+  --marigold:      #F59E0B;
+  --marigold-gold: #FCD34D;
+
+  --warning:       #F59E0B;
+  --warning-subtle:#281F0C;
+  --error:         #EF4444;
+}
+
+[data-theme="sepia"] {
+  /* Archival Parchment Edition with Warm Bitumen Ink & Marigold Spot */
+  --bg:            #F5EFE6;
+  --bg-secondary:  #EDE3D4;
+  --panel:         #FAF6EF;
+  --surface:       #E8DEC8;
+  --surface-hover: #DFD3BA;
+  --border:        #DDD2BE;
+  --border-strong: #261B14;
+  --border-muted:  #D4C8B2;
+
+  --fg:            #261B14;  /* Bitumen archival press ink */
+  --fg-secondary:  #4A392D;
+  --fg-muted:      #756252;
+  --fg-subtle:     #9E8876;
+
+  --accent:        #C46800;  /* Rich amber marigold */
+  --accent-hover:  #9E5400;
+  --accent-subtle: #F6E6D2;
+  --on-accent:     #FFFFFF;
+
+  --ice-silver:    #E8E3D8;
+  --ice-silver-bg: #EFE9DE;
+  --marigold:      #C46800;
+  --marigold-gold: #D97706;
+
+  --warning:       #C46800;
+  --warning-subtle:#F6E6D2;
+}
+
+/* ── Base ───────────────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+
+html {
+  font-size: 16px;
+  scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background-color: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-body);
+  line-height: var(--line-height);
+  transition: background-color 0.2s ease, color 0.2s ease;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ── Broadsheet Editorial Rules & Dividers ──────────────────────────────────── */
+.broadsheet-rule {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 0;
+  width: 100%;
+}
+
+.broadsheet-rule-strong {
+  border: none;
+  border-top: 2px solid var(--border-strong);
+  margin: 0;
+  width: 100%;
+}
+
+.broadsheet-rule-heavy {
+  border: none;
+  border-top: 4px solid var(--fg);
+  margin: 0;
+  width: 100%;
+}
+
+/* Classic double hairline rule used above and below datelines and mastheads */
+.broadsheet-rule-double {
+  border-top: 1px solid var(--fg);
+  border-bottom: 1px solid var(--fg);
+  height: 4px;
+  width: 100%;
+}
+
+/* ── Drop Cap (Editorial Lead Paragraph) ────────────────────────────────────── */
+.drop-cap::first-letter {
+  float: left;
+  font-family: var(--font-display);
+  font-size: 4.25rem;
+  line-height: 0.78;
+  padding-top: 0.1em;
+  padding-right: 0.15em;
+  padding-bottom: 0.02em;
+  font-weight: 700;
+  color: var(--fg);
+}
+
+/* ── Pull Quote ─────────────────────────────────────────────────────────────── */
+.editorial-pullquote {
+  position: relative;
+  border-top: 1px solid var(--fg);
+  border-bottom: 1px solid var(--fg);
+  padding: 1.5rem 0.5rem;
+  margin: 2.5rem 0;
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: 1.5rem;
+  line-height: 1.3;
+  color: var(--fg);
+  text-align: center;
+}
+
+.editorial-pullquote::before {
+  content: "“";
+  font-size: 3rem;
+  line-height: 0;
+  display: block;
+  margin-bottom: 1rem;
+  color: var(--accent);
+  font-family: Georgia, serif;
+}
+
+/* ── Editorial Desaturated Photo Treatment ──────────────────────────────────── */
+.broadsheet-photo {
+  border: 1px solid var(--border);
+  filter: contrast(106%) brightness(98%);
+  transition: filter 0.3s ease;
+}
+
+.broadsheet-photo:hover {
+  filter: contrast(102%) brightness(100%);
+}
+
+/* ── Monospace Metadata / Kicker ────────────────────────────────────────────── */
+.kicker {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.meta-label {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--fg-muted);
+}
+
+/* ── Broadsheet Article Reading Typography ──────────────────────────────────── */
+.prose-broadsheet {
+  font-family: var(--font-serif);
+  font-size: var(--text-body);
+  line-height: var(--line-height);
+  color: var(--fg);
+  max-width: var(--measure);
+}
+
+.prose-broadsheet p {
+  margin-bottom: 1.5em;
+  text-align: justify;
+  text-justify: inter-word;
+}
+
+.prose-broadsheet h1 {
+  font-family: var(--font-display);
+  font-size: 2.75rem;
+  font-weight: 700;
+  line-height: 1.08;
+  letter-spacing: -0.025em;
+  margin: 1.5em 0 0.5em;
+  color: var(--fg);
+}
+
+.prose-broadsheet h2 {
+  font-family: var(--font-display);
+  font-size: 1.875rem;
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.015em;
+  margin: 2em 0 0.6em;
+  border-top: 1px solid var(--border);
+  padding-top: 0.75em;
+  color: var(--fg);
+}
+
+.prose-broadsheet h3 {
+  font-family: var(--font-sans);
+  font-size: 1.125rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  text-transform: uppercase;
+  margin: 1.75em 0 0.5em;
+  color: var(--fg);
+}
+
+.prose-broadsheet blockquote {
+  border-top: 1px solid var(--fg);
+  border-bottom: 1px solid var(--fg);
+  margin: 2em 0;
+  padding: 1.25em 0;
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: 1.35rem;
+  line-height: 1.35;
+  color: var(--fg);
+  text-align: center;
+}
+
+.prose-broadsheet a {
+  color: var(--fg);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  transition: background-color 0.15s, color 0.15s;
+}
+
+.prose-broadsheet a:hover {
+  background-color: var(--fg);
+  color: var(--bg);
+  text-decoration: none;
+}
+
+/* ── Focus Mode ─────────────────────────────────────────────────────────────── */
+body.focus-mode .site-header,
+body.focus-mode .site-sidebar,
+body.focus-mode .broadsheet-footer {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+}
+
+/* ── Scrollbars & Selection ─────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--border-muted); }
+::-webkit-scrollbar-thumb:hover { background: var(--fg-muted); }
+
+::selection {
+  background: var(--fg);
+  color: var(--bg);
+}
+
+#reading-progress {
+  position: fixed;
+  top: 0;
+  left: 0;
+  height: 2px;
+  background: var(--accent);
+  z-index: 100;
+  transition: width 0.1s linear;
 }
