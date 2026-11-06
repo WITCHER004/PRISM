@@ -17,9 +17,9 @@ interface PaywallGateProps {
 }
 
 const primaryBtn =
-  "inline-flex items-center justify-center gap-2 h-11 px-5 text-xs font-mono uppercase tracking-wider font-bold bg-[var(--fg)] text-[var(--bg)] hover:bg-[var(--accent)] hover:text-white transition-colors disabled:opacity-50 cursor-pointer"
+  "inline-flex items-center justify-center gap-2 h-12 px-6 rounded-full text-sm font-semibold bg-[var(--accent)] text-[var(--on-accent)] hover:bg-[var(--accent-hover)] transition-colors disabled:opacity-50"
 const secondaryBtn =
-  "inline-flex items-center justify-center gap-2 h-11 px-5 text-xs font-mono uppercase tracking-wider font-medium bg-[var(--panel)] text-[var(--fg)] border border-[var(--border-strong)] hover:bg-[var(--surface)] transition-colors disabled:opacity-50 cursor-pointer"
+  "inline-flex items-center justify-center gap-2 h-12 px-6 rounded-full text-sm font-medium bg-[var(--panel)] text-[var(--fg)] border border-[var(--border)] hover:border-[var(--border-strong)] transition-colors disabled:opacity-50"
 
 // The end-of-preview card on locked stories. Every path ends in unlockPost (demo) or a real page.
 export function PaywallGate({ post }: PaywallGateProps) {
@@ -75,17 +75,15 @@ export function PaywallGate({ post }: PaywallGateProps) {
       : `This story is for members. Join to read it, and everything else on Prism.`
 
   return (
-    <div className="relative mt-6">
-      <div className="relative border border-[var(--border-strong)] bg-[var(--surface)] px-6 py-8 sm:px-10 text-center">
+    <div className="relative mt-2">
+      <div className="relative overflow-hidden panel shadow-[var(--shadow-lift)] px-6 py-10 sm:px-10 text-center">
+        <div aria-hidden className="absolute inset-0 hue-glow opacity-50" />
         <div className="relative">
-          <span className="inline-flex items-center justify-center w-10 h-10 mx-auto border border-[var(--border-strong)] bg-[var(--panel)] text-[var(--accent)] mb-3">
-            <Lock className="w-4 h-4" />
+          <span className="grid place-items-center w-12 h-12 mx-auto rounded-full hue-wash hue-ink">
+            <Lock className="w-5 h-5" />
           </span>
-          <p className="font-mono text-xs uppercase tracking-widest text-[var(--accent)] font-bold mb-1">
-            RESTRICTED DISPATCH · ARCHIVE PROTECTION
-          </p>
-          <h2 className="font-serif font-black text-2xl sm:text-3xl text-[var(--fg)]">{heading}</h2>
-          <p className="mt-2 text-[var(--fg-secondary)] font-serif text-sm max-w-md mx-auto leading-relaxed">{body}</p>
+          <h2 className="display text-[2rem] mt-4">{heading}</h2>
+          <p className="mt-2 text-[var(--fg-muted)] text-[0.9375rem] max-w-md mx-auto leading-relaxed">{body}</p>
 
           <div className="mt-7 flex flex-col sm:flex-row gap-3 justify-center">
             {tier === "PAID" || tier === "SUBSCRIBER" ? (

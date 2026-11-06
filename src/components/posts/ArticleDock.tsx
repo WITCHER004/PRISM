@@ -60,11 +60,11 @@ export function ArticleDock({ postId, clapCount, commentCount, author, layout }:
 
   const rail = layout === "rail"
   const btn = cn(
-    "relative grid place-items-center border border-[var(--border)] bg-[var(--panel)] transition-colors cursor-pointer",
-    "w-10 h-10",
-    "text-[var(--fg-muted)] hover:text-[var(--fg)] hover:border-[var(--border-strong)] hover:bg-[var(--surface)]"
+    "relative grid place-items-center rounded-full transition-colors",
+    "w-11 h-11",
+    "text-[var(--fg-muted)] hover:text-[var(--fg)] hover:bg-[var(--surface)]"
   )
-  const count = cn("font-mono text-[11px] text-[var(--fg-muted)]", rail ? "text-center mt-0.5" : "")
+  const count = cn("meta normal-case tracking-normal", rail ? "text-center" : "")
 
   const items = (
     <>
@@ -154,14 +154,14 @@ export function ArticleDock({ postId, clapCount, commentCount, author, layout }:
   return (
     <>
       {rail ? (
-        <div className="post-footer-nav flex flex-col items-center gap-2 p-2 border border-[var(--border-strong)] bg-[var(--panel)] w-fit">{items}</div>
+        <div className="post-footer-nav flex flex-col items-center gap-2 p-2 panel shadow-[var(--shadow)] w-fit">{items}</div>
       ) : (
         <motion.div
           className="post-footer-nav fixed bottom-4 inset-x-0 z-40 flex justify-center px-4 pointer-events-none"
           animate={{ y: hidden ? 110 : 0, opacity: hidden ? 0 : 1 }}
           transition={{ type: "spring", stiffness: 380, damping: 34 }}
         >
-          <div className="pointer-events-auto flex items-center gap-1.5 p-1.5 pr-2 border border-[var(--border-strong)] bg-[var(--panel)]">
+          <div className="pointer-events-auto flex items-center gap-1.5 p-1.5 pr-2 rounded-full border border-[var(--border)] bg-[var(--panel)]/90 backdrop-blur-xl shadow-[var(--shadow-lift)]">
             {items}
           </div>
         </motion.div>

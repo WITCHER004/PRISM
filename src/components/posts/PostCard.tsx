@@ -2,334 +2,362 @@
 
 import Link from "next/link"
 import Image from "next/image"
+import { useState } from "react"
+import { AnimatePresence, motion } from "motion/react"
 import { type Post } from "@/lib/data"
 import { useUIStore, toast } from "@/lib/store"
+import { dur, ease } from "@/lib/motion"
+import { Avatar } from "@/components/ui/Avatar"
+import { hueStyle } from "@/lib/topics"
 import { formatRelativeDate, numberWithCommas, cn } from "@/lib/utils"
-import { Bookmark, BookmarkCheck, Lock, HandHeart } from "lucide-react"
+import { Bookmark, BookmarkCheck, Lock, BadgeCheck, ArrowUpRight, HandHeart } from "lucide-react"
 
 interface PostCardProps {
   post: Post
   variant?: "default" | "tile" | "compact" | "hero" | "featured"
   showAuthor?: boolean
+  /** Renders an ordinal beside compact cards */
   index?: number
   className?: string
 }
 
-export function PostCard({
-  post,
-  variant = "default",
-  showAuthor = true,
-  index,
-  className,
-}: PostCardProps) {
+// Motion handles the lift; the shadow change is a CSS transition (see liftShadow)
+const lift = {
+  rest: { y: 0 },
+  hover: { y: -4 },
+}
+const liftShadow = "shadow-[var(--shadow)] hover:shadow-[var(--shadow-lift)] transition-shadow duration-300"
+
+// The title link stretches over the whole card (after:inset-0) so the card is one click target;
+// inner controls sit above it (relative z-10). Keyboard focus draws a ring around the card shape.
+const overlayLink =
+  "outline-none after:absolute after:inset-0 after:rounded-[var(--radius-card)] focus-visible:after:outline-2 focus-visible:after:outline-[var(--accent)] focus-visible:after:-outline-offset-2"
+
+// Feed the cursor position to the .spotlight overlay as CSS vars — no React re-render per move
+const trackPointer = (e: React.PointerEvent<HTMLElement>) => {
+  const r = e.currentTarget.getBoundingClientRect()
+  e.currentTarget.style.setProperty("--mx", `${e.clientX - r.left}px`)
+  e.currentTarget.style.setProperty("--my", `${e.clientY - r.top}px`)
+}
+
+/** Topic-tinted glow that follows the cursor. `under` sits beneath the card's text (card needs `isolate`). */
+function Spotlight({ under }: { under?: boolean }) {
+  return (
+    <div
+      aria-hidden
+      className={cn(
+        "spotlight pointer-events-none absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300",
+        under && "-z-10"
+      )}
+    />
+  )
+}
+
+export function PostCard({ post, variant = "default", showAuthor = true, index, className }: PostCardProps) {
   const href = `/${post.author.username}/${post.slug}`
   const topic = post.tags[0]
+  const style = hueStyle(topic?.slug)
 
-  // ── 1. COMPACT / OPINION DISPATCH RAIL ITEM ─────────────────────────────
   if (variant === "compact") {
     return (
-      <article className={cn("py-3.5 border-b border-[var(--border)] last:border-b-0", className)}>
-        <div className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-widest text-[var(--fg-muted)] mb-1">
-          {index !== undefined && (
-            <span className="font-bold text-[var(--accent)]">#{String(index).padStart(2, "0")}</span>
-          )}
-          <span>{topic?.name ?? "DISPATCH"}</span>
-          <span className="text-[var(--border)]">/</span>
-          <span>{post.readingTimeMin} MIN</span>
-          {post.paywallTier !== "FREE" && (
-            <>
-              <span className="text-[var(--border)]">/</span>
-              <span className="text-[var(--accent)] font-semibold flex items-center gap-0.5">
-                <Lock className="w-2.5 h-2.5" />
-                {post.paywallTier}
-              </span>
-            </>
-          )}
-        </div>
-
-        <Link href={href} className="group block">
-          <h4 className="font-serif font-bold text-base sm:text-lg leading-snug text-[var(--fg)] group-hover:text-[var(--accent)] group-hover:underline underline-offset-2 transition-colors">
-            {post.title}
-          </h4>
-        </Link>
-
-        {post.subtitle && (
-          <p className="mt-1 font-serif text-xs leading-relaxed text-[var(--fg-muted)] line-clamp-2">
-            {post.subtitle}
+      <article style={style} className={cn("group flex gap-4 py-4", className)}>
+        {index !== undefined && (
+          <span className="display text-[2rem] leading-none w-10 shrink-0 text-[var(--fg-subtle)] group-hover:hue-ink transition-colors">
+            {String(index).padStart(2, "0")}
+          </span>
+        )}
+        <div className="flex-1 min-w-0">
+          <TopicChip post={post} subtle />
+          <Link href={href}>
+            <h3 className="mt-1.5 font-display font-semibold text-[1.0625rem] leading-snug tracking-[-0.015em] text-[var(--fg)] line-clamp-3 group-hover:underline decoration-2 underline-offset-4 hue-decoration">
+              {post.title}
+            </h3>
+          </Link>
+          <p className="mt-1.5 meta">
+            {showAuthor && <>{post.author.displayName} · </>}
+            {post.readingTimeMin} min
           </p>
-        )}
-
-        {showAuthor && (
-          <div className="mt-2 flex items-center justify-between text-xs font-mono text-[var(--fg-subtle)]">
-            <span className="uppercase tracking-wide text-[var(--fg-secondary)]">
-              BY {post.author.displayName}
-            </span>
-            <div className="flex items-center gap-1">
-              <ClapCounter post={post} />
-              <SaveButton postId={post.id} />
-            </div>
-          </div>
-        )}
+        </div>
       </article>
     )
   }
 
-  // ── 2. HERO: "ABOVE THE FOLD" LEAD STORY ────────────────────────────────
   if (variant === "hero") {
     return (
-      <article className={cn("flex flex-col h-full", className)}>
-        {/* Kicker bar */}
-        <div className="flex items-center gap-2 mb-2 pb-1.5 border-b border-[var(--border)]">
-          <span className="font-mono text-xs uppercase tracking-widest font-bold text-[var(--accent)]">
-            {topic?.name ? topic.name.toUpperCase() : "COVER STORY"}
-          </span>
-          <span className="text-[var(--border)]">/</span>
-          <span className="font-mono text-xs uppercase tracking-wider text-[var(--fg-muted)]">
-            SPECIAL REPORT
-          </span>
-          {post.paywallTier !== "FREE" && (
-            <span className="ml-auto inline-flex items-center gap-1 font-mono text-[11px] uppercase tracking-wider px-2 py-0.5 bg-[var(--surface)] border border-[var(--border)] text-[var(--fg-muted)]">
-              <Lock className="w-3 h-3 text-[var(--accent)]" /> {post.paywallTier}
-            </span>
-          )}
-        </div>
-
-        {/* Lead Headline */}
-        <Link href={href} className="group block">
-          <h2 className="font-serif font-black text-3xl sm:text-4xl lg:text-5xl leading-[1.08] tracking-tight text-[var(--fg)] group-hover:text-[var(--accent)] transition-colors">
-            {post.title}
-          </h2>
-        </Link>
-
-        {/* Editorial Deck / Sub-headline */}
-        {post.subtitle && (
-          <p className="mt-3 font-serif italic text-lg sm:text-xl text-[var(--fg-secondary)] leading-relaxed">
-            {post.subtitle}
-          </p>
-        )}
-
-        {/* Byline & Dateline */}
-        <div className="mt-4 pt-2.5 pb-2 border-t border-b border-[var(--border)] flex flex-wrap items-center justify-between gap-2 text-xs font-mono uppercase text-[var(--fg-muted)]">
-          <div>
-            <span className="text-[var(--fg)] font-bold">BY {post.author.displayName.toUpperCase()}</span>
-            <span className="mx-2 text-[var(--border)]">/</span>
-            <span>{post.author.bio?.split(".")[0] || "CONTRIBUTOR"}</span>
-          </div>
-          <div className="flex items-center gap-3">
-            <span>{post.readingTimeMin} MIN READ</span>
-            <span className="text-[var(--border)]">/</span>
-            <span>{formatRelativeDate(post.publishedAt).toUpperCase()}</span>
-          </div>
-        </div>
-
-        {/* Photo & Lead Copy */}
+      <motion.article
+        style={style}
+        initial="rest"
+        whileHover="hover"
+        animate="rest"
+        variants={lift}
+        onPointerMove={trackPointer}
+        className={cn("group relative overflow-hidden rounded-[var(--radius-card)] bg-[var(--fg)] min-h-[420px] h-full", liftShadow, className)}
+      >
         {post.coverImageUrl && (
-          <div className="mt-4 mb-4">
-            <div className="relative aspect-[16/9] w-full overflow-hidden border border-[var(--border-strong)] bg-[var(--surface)]">
-              <Image
-                src={post.coverImageUrl}
-                alt={post.title}
-                fill
-                className="object-cover broadsheet-photo"
-                priority
-                unoptimized
-              />
-            </div>
-            <div className="mt-1.5 flex items-center justify-between text-[11px] font-mono text-[var(--fg-subtle)] px-0.5">
-              <span className="italic font-serif">Photograph courtesy of the author</span>
-              <span className="uppercase tracking-wider">PRISM ARCHIVE</span>
-            </div>
-          </div>
+          <motion.div className="absolute inset-0" variants={{ rest: { scale: 1 }, hover: { scale: 1.04 } }} transition={{ duration: 0.8, ease: [0.2, 0.7, 0.2, 1] }}>
+            <Image src={post.coverImageUrl} alt="" fill className="object-cover" priority unoptimized />
+          </motion.div>
         )}
-
-        {/* Traditional Lead Paragraph with Drop Cap */}
-        <div className="mt-2 text-base sm:text-lg font-serif text-[var(--fg)] leading-relaxed">
-          <p className="drop-cap">
-            {post.excerpt ||
-              "The structural mechanics of modern digital infrastructure demand rigorous re-examination. As centralised aggregators impose synthetic attention loops and extractive paywall barriers, independent writers and technologists are rediscovering the enduring authority of direct publishing."}
-          </p>
-        </div>
-
-        {/* Read dispatch link & interactions */}
-        <div className="mt-auto pt-4 flex items-center justify-between border-t border-[var(--border)]">
-          <Link
-            href={href}
-            className="font-mono text-xs uppercase tracking-wider font-bold text-[var(--fg)] hover:text-[var(--accent)] hover:underline underline-offset-4 flex items-center gap-1.5"
-          >
-            <span>Continue Reading &rarr;</span>
-          </Link>
+        <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/45 to-black/5" />
+        <Spotlight />
+        <div className="relative h-full flex flex-col justify-end p-6 sm:p-8 text-white">
           <div className="flex items-center gap-2">
-            <ClapCounter post={post} />
-            <SaveButton postId={post.id} />
+            <span className="inline-flex items-center gap-1.5 h-7 px-3 rounded-full bg-white/15 backdrop-blur text-xs font-medium">
+              <span className="w-2 h-2 rounded-full hue-dot" />
+              {topic?.name ?? "Story"}
+            </span>
+            <PaywallPill tier={post.paywallTier} onDark />
+          </div>
+          <Link href={href} className={cn("mt-4", overlayLink)}>
+            <h2 className="display text-[1.875rem] sm:text-[2.5rem] lg:text-[2.75rem] max-w-2xl">{post.title}</h2>
+          </Link>
+          {post.subtitle && (
+            <p className="mt-3 max-w-2xl text-white/75 text-base sm:text-lg leading-snug line-clamp-2">{post.subtitle}</p>
+          )}
+          <div className="mt-6 flex items-center justify-between gap-4">
+            <div className="pointer-events-none flex items-center gap-2.5 text-sm">
+              <Avatar src={post.author.avatarUrl} alt={post.author.displayName} size="sm" className="ring-2 ring-white/30" />
+              <span className="font-medium">{post.author.displayName}</span>
+              <span className="text-white/60 font-mono text-xs uppercase tracking-wide">
+                {post.readingTimeMin} min · {numberWithCommas(post.clapCount)} claps
+              </span>
+            </div>
+            <SaveButton postId={post.id} onDark />
           </div>
         </div>
-      </article>
+      </motion.article>
     )
   }
 
-  // ── 3. TILE / FEATURED: BELOW-THE-FOLD EDITORIAL COLUMNS ────────────────
   if (variant === "tile" || variant === "featured") {
+    const washed = variant === "featured"
     return (
-      <article
+      <motion.article
+        style={style}
+        initial="rest"
+        whileHover="hover"
+        animate="rest"
+        variants={lift}
+        onPointerMove={trackPointer}
         className={cn(
-          "flex flex-col h-full bg-[var(--panel)] border border-[var(--border)] p-4 sm:p-5 hover:border-[var(--border-strong)] transition-colors",
+          "group relative isolate flex flex-col h-full overflow-hidden rounded-[var(--radius-card)] border border-[var(--border)]",
+          liftShadow,
+          washed ? "hue-wash" : "bg-[var(--panel)]",
           className
         )}
       >
-        {/* Kicker */}
-        <div className="flex items-center justify-between text-[11px] font-mono uppercase tracking-wider text-[var(--fg-muted)] pb-2 mb-3 border-b border-[var(--border)]">
-          <span className="font-bold text-[var(--accent)]">{topic?.name ?? "DISPATCH"}</span>
-          <span>{post.readingTimeMin} MIN</span>
-        </div>
-
-        {/* Image if available */}
-        {post.coverImageUrl && (
-          <div className="relative aspect-[16/10] w-full overflow-hidden mb-3 border border-[var(--border)] bg-[var(--surface)]">
-            <Image
-              src={post.coverImageUrl}
-              alt=""
-              fill
-              className="object-cover broadsheet-photo"
-              unoptimized
-            />
+        {post.coverImageUrl && !washed && (
+          <div className="relative aspect-[16/10] overflow-hidden bg-[var(--surface)]">
+            <motion.div className="absolute inset-0" variants={{ rest: { scale: 1 }, hover: { scale: 1.05 } }} transition={{ duration: 0.7 }}>
+              <Image src={post.coverImageUrl} alt="" fill className="object-cover" unoptimized />
+            </motion.div>
           </div>
         )}
-
-        {/* Headline */}
-        <Link href={href} className="group block">
-          <h3 className="font-serif font-bold text-xl sm:text-2xl leading-tight text-[var(--fg)] group-hover:text-[var(--accent)] group-hover:underline underline-offset-2 transition-colors">
-            {post.title}
-          </h3>
-        </Link>
-
-        {/* Excerpt / Subtitle */}
-        <p className="mt-2.5 font-serif text-sm leading-relaxed text-[var(--fg-muted)] line-clamp-3">
-          {post.subtitle || post.excerpt}
-        </p>
-
-        {/* Byline and Footer */}
-        <div className="mt-auto pt-4 border-t border-[var(--border)] flex items-center justify-between text-xs font-mono text-[var(--fg-muted)]">
-          <span className="uppercase text-[var(--fg)] font-semibold truncate max-w-[140px]">
-            {post.author.displayName}
-          </span>
-          <div className="flex items-center gap-1 shrink-0">
-            <ClapCounter post={post} />
-            <SaveButton postId={post.id} />
+        <Spotlight under />
+        <div className="flex flex-col flex-1 p-5">
+          <div className="flex items-center justify-between gap-2">
+            <TopicChip post={post} />
+            <PaywallPill tier={post.paywallTier} />
+          </div>
+          <Link href={href} className={cn("mt-3", overlayLink)}>
+            <h3 className={cn("display text-[var(--fg)]", washed ? "text-[1.75rem]" : "text-[1.375rem] leading-[1.08]")}>
+              {post.title}
+            </h3>
+          </Link>
+          <p className="mt-2 text-sm leading-relaxed text-[var(--fg-muted)] line-clamp-3">{post.subtitle || post.excerpt}</p>
+          <div className="mt-auto pt-5 flex items-center justify-between gap-3">
+            {showAuthor ? <Byline post={post} short /> : <span className="meta">{post.readingTimeMin} min read</span>}
+            <div className="relative z-10 -my-1 flex items-center gap-0.5">
+              <ClapButtonSmall post={post} />
+              <SaveButton postId={post.id} />
+            </div>
           </div>
         </div>
-      </article>
+      </motion.article>
     )
   }
 
-  // ── 4. DEFAULT: EDITORIAL LIST ROW WITH HAIRLINE DIVIDER ────────────────
+  // default — panel row, works in single-column lists
   return (
-    <article
+    <motion.article
+      style={style}
+      initial="rest"
+      whileHover="hover"
+      animate="rest"
+      variants={lift}
+        onPointerMove={trackPointer}
       className={cn(
-        "py-5 border-b border-[var(--border)] grid grid-cols-1 sm:grid-cols-[1fr_160px] gap-4 items-start",
+        "group relative isolate overflow-hidden grid grid-cols-[1fr_auto] gap-5 p-4 sm:p-5 mb-3 rounded-[var(--radius-card)] bg-[var(--panel)] border border-[var(--border)]",
+        liftShadow,
         className
       )}
     >
-      <div className="min-w-0">
-        <div className="flex items-center gap-2 text-xs font-mono uppercase tracking-wider text-[var(--fg-muted)] mb-1.5">
-          <span className="font-bold text-[var(--accent)]">{topic?.name ?? "FEATURE"}</span>
-          <span className="text-[var(--border)]">/</span>
-          <span>{post.readingTimeMin} MIN READ</span>
-          {post.paywallTier !== "FREE" && (
-            <>
-              <span className="text-[var(--border)]">/</span>
-              <span className="text-[var(--accent)] font-semibold flex items-center gap-0.5">
-                <Lock className="w-3 h-3" />
-                {post.paywallTier}
-              </span>
-            </>
-          )}
+      <Spotlight under />
+      <div className="min-w-0 flex flex-col">
+        <div className="flex items-center gap-2">
+          <TopicChip post={post} />
+          <PaywallPill tier={post.paywallTier} />
         </div>
-
-        <Link href={href} className="group block">
-          <h3 className="font-serif font-bold text-xl sm:text-2xl leading-tight text-[var(--fg)] group-hover:text-[var(--accent)] group-hover:underline underline-offset-2 transition-colors">
+        <Link href={href} className={cn("mt-2.5", overlayLink)}>
+          <h2 className="display text-[1.3125rem] sm:text-[1.5rem] leading-[1.08] text-[var(--fg)] line-clamp-3">
             {post.title}
-          </h3>
+          </h2>
         </Link>
-
-        <p className="mt-2 font-serif text-sm leading-relaxed text-[var(--fg-muted)] line-clamp-2">
+        <p className="mt-2 text-sm leading-relaxed text-[var(--fg-muted)] line-clamp-2 hidden sm:block">
           {post.subtitle || post.excerpt}
         </p>
-
-        <div className="mt-3 flex items-center justify-between text-xs font-mono text-[var(--fg-subtle)]">
-          <span className="uppercase text-[var(--fg-secondary)] font-medium">
-            BY {post.author.displayName} &bull; {formatRelativeDate(post.publishedAt).toUpperCase()}
-          </span>
-          <div className="flex items-center gap-1">
-            <ClapCounter post={post} />
+        <div className="mt-4 flex items-center justify-between gap-3">
+          {showAuthor ? <Byline post={post} /> : <span className="meta">{formatRelativeDate(post.publishedAt)}</span>}
+          <div className="relative z-10 -my-1 flex items-center gap-0.5">
+            <ClapButtonSmall post={post} />
             <SaveButton postId={post.id} />
           </div>
         </div>
       </div>
 
       {post.coverImageUrl && (
-        <div className="relative aspect-[4/3] w-full sm:w-[160px] overflow-hidden border border-[var(--border)] bg-[var(--surface)] order-first sm:order-last">
-          <Image
-            src={post.coverImageUrl}
-            alt=""
-            fill
-            className="object-cover broadsheet-photo"
-            unoptimized
-          />
+        <div aria-hidden className="pointer-events-none relative w-24 h-24 sm:w-36 sm:h-36 rounded-[14px] overflow-hidden bg-[var(--surface)]">
+          <motion.div className="absolute inset-0" variants={{ rest: { scale: 1 }, hover: { scale: 1.06 } }} transition={{ duration: 0.7 }}>
+            <Image src={post.coverImageUrl} alt="" fill className="object-cover" unoptimized />
+          </motion.div>
+          <span className="absolute right-2 bottom-2 grid place-items-center w-7 h-7 rounded-full bg-[var(--panel)]/90 text-[var(--fg)] opacity-0 group-hover:opacity-100 transition-opacity">
+            <ArrowUpRight className="w-4 h-4" />
+          </span>
         </div>
       )}
-    </article>
+    </motion.article>
   )
 }
 
-function ClapCounter({ post }: { post: Post }) {
+function TopicChip({ post, subtle }: { post: Post; subtle?: boolean }) {
+  const topic = post.tags[0]
+  if (!topic) return null
+  return (
+    <Link
+      href={`/explore/${topic.slug}`}
+      className={cn(
+        "relative z-10 inline-flex items-center gap-1.5 text-xs font-medium hue-ink",
+        !subtle && "h-6 px-2.5 rounded-full hue-wash"
+      )}
+    >
+      <span className="w-1.5 h-1.5 rounded-full hue-dot" />
+      {topic.name}
+    </Link>
+  )
+}
+
+function PaywallPill({ tier, onDark }: { tier: Post["paywallTier"]; onDark?: boolean }) {
+  if (tier === "FREE") return null
+  const label = tier === "METERED" ? "Preview" : tier === "PAID" ? "Paid" : "Members"
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1 h-6 px-2 rounded-full text-[0.6875rem] font-medium",
+        onDark ? "bg-white/15 text-white backdrop-blur" : "bg-[var(--surface)] text-[var(--fg-muted)]"
+      )}
+    >
+      <Lock className="w-3 h-3" />
+      {label}
+    </span>
+  )
+}
+
+function Byline({ post, short }: { post: Post; short?: boolean }) {
+  return (
+    <div className="relative z-10 flex items-center gap-2 min-w-0">
+      <Avatar src={post.author.avatarUrl} alt={post.author.displayName} size="xs" />
+      <div className="min-w-0 leading-tight">
+        <Link href={`/${post.author.username}`} className="flex items-center gap-1 text-[0.8125rem] font-medium text-[var(--fg-secondary)] hover:text-[var(--fg)]">
+          <span className="truncate">{post.author.displayName}</span>
+          {post.author.isVerifiedHuman && <BadgeCheck className="w-3.5 h-3.5 shrink-0 text-[var(--accent)]" aria-label="Verified writer" />}
+        </Link>
+        <p className="meta mt-0.5">
+          {short ? `${post.readingTimeMin} min read` : `${formatRelativeDate(post.publishedAt)} · ${post.readingTimeMin} min`}
+        </p>
+      </div>
+    </div>
+  )
+}
+
+function ClapButtonSmall({ post }: { post: Post }) {
   const { clappedPosts, clapPost } = useUIStore()
   const userClaps = clappedPosts[post.id] ?? 0
+  const [bursts, setBursts] = useState<number[]>([])
 
   const clap = () => {
     if (userClaps >= 50) return
     clapPost(post.id, 1)
+    const id = Date.now()
+    setBursts((b) => [...b, id])
+    setTimeout(() => setBursts((b) => b.filter((x) => x !== id)), 700)
   }
 
   return (
-    <button
+    <motion.button
       type="button"
       onClick={clap}
+      whileTap={{ scale: 0.88 }}
       className={cn(
-        "inline-flex items-center gap-1 px-2 py-1 text-xs font-mono border border-transparent hover:border-[var(--border)] transition-colors cursor-pointer",
-        userClaps > 0 ? "text-[var(--accent)] font-bold" : "text-[var(--fg-muted)]"
+        "relative z-10 inline-flex items-center gap-1.5 h-10 px-3 rounded-full text-xs font-mono tabular-nums transition-colors",
+        userClaps > 0 ? "hue-wash hue-ink" : "text-[var(--fg-muted)] hover:bg-[var(--surface)] hover:text-[var(--fg)]"
       )}
-      title={`Applaud (${numberWithCommas(post.clapCount + userClaps)})`}
+      aria-label={`Applaud “${post.title}” (${numberWithCommas(post.clapCount + userClaps)} claps)`}
     >
-      <HandHeart className="w-3.5 h-3.5" />
-      <span>{numberWithCommas(post.clapCount + userClaps)}</span>
-    </button>
+      <HandHeart className="w-4 h-4" aria-hidden />
+      {numberWithCommas(post.clapCount + userClaps)}
+      <AnimatePresence>
+        {bursts.map((id) => (
+          <motion.span
+            key={id}
+            aria-hidden
+            initial={{ opacity: 1, y: 0, scale: 0.8 }}
+            animate={{ opacity: 0, y: -26, scale: 1.1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.65, ease: ease.out }}
+            className="absolute left-1/2 -translate-x-1/2 -top-1 text-[0.6875rem] font-semibold hue-ink pointer-events-none"
+          >
+            +1
+          </motion.span>
+        ))}
+      </AnimatePresence>
+    </motion.button>
   )
 }
 
-function SaveButton({ postId }: { postId: string }) {
+function SaveButton({ postId, onDark }: { postId: string; onDark?: boolean }) {
   const { bookmarkedPosts, toggleBookmark } = useUIStore()
   const saved = bookmarkedPosts.has(postId)
-
   const onClick = () => {
     toggleBookmark(postId)
-    toast(
-      saved ? "Removed from library" : "Archived in library",
-      saved ? undefined : { tone: "success", action: { label: "View", href: "/bookmarks" } }
-    )
+    toast(saved ? "Removed from library" : "Saved to library", saved ? undefined : { tone: "success", action: { label: "View", href: "/bookmarks" } })
   }
-
   return (
-    <button
+    <motion.button
       type="button"
       onClick={onClick}
-      className="p-1 text-[var(--fg-muted)] hover:text-[var(--fg)] hover:border border-[var(--border)] border-transparent transition-colors cursor-pointer"
-      title={saved ? "Remove from archive" : "Archive story"}
-    >
-      {saved ? (
-        <BookmarkCheck className="w-3.5 h-3.5 text-[var(--accent)]" />
-      ) : (
-        <Bookmark className="w-3.5 h-3.5" />
+      whileTap={{ scale: 0.85 }}
+      aria-pressed={saved}
+      aria-label={saved ? "Remove from library" : "Save to library"}
+      className={cn(
+        "relative z-10 grid place-items-center w-10 h-10 rounded-full transition-colors",
+        onDark
+          ? "bg-white/15 text-white hover:bg-white/25 backdrop-blur"
+          : saved
+          ? "bg-[var(--fg)] text-[var(--bg)]"
+          : "text-[var(--fg-muted)] hover:bg-[var(--surface)] hover:text-[var(--fg)]"
       )}
-    </button>
+    >
+      <AnimatePresence mode="wait" initial={false}>
+        <motion.span
+          key={saved ? "on" : "off"}
+          initial={{ scale: 0.5, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          exit={{ scale: 0.5, opacity: 0 }}
+          transition={{ duration: dur.fast }}
+        >
+          {saved ? <BookmarkCheck className="w-4 h-4" /> : <Bookmark className="w-4 h-4" />}
+        </motion.span>
+      </AnimatePresence>
+    </motion.button>
   )
 }

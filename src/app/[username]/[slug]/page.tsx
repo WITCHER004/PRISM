@@ -20,6 +20,7 @@ import { CodeSandboxBlock } from "@/components/interactive/CodeSandboxBlock"
 import { ChartBlock } from "@/components/interactive/ChartBlock"
 import { PollBlock } from "@/components/interactive/PollBlock"
 import { ReadTimeTracker } from "@/components/posts/ReadTimeTracker"
+import { hueStyle } from "@/lib/topics"
 import Link from "next/link"
 import { formatDate, generateSlug, numberWithCommas } from "@/lib/utils"
 import { BadgeCheck, Lock, ArrowLeft } from "lucide-react"
@@ -29,6 +30,7 @@ interface PostPageProps {
   params: Promise<{ username: string; slug: string }>
 }
 
+// Give each <h2> an id so the contents rail can link to and track it
 function withHeadingIds(html: string): { html: string; toc: TocItem[] } {
   const toc: TocItem[] = []
   const out = html.replace(/<h2(\s[^>]*)?>([\s\S]*?)<\/h2>/g, (match, attrs = "", inner: string) => {
@@ -42,6 +44,8 @@ function withHeadingIds(html: string): { html: string; toc: TocItem[] } {
   return { html: out, toc }
 }
 
+// Split story HTML into short, speakable pieces for listen mode: one per block,
+// with long paragraphs broken at sentence ends so the voice never runs on too long
 function toSpeechChunks(title: string, html: string): string[] {
   const decode = (s: string) =>
     s
@@ -101,35 +105,38 @@ export async function generateMetadata({ params }: PostPageProps): Promise<Metad
 export default async function PostPage({ params }: PostPageProps) {
   const { username, slug } = await params
   const post = await getPostBySlug(username, slug)
+  if (!post) notFound()
 
-  if (!post) {
-    notFound()
-  }
-
-  const { html, toc } = withHeadingIds(post.contentHtml)
+  // Locked stories show a clipped preview; PaywalledBody releases it once the reader unlocks
+  // (demo only: the full HTML is still sent — real gating must withhold it on the server)
   const isPaywalled = post.paywallTier !== "FREE"
-  const previewFraction = post.paywallTier === "METERED" ? 0.35 : 0.2
-  const topic = post.tags[0]
+  // Metered stories preview half the story; member-only and paid ones a third
+  const previewFraction = post.paywallTier === "METERED" ? 0.5 : 0.33
+  // The interactive demo blocks belong to the distributed-transactions story only
+  const showDemoBlocks = post.slug === "hidden-cost-distributed-transactions"
 
   const relatedPosts = MOCK_POSTS.filter(
-    (p) => p.id !== post.id && p.tags.some((t) => post.tags.some((pt) => pt.slug === t.slug))
+    (p) =>
+      p.id !== post.id &&
+      p.tags.some((t) => post.tags.some((pt) => pt.id === t.id))
   ).slice(0, 3)
 
-  const showDemoBlocks = post.slug === "building-software-that-lasts-20-years"
-
+  const topic = post.tags[0]
+  const { html, toc } = withHeadingIds(post.contentHtml)
   const dockProps = {
     postId: post.id,
-    postSlug: post.slug,
     clapCount: post.clapCount,
-    commentCount: MOCK_COMMENTS.length,
-    postTitle: post.title,
+    commentCount: post.commentCount,
     author: { id: post.author.id, displayName: post.author.displayName, username: post.author.username },
   }
 
   return (
-    <div className="relative min-h-screen flex flex-col bg-[var(--bg)] text-[var(--fg)] font-serif">
+    <div className="relative min-h-screen flex flex-col bg-[var(--bg)]" style={hueStyle(topic?.slug)}>
       <ReadingProgress />
       <ReadTimeTracker postId={post.id} />
+
+      {/* Topic-tinted glow behind the header */}
+      <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-[640px] hue-glow" />
 
       <SiteHeader />
 
@@ -138,111 +145,103 @@ export default async function PostPage({ params }: PostPageProps) {
           {/* Header */}
           <header className="max-w-4xl mx-auto px-4 sm:px-6 pt-10 sm:pt-14">
             <Reveal>
-              <div className="flex flex-wrap items-center gap-3 border-b border-[var(--border)] pb-3">
+              <div className="flex flex-wrap items-center gap-2">
                 <Link
                   href="/"
-                  className="inline-flex items-center gap-1 font-mono text-xs uppercase tracking-wider text-[var(--fg-muted)] hover:text-[var(--fg)] transition-colors"
+                  className="inline-flex items-center gap-1 h-8 pl-2 pr-3 rounded-full text-sm text-[var(--fg-muted)] hover:text-[var(--fg)] hover:bg-[var(--panel)] transition-colors"
                 >
-                  <ArrowLeft className="w-3.5 h-3.5" /> Back to Dispatch
+                  <ArrowLeft className="w-4 h-4" /> Home
                 </Link>
-                <span className="text-[var(--border)]">|</span>
                 {topic && (
                   <Link
                     href={`/explore/${topic.slug}`}
-                    className="font-mono text-xs uppercase tracking-widest font-bold text-[var(--accent)] hover:underline"
+                    className="inline-flex items-center gap-1.5 h-8 px-3 rounded-full hue-wash hue-ink text-sm font-medium"
                   >
-                    ★ {topic.name}
+                    <span className="w-2 h-2 rounded-full hue-dot" />
+                    {topic.name}
                   </Link>
                 )}
                 {isPaywalled && (
-                  <>
-                    <span className="text-[var(--border)]">|</span>
-                    <span className="inline-flex items-center gap-1 font-mono text-[11px] uppercase tracking-wider text-[var(--fg-muted)] px-2 py-0.5 border border-[var(--border)] bg-[var(--surface)]">
-                      <Lock className="w-3 h-3 text-[var(--accent)]" />
-                      {post.paywallTier === "METERED" ? "Member preview" : "Members only"}
-                    </span>
-                  </>
+                  <span className="inline-flex items-center gap-1 h-8 px-3 rounded-full bg-[var(--panel)] border border-[var(--border)] text-sm text-[var(--fg-muted)]">
+                    <Lock className="w-3.5 h-3.5" />
+                    {post.paywallTier === "METERED" ? "Member preview" : "Members only"}
+                  </span>
                 )}
               </div>
 
               <RevealText
-                className="font-serif font-black mt-6 text-3xl sm:text-5xl lg:text-6xl leading-[1.08] tracking-tight text-[var(--fg)]"
+                className="display mt-6 text-[2.5rem] sm:text-[3.75rem] lg:text-[4.5rem] leading-[0.98]"
                 lines={[{ text: post.title }]}
               />
 
               {post.subtitle && (
-                <p className="mt-4 max-w-3xl font-serif italic text-xl sm:text-2xl leading-relaxed text-[var(--fg-secondary)]">
+                <p className="mt-6 max-w-3xl text-xl sm:text-2xl leading-snug text-[var(--fg-muted)]">
                   {post.subtitle}
                 </p>
               )}
 
-              {/* Broadsheet Byline & Dateline */}
-              <div className="mt-8 pt-3 pb-3 border-t border-b border-[var(--border-strong)] flex flex-wrap items-center justify-between gap-y-3 font-mono text-xs uppercase text-[var(--fg-muted)]">
+              {/* Byline */}
+              <div className="mt-8 flex flex-wrap items-center gap-x-6 gap-y-4">
                 <div className="flex items-center gap-3">
-                  <Avatar src={post.author.avatarUrl} alt={post.author.displayName} size="sm" className="border border-[var(--border-strong)]" />
+                  <Avatar src={post.author.avatarUrl} alt={post.author.displayName} size="md" />
                   <div>
-                    <Link href={`/${post.author.username}`} className="font-bold text-[var(--fg)] hover:text-[var(--accent)] flex items-center gap-1">
-                      BY {post.author.displayName.toUpperCase()}
+                    <Link href={`/${post.author.username}`} className="flex items-center gap-1 font-semibold hover:underline">
+                      {post.author.displayName}
                       {post.author.isVerifiedHuman && (
-                        <BadgeCheck className="w-3.5 h-3.5 text-[var(--accent)]" aria-label="Verified writer" />
+                        <BadgeCheck className="w-4 h-4 text-[var(--accent)]" aria-label="Verified writer" />
                       )}
                     </Link>
-                    <p className="text-[10px] text-[var(--fg-subtle)] mt-0.5">{numberWithCommas(post.author.followerCount)} SUBSCRIBERS</p>
+                    <p className="meta mt-0.5">{numberWithCommas(post.author.followerCount)} readers</p>
                   </div>
                   <FollowButton
                     username={post.author.username}
                     displayName={post.author.displayName}
                     size="sm"
-                    className="ml-2 h-7 rounded-none font-mono text-[11px] uppercase tracking-wider"
+                    className="ml-2 h-9"
                   />
                 </div>
-
-                <div className="flex items-center gap-4 text-[11px]">
-                  <span>DATE: <time dateTime={post.publishedAt}>{formatDate(post.publishedAt).toUpperCase()}</time></span>
-                  <span>·</span>
-                  <span>READ TIME: {post.readingTimeMin} MIN</span>
-                  <UnlockedOnly postId={post.id} paywalled={isPaywalled}>
-                    <span>·</span>
-                    <ListenMode
-                      title={post.title}
-                      chunks={toSpeechChunks(post.title, post.contentHtml)}
-                      minutes={post.readingTimeMin}
-                    />
-                  </UnlockedOnly>
-                </div>
+                <dl className="flex items-center gap-5 meta">
+                  <div>
+                    <dt className="sr-only">Published</dt>
+                    <dd><time dateTime={post.publishedAt}>{formatDate(post.publishedAt)}</time></dd>
+                  </div>
+                  <div>
+                    <dt className="sr-only">Reading time</dt>
+                    <dd>{post.readingTimeMin} min read</dd>
+                  </div>
+                </dl>
+                <UnlockedOnly postId={post.id} paywalled={isPaywalled}>
+                  <ListenMode
+                    title={post.title}
+                    chunks={toSpeechChunks(post.title, post.contentHtml)}
+                    minutes={post.readingTimeMin}
+                  />
+                </UnlockedOnly>
               </div>
             </Reveal>
           </header>
 
           {post.coverImageUrl && (
-            <Reveal index={1} className="max-w-5xl mx-auto px-4 sm:px-6 mt-8">
-              <div className="border border-[var(--border-strong)] p-1 bg-[var(--panel)]">
-                <div className="relative aspect-[16/9] w-full overflow-hidden bg-[var(--surface)]">
-                  <ParallaxImage
-                    src={post.coverImageUrl}
-                    alt={post.title}
-                    priority
-                    className="w-full h-full object-cover broadsheet-photo"
-                  />
-                </div>
-              </div>
-              <div className="mt-1.5 flex items-center justify-between text-[11px] font-mono text-[var(--fg-subtle)] px-1">
-                <span className="italic font-serif">Plate 1: Primary architectural inspection &amp; technical schematic.</span>
-                <span className="uppercase tracking-widest">PRISM PHOTO ARCHIVE</span>
-              </div>
+            <Reveal index={1} className="max-w-6xl mx-auto px-4 sm:px-6 mt-10">
+              <ParallaxImage
+                src={post.coverImageUrl}
+                alt={post.title}
+                priority
+                className="aspect-[2/1] w-full rounded-[28px] bg-[var(--surface)] shadow-[var(--shadow-lift)]"
+              />
             </Reveal>
           )}
 
           {/* Body with side rails */}
           <div className="max-w-[1240px] mx-auto px-4 sm:px-6 pt-12 grid xl:grid-cols-[1fr_minmax(0,720px)_1fr] gap-x-12">
             <aside className="hidden xl:block">
-              <div className="sticky top-28 ml-auto w-56 font-mono text-xs">
+              <div className="sticky top-28 ml-auto w-56">
                 <TableOfContents items={toc} />
               </div>
             </aside>
 
             <div className="min-w-0">
-              <div id="article-body" className="relative prose-broadsheet text-lg leading-relaxed">
+              <div id="article-body" className="relative">
                 <PaywalledBody postId={post.id} paywalled={isPaywalled} html={html} previewFraction={previewFraction} />
 
                 {/* Interactive storytelling blocks (demo story) */}
@@ -270,44 +269,47 @@ export default async function PostPage({ params }: PostPageProps) {
               <UnlockedOnly postId={post.id} paywalled={isPaywalled} delay={0.25}>
                 <>
                   {post.tags.length > 0 && (
-                    <div className="mt-12 flex flex-wrap gap-2 font-mono text-xs uppercase">
+                    <div className="mt-12 flex flex-wrap gap-2">
                       {post.tags.map((tag) => (
                         <Link
                           key={tag.id}
                           href={`/explore/${tag.slug}`}
-                          className="px-3 py-1 border border-[var(--border)] bg-[var(--panel)] text-[var(--fg-secondary)] hover:border-[var(--border-strong)] hover:text-[var(--fg)] transition-colors"
+                          style={hueStyle(tag.slug)}
+                          className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-full hue-wash hue-ink text-sm font-medium hover:opacity-80 transition-opacity"
                         >
-                          # {tag.name}
+                          <span className="w-2 h-2 rounded-full hue-dot" />
+                          {tag.name}
                         </Link>
                       ))}
                     </div>
                   )}
 
-                  {/* Author card with Broadsheet Hairline Rules */}
-                  <section className="mt-10 p-6 sm:p-8 border border-[var(--border-strong)] bg-[var(--surface)]">
-                    <div className="flex flex-col sm:flex-row gap-5">
-                      <Avatar src={post.author.avatarUrl} alt={post.author.displayName} size="xl" className="border border-[var(--border-strong)]" />
+                  {/* Author card */}
+                  <section className="mt-10 panel p-6 sm:p-8 shadow-[var(--shadow)] relative overflow-hidden">
+                    <div aria-hidden className="absolute inset-0 hue-glow opacity-60" />
+                    <div className="relative flex flex-col sm:flex-row gap-5">
+                      <Avatar src={post.author.avatarUrl} alt={post.author.displayName} size="xl" />
                       <div className="flex-1 min-w-0">
-                        <p className="font-mono text-xs uppercase tracking-widest text-[var(--accent)] font-bold">STAFF CORRESPONDENT</p>
-                        <Link href={`/${post.author.username}`} className="font-serif font-black text-2xl sm:text-3xl mt-1 inline-flex items-center gap-2 hover:text-[var(--accent)]">
+                        <p className="meta">Written by</p>
+                        <Link href={`/${post.author.username}`} className="display mt-1.5 text-3xl inline-flex items-center gap-2 hover:underline">
                           {post.author.displayName}
                           {post.author.isVerifiedHuman && (
                             <BadgeCheck className="w-5 h-5 text-[var(--accent)]" aria-label="Verified writer" />
                           )}
                         </Link>
-                        <p className="mt-2.5 font-serif text-sm leading-relaxed text-[var(--fg-secondary)]">{post.author.bio}</p>
-                        <p className="font-mono text-xs text-[var(--fg-muted)] mt-3 uppercase">{numberWithCommas(post.author.followerCount)} DIRECT READERS</p>
+                        <p className="mt-3 leading-relaxed text-[var(--fg-secondary)]">{post.author.bio}</p>
+                        <p className="meta mt-3">{numberWithCommas(post.author.followerCount)} readers</p>
                         <div className="mt-5 flex flex-wrap gap-2">
                           <FollowButton
                             username={post.author.username}
                             displayName={post.author.displayName}
-                            className="px-5 rounded-none font-mono text-xs uppercase"
+                            className="px-5"
                           />
                           <Link
                             href={`/${post.author.username}`}
-                            className="h-9 px-4 inline-flex items-center rounded-none font-mono text-xs uppercase font-medium bg-[var(--panel)] border border-[var(--border-strong)] hover:bg-[var(--surface)] transition-colors"
+                            className="h-10 px-5 inline-flex items-center rounded-full text-sm font-medium bg-[var(--panel)] border border-[var(--border)] hover:border-[var(--border-strong)] transition-colors"
                           >
-                            Dispatches by {post.author.displayName.split(" ")[0]} &rarr;
+                            More by {post.author.displayName.split(" ")[0]}
                           </Link>
                         </div>
                       </div>
@@ -335,16 +337,11 @@ export default async function PostPage({ params }: PostPageProps) {
           </div>
         </UnlockedOnly>
 
-        {/* Related Dispatches */}
+        {/* Related */}
         {relatedPosts.length > 0 && (
-          <section className="max-w-7xl mx-auto px-4 sm:px-6 pt-16 pb-20 border-t border-[var(--border-strong)] mt-16">
-            <div className="flex items-center justify-between pb-3 mb-6 border-b-2 border-[var(--border-strong)]">
-              <h2 className="font-serif font-black text-2xl uppercase tracking-tight text-[var(--fg)]">
-                Further Reading From This Desk
-              </h2>
-              <span className="font-mono text-xs uppercase text-[var(--fg-muted)]">SECTION ARCHIVE</span>
-            </div>
-            <div className="grid gap-6 md:grid-cols-3">
+          <section className="max-w-7xl mx-auto px-4 sm:px-6 pt-20 pb-24">
+            <h2 className="display text-[1.75rem] sm:text-[2.25rem] mb-5">Keep reading</h2>
+            <div className="grid gap-4 md:grid-cols-3">
               {relatedPosts.map((p, i) => (
                 <Reveal key={p.id} index={i}>
                   <PostCard post={p} variant="tile" className="h-full" />

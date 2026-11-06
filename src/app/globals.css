@@ -1,124 +1,105 @@
 @import "tailwindcss";
 
-/* ── Typography definitions ─────────────────────────────────────────────────── */
+/* Type families as Tailwind utilities: font-display, font-serif, font-sans, font-mono */
 @theme inline {
-  --font-display: var(--font-source-serif), "Playfair Display", "Times New Roman", Georgia, serif;
-  --font-serif:   var(--font-source-serif), "Newsreader", "Charter", "Iowan Old Style", Georgia, serif;
-  --font-sans:    var(--font-geist), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  --font-mono:    var(--font-geist-mono), ui-monospace, "SFMono-Regular", Consolas, monospace;
+  --font-display: var(--font-bricolage), "Segoe UI", system-ui, sans-serif;
+  --font-serif:   var(--font-source-serif), "Iowan Old Style", Georgia, serif;
+  --font-sans:    var(--font-geist), system-ui, sans-serif;
+  --font-mono:    var(--font-geist-mono), "Consolas", monospace;
 }
 
-/* ── Broadsheet Design Tokens (Ice Silver, Deep Aubergine, Marigold) ─── */
+/* ── Design Tokens ─────────────────────────────────────────────────────────── */
 :root {
-  /* Ice Silver & Newsprint Paper */
-  --bg:            #F7F8FA;  /* Ice silver newsprint paper */
-  --bg-secondary:  #EEF1F6;  /* Secondary cool silver stock */
-  --panel:         #FFFFFF;  /* Crisp printing panel */
-  --surface:       #E8EDF5;  /* Ice silver surface */
-  --surface-hover: #DDE4EE;
-  
-  /* Hairline Rules in Ice Silver & Deep Aubergine */
-  --border:        #D3DAE4;  /* Crisp ice-silver hairline divider */
-  --border-strong: #1A0A24;  /* Deep aubergine authoritative ink rule */
-  --border-muted:  #E2E8F0;  /* Subtle vertical column rule */
-  
-  /* Deep Aubergine Typography */
-  --fg:            #1A0A24;  /* Deep aubergine press-ink */
-  --fg-secondary:  #341B44;  /* Secondary rich aubergine */
-  --fg-muted:      #5E4A6E;  /* Muted carbon-aubergine reporter & deck text */
-  --fg-subtle:     #8C7B99;  /* Sub-meta and wire indices */
-  
-  /* Spot Ink Accent (Marigold) */
-  --accent:        #D97706;  /* Vibrant warm marigold spot color */
-  --accent-hover:  #B45309;
-  --accent-subtle: #FEF3C7;
-  --on-accent:     #FFFFFF;
-  
-  --ice-silver:    #E2E8F0;
-  --ice-silver-bg: #F1F5F9;
-  --aubergine:     #1A0A24;
-  --marigold:      #D97706;
-  --marigold-gold: #F59E0B;
+  /* Light — tinted canvas, white panels */
+  --bg:           #f4f3ef;
+  --bg-secondary: #ecebe6;
+  --panel:        #ffffff;
+  --surface:      #ebe9e3;
+  --surface-hover:#e2e0d9;
+  --border:       #e0ded7;
+  --border-strong:#cfccc3;
+  --fg:           #111113;
+  --fg-secondary: #34343a;
+  --fg-muted:     #62626b;
+  --fg-subtle:    #9a9aa1;
+  --accent:       #5b3df5;
+  --accent-hover: #4829e0;
+  --accent-subtle:#ebe7ff;
+  --on-accent:    #ffffff;
+  --warning:      #a15c07;
+  --warning-subtle:#fbefd9;
+  --error:        #dc2626;
+  --shadow:       0 1px 2px rgba(17,17,19,0.04), 0 8px 24px -12px rgba(17,17,19,0.12);
+  --shadow-lift:  0 2px 4px rgba(17,17,19,0.05), 0 22px 44px -18px rgba(17,17,19,0.28);
 
-  --warning:       #D97706;
-  --warning-subtle:#FEF3C7;
-  --error:         #B91C1C;
+  /* Topic hue recipe (lightness / chroma per role) */
+  --hue-wash-l: 0.955; --hue-wash-c: 0.035;
+  --hue-ink-l:  0.47;  --hue-ink-c:  0.17;
+  --hue-dot-l:  0.68;  --hue-dot-c:  0.17;
 
-  /* Classic Print Line Weight & Measure */
-  --hairline:      1px solid var(--border);
-  --rule-ink:      1px solid var(--fg);
-  --measure:       68ch;
-  --radius-card:   0px;      /* Strict crisp zero radius broadsheet */
-  --radius-ctl:    0px;
+  --spectrum: linear-gradient(90deg,
+    oklch(0.68 0.19 25), oklch(0.78 0.16 75), oklch(0.74 0.17 150),
+    oklch(0.70 0.14 215), oklch(0.58 0.22 285), oklch(0.65 0.22 340));
 
-  --font-body:     var(--font-serif);
-  --font-ui:       var(--font-sans);
-  --text-body:     1.125rem;
-  --line-height:   1.75;
+  --radius-card: 20px;
+  --radius-ctl:  12px;
+
+  /* Reading */
+  --font-body:   var(--font-source-serif), Georgia, serif;
+  --font-ui:     var(--font-geist), system-ui, sans-serif;
+  --text-body:   1.1875rem;
+  --line-height: 1.75;
+  --measure:     68ch;
 }
 
 [data-theme="dark"] {
-  /* Architectural Charcoal Slate & Ice Silver Night Edition (Zero Purple) */
-  --bg:            #0D1117;  /* Deep charcoal-carbon newsprint paper */
-  --bg-secondary:  #141922;  /* Cool slate secondary stock */
-  --panel:         #161B24;  /* Crisp carbon panel */
-  --surface:       #1C232E;  /* Ice-slate surface */
-  --surface-hover: #242D3B;
-  
-  --border:        #252E3B;  /* Hairline divider in cool slate */
-  --border-strong: #E2E8F0;  /* Crisp ice silver authoritative rule */
-  --border-muted:  #1B212B;
+  --bg:           #0b0b0d;
+  --bg-secondary: #111114;
+  --panel:        #151519;
+  --surface:      #1d1d22;
+  --surface-hover:#26262c;
+  --border:       #26262c;
+  --border-strong:#36363e;
+  --fg:           #f1f0ec;
+  --fg-secondary: #cfcfd4;
+  --fg-muted:     #9a9aa4;
+  --fg-subtle:    #62626c;
+  --accent:       #a493ff;
+  --accent-hover: #bcafff;
+  --accent-subtle:#211c3d;
+  --on-accent:    #0b0b0d;
+  --warning:      #f0b350;
+  --warning-subtle:#2b2214;
+  --error:        #f87171;
+  --shadow:       0 1px 2px rgba(0,0,0,0.4), 0 8px 24px -12px rgba(0,0,0,0.6);
+  --shadow-lift:  0 2px 4px rgba(0,0,0,0.4), 0 24px 48px -16px rgba(0,0,0,0.75);
 
-  /* Ice Silver Typography */
-  --fg:            #F1F5F9;  /* Radiant ice silver text */
-  --fg-secondary:  #CBD5E1;  /* Secondary ice silver */
-  --fg-muted:      #94A3B8;  /* Muted cool reporter text */
-  --fg-subtle:     #64748B;
-
-  /* Marigold Accent */
-  --accent:        #F59E0B;  /* Luminous golden marigold */
-  --accent-hover:  #FBBF24;
-  --accent-subtle: #281F0C;
-  --on-accent:     #0D1117;
-
-  --ice-silver:    #E2E8F0;
-  --ice-silver-bg: #1B222D;
-  --marigold:      #F59E0B;
-  --marigold-gold: #FCD34D;
-
-  --warning:       #F59E0B;
-  --warning-subtle:#281F0C;
-  --error:         #EF4444;
+  --hue-wash-l: 0.27;  --hue-wash-c: 0.05;
+  --hue-ink-l:  0.82;  --hue-ink-c:  0.12;
+  --hue-dot-l:  0.74;  --hue-dot-c:  0.16;
 }
 
 [data-theme="sepia"] {
-  /* Archival Parchment Edition with Warm Bitumen Ink & Marigold Spot */
-  --bg:            #F5EFE6;
-  --bg-secondary:  #EDE3D4;
-  --panel:         #FAF6EF;
-  --surface:       #E8DEC8;
-  --surface-hover: #DFD3BA;
-  --border:        #DDD2BE;
-  --border-strong: #261B14;
-  --border-muted:  #D4C8B2;
+  --bg:           #f1e9da;
+  --bg-secondary: #e9dfcc;
+  --panel:        #faf5ea;
+  --surface:      #e6dbc6;
+  --surface-hover:#ddd0b8;
+  --border:       #ddd1bb;
+  --border-strong:#cbbc9f;
+  --fg:           #2b2016;
+  --fg-secondary: #4a3a2b;
+  --fg-muted:     #75624f;
+  --fg-subtle:    #a8957f;
+  --accent:       #6a3fd0;
+  --accent-hover: #5630b5;
+  --accent-subtle:#e9ddf3;
+  --on-accent:    #ffffff;
+  --warning:      #8a5a12;
+  --warning-subtle:#efe0c2;
 
-  --fg:            #261B14;  /* Bitumen archival press ink */
-  --fg-secondary:  #4A392D;
-  --fg-muted:      #756252;
-  --fg-subtle:     #9E8876;
-
-  --accent:        #C46800;  /* Rich amber marigold */
-  --accent-hover:  #9E5400;
-  --accent-subtle: #F6E6D2;
-  --on-accent:     #FFFFFF;
-
-  --ice-silver:    #E8E3D8;
-  --ice-silver-bg: #EFE9DE;
-  --marigold:      #C46800;
-  --marigold-gold: #D97706;
-
-  --warning:       #C46800;
-  --warning-subtle:#F6E6D2;
+  --hue-wash-l: 0.93;  --hue-wash-c: 0.04;
+  --hue-ink-l:  0.45;  --hue-ink-c:  0.14;
 }
 
 /* ── Base ───────────────────────────────────────────────────────────────────── */
@@ -133,213 +114,261 @@ html {
 body {
   background-color: var(--bg);
   color: var(--fg);
-  font-family: var(--font-body);
-  line-height: var(--line-height);
-  transition: background-color 0.2s ease, color 0.2s ease;
+  font-family: var(--font-ui);
+  line-height: 1.5;
+  transition: background-color 0.25s ease, color 0.25s ease;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* ── Broadsheet Editorial Rules & Dividers ──────────────────────────────────── */
-.broadsheet-rule {
-  border: none;
-  border-top: 1px solid var(--border);
-  margin: 0;
-  width: 100%;
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
-.broadsheet-rule-strong {
-  border: none;
-  border-top: 2px solid var(--border-strong);
-  margin: 0;
-  width: 100%;
+/* ── Primitives (components layer so utilities can override) ────────────────── */
+@layer components {
+  .display {
+    font-family: var(--font-display);
+    font-weight: 700;
+    letter-spacing: -0.035em;
+    line-height: 1;
+    text-wrap: balance;
+  }
+
+  .meta {
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--fg-muted);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-card);
+  }
+
+  .scrollbar-none { scrollbar-width: none; }
+  .scrollbar-none::-webkit-scrollbar { display: none; }
 }
 
-.broadsheet-rule-heavy {
-  border: none;
-  border-top: 4px solid var(--fg);
-  margin: 0;
-  width: 100%;
+/* Spectrum + topic hue roles as real utilities, so variants (hover:, group-hover:) work.
+   Set --hue on the element or an ancestor (see lib/topics.ts). */
+@utility spectrum-bg { background-image: var(--spectrum); }
+@utility spectrum-text {
+  background-image: var(--spectrum);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+@utility hue-wash { background-color: oklch(var(--hue-wash-l) var(--hue-wash-c) var(--hue, 270)); }
+@utility hue-ink  { color: oklch(var(--hue-ink-l) var(--hue-ink-c) var(--hue, 270)); }
+@utility hue-dot  { background-color: oklch(var(--hue-dot-l) var(--hue-dot-c) var(--hue, 270)); }
+@utility hue-border { border-color: oklch(var(--hue-dot-l) var(--hue-dot-c) var(--hue, 270)); }
+@utility hue-decoration { text-decoration-color: oklch(var(--hue-dot-l) var(--hue-dot-c) var(--hue, 270)); }
+@utility hue-glow {
+  background:
+    radial-gradient(60% 90% at 12% 0%, oklch(var(--hue-dot-l) var(--hue-dot-c) var(--hue, 270) / 0.30), transparent 70%),
+    radial-gradient(50% 80% at 92% 8%, oklch(var(--hue-dot-l) var(--hue-dot-c) calc(var(--hue, 270) + 50) / 0.20), transparent 70%);
 }
 
-/* Classic double hairline rule used above and below datelines and mastheads */
-.broadsheet-rule-double {
-  border-top: 1px solid var(--fg);
-  border-bottom: 1px solid var(--fg);
-  height: 4px;
-  width: 100%;
+/* ── Motion ─────────────────────────────────────────────────────────────────── */
+
+/* Headline words rising out of their mask (RevealText) — CSS so it runs before hydration */
+@keyframes word-rise {
+  from { transform: translateY(105%); }
+  to   { transform: translateY(0); }
+}
+@utility word-rise {
+  animation: word-rise 0.55s cubic-bezier(0.2, 0.7, 0.2, 1) both;
 }
 
-/* ── Drop Cap (Editorial Lead Paragraph) ────────────────────────────────────── */
-.drop-cap::first-letter {
-  float: left;
-  font-family: var(--font-display);
-  font-size: 4.25rem;
-  line-height: 0.78;
-  padding-top: 0.1em;
-  padding-right: 0.15em;
-  padding-bottom: 0.02em;
-  font-weight: 700;
-  color: var(--fg);
+/* One pass of light across spectrum text (the hero's "refracted.") */
+@keyframes spectrum-sweep {
+  from { background-position: 100% 0; }
+  to   { background-position: 0% 0; }
+}
+@utility spectrum-sweep {
+  background-size: 250% 100%;
+  background-position: 0% 0;
+  animation: spectrum-sweep 1.6s cubic-bezier(0.2, 0.7, 0.2, 1) 0.35s both;
 }
 
-/* ── Pull Quote ─────────────────────────────────────────────────────────────── */
-.editorial-pullquote {
-  position: relative;
-  border-top: 1px solid var(--fg);
-  border-bottom: 1px solid var(--fg);
-  padding: 1.5rem 0.5rem;
-  margin: 2.5rem 0;
-  font-family: var(--font-display);
-  font-style: italic;
-  font-size: 1.5rem;
-  line-height: 1.3;
-  color: var(--fg);
-  text-align: center;
+/* Cursor spotlight for cards: the card sets --mx/--my on pointer move */
+@utility spotlight {
+  background: radial-gradient(260px circle at var(--mx, 50%) var(--my, 50%),
+    oklch(var(--hue-dot-l) var(--hue-dot-c) var(--hue, 270) / 0.16), transparent 70%);
 }
 
-.editorial-pullquote::before {
-  content: "“";
-  font-size: 3rem;
-  line-height: 0;
-  display: block;
-  margin-bottom: 1rem;
-  color: var(--accent);
-  font-family: Georgia, serif;
+/* Theme switch: the new theme grows as a circle from the clicked button (--vt-x/--vt-y) */
+@keyframes theme-reveal {
+  from { clip-path: circle(0 at var(--vt-x, 50%) var(--vt-y, 0)); }
+  to   { clip-path: circle(150vmax at var(--vt-x, 50%) var(--vt-y, 0)); }
+}
+::view-transition-old(root) { animation: none; }
+::view-transition-new(root) {
+  animation: theme-reveal 0.5s cubic-bezier(0.2, 0.7, 0.2, 1);
+  mix-blend-mode: normal;
 }
 
-/* ── Editorial Desaturated Photo Treatment ──────────────────────────────────── */
-.broadsheet-photo {
-  border: 1px solid var(--border);
-  filter: contrast(106%) brightness(98%);
-  transition: filter 0.3s ease;
-}
-
-.broadsheet-photo:hover {
-  filter: contrast(102%) brightness(100%);
-}
-
-/* ── Monospace Metadata / Kicker ────────────────────────────────────────────── */
-.kicker {
-  font-family: var(--font-mono);
-  font-size: 0.6875rem;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--accent);
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.meta-label {
-  font-family: var(--font-mono);
-  font-size: 0.6875rem;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  color: var(--fg-muted);
-}
-
-/* ── Broadsheet Article Reading Typography ──────────────────────────────────── */
-.prose-broadsheet {
-  font-family: var(--font-serif);
+/* ── Reading Typography ─────────────────────────────────────────────────────── */
+.prose-prism {
+  font-family: var(--font-body);
   font-size: var(--text-body);
   line-height: var(--line-height);
-  color: var(--fg);
+  color: var(--fg-secondary);
   max-width: var(--measure);
+  font-optical-sizing: auto;
 }
 
-.prose-broadsheet p {
-  margin-bottom: 1.5em;
-  text-align: justify;
-  text-justify: inter-word;
+.prose-prism p { margin-bottom: 1.35em; }
+
+.prose-prism > p:first-of-type {
+  font-size: 1.15em;
+  line-height: 1.65;
+  color: var(--fg);
 }
 
-.prose-broadsheet h1 {
+.prose-prism h1,
+.prose-prism h2,
+.prose-prism h3 {
   font-family: var(--font-display);
-  font-size: 2.75rem;
-  font-weight: 700;
-  line-height: 1.08;
+  color: var(--fg);
   letter-spacing: -0.025em;
-  margin: 1.5em 0 0.5em;
-  color: var(--fg);
+  text-wrap: balance;
+  scroll-margin-top: 6rem;
 }
 
-.prose-broadsheet h2 {
-  font-family: var(--font-display);
-  font-size: 1.875rem;
-  font-weight: 700;
-  line-height: 1.15;
-  letter-spacing: -0.015em;
-  margin: 2em 0 0.6em;
-  border-top: 1px solid var(--border);
-  padding-top: 0.75em;
-  color: var(--fg);
-}
+.prose-prism h1 { font-size: 2rem;    font-weight: 700; line-height: 1.1;  margin: 1.8em 0 0.5em; }
+.prose-prism h2 { font-size: 1.65rem; font-weight: 700; line-height: 1.15; margin: 1.9em 0 0.55em; }
+.prose-prism h3 { font-size: 1.25rem; font-weight: 600; line-height: 1.3;  margin: 1.6em 0 0.45em; }
 
-.prose-broadsheet h3 {
-  font-family: var(--font-sans);
-  font-size: 1.125rem;
-  font-weight: 700;
-  letter-spacing: -0.01em;
-  text-transform: uppercase;
-  margin: 1.75em 0 0.5em;
-  color: var(--fg);
-}
-
-.prose-broadsheet blockquote {
-  border-top: 1px solid var(--fg);
-  border-bottom: 1px solid var(--fg);
+.prose-prism blockquote {
   margin: 2em 0;
-  padding: 1.25em 0;
-  font-family: var(--font-display);
-  font-style: italic;
-  font-size: 1.35rem;
-  line-height: 1.35;
+  padding: 1.25em 1.5em;
+  border-radius: 16px;
+  background: oklch(var(--hue-wash-l) var(--hue-wash-c) var(--hue, 270));
   color: var(--fg);
-  text-align: center;
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: 1.15em;
+  line-height: 1.45;
+  letter-spacing: -0.01em;
 }
 
-.prose-broadsheet a {
+.prose-prism code {
+  font-family: var(--font-mono);
+  font-size: 0.8em;
+  background: var(--surface);
+  padding: 0.15em 0.4em;
+  border-radius: 6px;
+  color: var(--fg);
+}
+
+.prose-prism pre {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 1.25em 1.5em;
+  overflow-x: auto;
+  margin: 1.75em 0;
+  line-height: 1.6;
+}
+
+.prose-prism pre code { background: none; padding: 0; font-size: 0.78em; }
+
+.prose-prism a {
   color: var(--fg);
   text-decoration: underline;
-  text-decoration-thickness: 1px;
+  text-decoration-color: oklch(var(--hue-dot-l) var(--hue-dot-c) var(--hue, 270));
+  text-decoration-thickness: 2px;
   text-underline-offset: 3px;
-  transition: background-color 0.15s, color 0.15s;
+}
+.prose-prism a:hover { color: oklch(var(--hue-ink-l) var(--hue-ink-c) var(--hue, 270)); }
+
+.prose-prism ul, .prose-prism ol { padding-left: 1.4em; margin-bottom: 1.35em; }
+.prose-prism ul { list-style: disc; }
+.prose-prism ol { list-style: decimal; }
+.prose-prism li { margin-bottom: 0.4em; }
+.prose-prism li::marker { color: oklch(var(--hue-dot-l) var(--hue-dot-c) var(--hue, 270)); }
+
+.prose-prism strong { font-weight: 600; color: var(--fg); }
+.prose-prism em { font-style: italic; }
+
+.prose-prism img {
+  width: 100%;
+  height: auto;
+  border-radius: 16px;
+  margin: 2em 0;
 }
 
-.prose-broadsheet a:hover {
-  background-color: var(--fg);
-  color: var(--bg);
-  text-decoration: none;
+.prose-prism hr {
+  border: none;
+  height: 3px;
+  width: 64px;
+  margin: 3em auto;
+  border-radius: 3px;
+  background-image: var(--spectrum);
 }
+
+[data-fontsize="sm"] .prose-prism { font-size: 1rem; }
+[data-fontsize="md"] .prose-prism { font-size: 1.1875rem; }
+[data-fontsize="lg"] .prose-prism { font-size: 1.3125rem; }
+[data-fontsize="xl"] .prose-prism { font-size: 1.4375rem; }
 
 /* ── Focus Mode ─────────────────────────────────────────────────────────────── */
 body.focus-mode .site-header,
 body.focus-mode .site-sidebar,
-body.focus-mode .broadsheet-footer {
+body.focus-mode .post-footer-nav {
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.3s ease;
 }
 
-/* ── Scrollbars & Selection ─────────────────────────────────────────────────── */
-::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: var(--bg); }
-::-webkit-scrollbar-thumb { background: var(--border-muted); }
-::-webkit-scrollbar-thumb:hover { background: var(--fg-muted); }
+/* ── Tiptap Editor ──────────────────────────────────────────────────────────── */
+.tiptap-editor { outline: none; min-height: 60vh; }
 
-::selection {
-  background: var(--fg);
-  color: var(--bg);
+.tiptap-editor p.is-editor-empty:first-child::before,
+.tiptap-editor h1.is-empty::before,
+.tiptap-editor h2.is-empty::before,
+.tiptap-editor h3.is-empty::before {
+  content: attr(data-placeholder);
+  float: left;
+  color: var(--fg-subtle);
+  pointer-events: none;
+  height: 0;
 }
 
-#reading-progress {
-  position: fixed;
-  top: 0;
-  left: 0;
-  height: 2px;
-  background: var(--accent);
-  z-index: 100;
-  transition: width 0.1s linear;
+.tiptap-editor.prose-prism > p:first-of-type { font-size: inherit; color: inherit; }
+
+/* ── Scrollbar / selection ──────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 8px; border: 2px solid var(--bg); }
+
+::selection { background: var(--accent-subtle); color: var(--fg); }
+
+/* ── Legacy hooks used by older pages ───────────────────────────────────────── */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.fade-up { animation: fadeUp 0.5s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+
+@keyframes pulse-clap {
+  0%   { transform: scale(1); }
+  40%  { transform: scale(1.3); }
+  100% { transform: scale(1); }
+}
+.clap-animate { animation: pulse-clap 0.35s ease; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
