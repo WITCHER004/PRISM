@@ -75,3 +75,4 @@ export async function logOutFirebase() {
 }
 
 export { onAuthStateChanged, updateProfile, type FirebaseUser }
+

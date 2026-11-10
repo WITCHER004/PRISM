@@ -33,3 +33,4 @@ export function FirebaseAuthProvider({ children }: { children: React.ReactNode }
 
   return <>{children}</>
 }
+
