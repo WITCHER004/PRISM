@@ -6,6 +6,7 @@ import { ProfileClient } from "@/components/discovery/ProfileClient"
 import { getFeedPosts } from "@/actions/posts"
 import { MOCK_USERS, type Tag } from "@/lib/data"
 import { hueStyle } from "@/lib/topics"
+import { socialImageUrl, truncateDescription } from "@/lib/seo"
 
 interface ProfilePageProps {
   params: Promise<{ username: string }>
@@ -15,11 +16,28 @@ export async function generateMetadata({ params }: ProfilePageProps): Promise<Me
   const { username } = await params
   const user = MOCK_USERS.find((u) => u.username === username)
   if (!user) {
-    return { title: `@${username} — Prism` }
+    return {
+      title: `@${username} — Prism`,
+      description: `Read articles and essays by @${username} on Prism.`,
+      alternates: { canonical: `/${username}` },
+    }
   }
+  const description = truncateDescription(user.bio)
   return {
-    title: `${user.displayName} — Prism`,
-    description: user.bio,
+    title: user.displayName,
+    description,
+    alternates: { canonical: `/${user.username}` },
+    openGraph: {
+      title: `${user.displayName} on Prism`,
+      description,
+      images: [socialImageUrl(user.displayName, description)],
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: `${user.displayName} on Prism`,
+      description,
+      images: [socialImageUrl(user.displayName, description)],
+    },
   }
 }
 

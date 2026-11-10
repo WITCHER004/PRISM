@@ -6,6 +6,7 @@ interface AvatarProps {
   alt: string
   size?: "xs" | "sm" | "md" | "lg" | "xl"
   className?: string
+  priority?: boolean
 }
 
 const sizeMap = {
@@ -24,7 +25,7 @@ const pixelMap = {
   xl: 80,
 }
 
-export function Avatar({ src, alt, size = "md", className }: AvatarProps) {
+export function Avatar({ src, alt, size = "md", className, priority = false }: AvatarProps) {
   const initials = alt
     .split(" ")
     .map((n) => n[0])
@@ -47,6 +48,8 @@ export function Avatar({ src, alt, size = "md", className }: AvatarProps) {
           width={pixelMap[size]}
           height={pixelMap[size]}
           className="object-cover w-full h-full"
+          loading={priority ? "eager" : "lazy"}
+          fetchPriority={priority ? "high" : "auto"}
           unoptimized
         />
       ) : (

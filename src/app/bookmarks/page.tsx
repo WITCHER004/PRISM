@@ -4,8 +4,9 @@ import { SiteFooter } from "@/components/layout/SiteFooter"
 import { LibraryClient } from "@/components/discovery/LibraryClient"
 
 export const metadata: Metadata = {
-  title: "Library — Prism",
+  title: "Library",
   description: "Stories you saved and the latest from writers you follow.",
+  robots: { index: false, follow: false },
 }
 
 export default function LibraryPage() {

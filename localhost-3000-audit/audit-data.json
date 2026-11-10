@@ -1,0 +1,183 @@
+{
+  "summary": {
+    "health_score": 53,
+    "business_type": "Publishing platform (local demo)",
+    "top_findings": [
+      "robots.txt and sitemap.xml return 404",
+      "Canonical tags are absent from sampled public pages",
+      "Some titles duplicate the Prism brand suffix",
+      "No social preview images or JSON-LD were detected",
+      "Browser-local and private routes are not explicitly noindex"
+    ],
+    "quick_wins": [
+      "Remove redundant brand suffixes from child titles",
+      "Add production-aware robots and sitemap metadata routes",
+      "Set noindex on private and browser-only routes"
+    ]
+  },
+  "categories": [
+    {
+      "name": "Technical SEO",
+      "score": 40,
+      "what_works": [
+        "33 discovered internal homepage links returned HTTP 200",
+        "Unknown route returned HTTP 404"
+      ],
+      "findings": [
+        {
+          "title": "Robots and sitemap endpoints are missing",
+          "severity": "High",
+          "description": "/robots.txt, /sitemap.xml, and /sitemap_index.xml returned HTTP 404 on localhost.",
+          "recommendation": "Add production-aware robots.ts and sitemap.ts routes and verify their production output."
+        },
+        {
+          "title": "Canonical URLs are absent",
+          "severity": "Medium",
+          "description": "The homepage, sampled article, profile, and topic pages rendered without a canonical link.",
+          "recommendation": "Set absolute canonical URLs for all indexable pages using the production origin."
+        }
+      ]
+    },
+    {
+      "name": "Content Quality",
+      "score": 72,
+      "what_works": [
+        "Sampled public pages have page-specific descriptions and useful H1 headings."
+      ],
+      "findings": [
+        {
+          "title": "Legal page descriptions are marked as demo placeholders",
+          "severity": "Low",
+          "description": "Terms, Privacy, and Content Policy descriptions include the words 'demo placeholder'.",
+          "recommendation": "Replace placeholder descriptions and confirm the public legal copy is final and accurate."
+        }
+      ]
+    },
+    {
+      "name": "On-Page SEO",
+      "score": 62,
+      "what_works": [
+        "Homepage and sampled public article/topic pages have one H1 and unique descriptions."
+      ],
+      "findings": [
+        {
+          "title": "Brand suffix is duplicated in several titles",
+          "severity": "Medium",
+          "description": "Examples include 'Explore — Prism | Prism', 'Search — Prism | Prism', and 'Alex Chen — Prism | Prism'.",
+          "recommendation": "Remove the redundant brand suffix from child metadata titles; retain the root title template."
+        },
+        {
+          "title": "App pages inherit generic descriptions",
+          "severity": "Low",
+          "description": "Login, signup, settings, dashboard, and editor pages use the generic site description.",
+          "recommendation": "Mark private routes noindex; provide specific descriptions only for routes intended to appear in search."
+        }
+      ]
+    },
+    {
+      "name": "Schema / Structured Data",
+      "score": 20,
+      "what_works": [],
+      "findings": [
+        {
+          "title": "No JSON-LD was detected",
+          "severity": "Medium",
+          "description": "No application/ld+json scripts were present on the homepage or sampled public article.",
+          "recommendation": "Add accurate WebSite/Organization and Article structured data, then validate it."
+        }
+      ]
+    },
+    {
+      "name": "Performance",
+      "score": 62,
+      "what_works": [
+        "The homepage had no horizontal overflow at a 390px viewport."
+      ],
+      "findings": [
+        {
+          "title": "LCP candidate and font preload need lab validation",
+          "severity": "Medium",
+          "description": "The browser flagged an avatar image as the homepage LCP candidate and reported font preloads unused shortly after load. No measured CWV values are available.",
+          "recommendation": "Run Lighthouse on a production build and optimize based on the LCP trace and actual font usage."
+        }
+      ]
+    },
+    {
+      "name": "AI Search Readiness",
+      "score": 35,
+      "what_works": [
+        "Primary public content is server-rendered."
+      ],
+      "findings": [
+        {
+          "title": "No llms.txt or structured data",
+          "severity": "Low",
+          "description": "/llms.txt returned HTTP 404 and no JSON-LD was detected. These checks do not establish whether AI crawlers can access a future production host.",
+          "recommendation": "Consider a maintained llms.txt and accurate structured data after production crawl rules and canonicals are in place."
+        }
+      ]
+    },
+    {
+      "name": "Images",
+      "score": 72,
+      "what_works": [
+        "Sampled images had alt attributes; decorative images correctly use empty alt text."
+      ],
+      "findings": [
+        {
+          "title": "Social card images are absent",
+          "severity": "Medium",
+          "description": "The homepage and sampled article did not render og:image or twitter:image.",
+          "recommendation": "Provide absolute social preview images with suitable dimensions and verify previews."
+        }
+      ]
+    }
+  ],
+  "action_plan": {
+    "phases": [
+      {
+        "name": "Phase 1: Technical foundations",
+        "timeframe": "First",
+        "items": [
+          "Add production-aware robots and sitemap routes",
+          "Add canonicals to indexable pages",
+          "Noindex private and browser-only routes"
+        ]
+      },
+      {
+        "name": "Phase 2: Metadata and sharing",
+        "timeframe": "Next",
+        "items": [
+          "Fix duplicate title suffixes",
+          "Add social images and validated JSON-LD",
+          "Replace legal-page placeholder descriptions"
+        ]
+      },
+      {
+        "name": "Phase 3: Performance",
+        "timeframe": "After foundations",
+        "items": [
+          "Run Lighthouse on a production build",
+          "Use measured LCP and font traces to tune assets"
+        ]
+      },
+      {
+        "name": "Phase 4: Production monitoring",
+        "timeframe": "Ongoing",
+        "items": [
+          "Repeat the audit against the public production URL",
+          "Connect Search Console and field data where available"
+        ]
+      }
+    ]
+  },
+  "artifacts": {
+    "findings_dir": "findings/",
+    "screenshots_dir": "screenshots/"
+  },
+  "limitations": [
+    "Localhost only; production crawlability and indexing were not established.",
+    "Bundled SEO runtime was not ready; Lighthouse, CrUX, Search Console, analytics, and backlinks were not checked.",
+    "Score is an indicative manual checklist score, not a Lighthouse result."
+  ]
+}

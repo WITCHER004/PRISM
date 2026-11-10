@@ -116,7 +116,7 @@ export function PostCard({ post, variant = "default", showAuthor = true, index, 
           )}
           <div className="mt-6 flex items-center justify-between gap-4">
             <div className="pointer-events-none flex items-center gap-2.5 text-sm">
-              <Avatar src={post.author.avatarUrl} alt={post.author.displayName} size="sm" className="ring-2 ring-white/30" />
+              <Avatar src={post.author.avatarUrl} alt={post.author.displayName} size="sm" priority className="ring-2 ring-white/30" />
               <span className="font-medium">{post.author.displayName}</span>
               <span className="text-white/60 font-mono text-xs uppercase tracking-wide">
                 {post.readingTimeMin} min · {numberWithCommas(post.clapCount)} claps

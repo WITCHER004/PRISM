@@ -13,11 +13,14 @@ import { numberWithCommas } from "@/lib/utils"
 import Link from "next/link"
 import { ArrowRight, BadgeCheck, Timer } from "lucide-react"
 import type { Metadata } from "next"
+import { JsonLd } from "@/components/seo/JsonLd"
+import { SITE_URL } from "@/lib/seo"
 
 export const metadata: Metadata = {
-  title: "Prism — Ideas, refracted",
+  title: { absolute: "Prism — Ideas, refracted" },
   description:
     "Discover the world's best independent writers. No paywalls that punish curiosity. No algorithmic noise. Just ideas.",
+  alternates: { canonical: "/" },
 }
 
 export default async function HomePage() {
@@ -27,6 +30,33 @@ export default async function HomePage() {
 
   return (
     <div className="min-h-screen flex flex-col bg-[var(--bg)]">
+      <JsonLd
+        data={{
+          "@context": "https://schema.org",
+          "@graph": [
+            {
+              "@type": "Organization",
+              "@id": `${SITE_URL}#organization`,
+              name: "Prism",
+              url: SITE_URL.toString(),
+              description: "A publishing platform for independent writers and curious readers.",
+            },
+            {
+              "@type": "WebSite",
+              "@id": `${SITE_URL}#website`,
+              name: "Prism",
+              url: SITE_URL.toString(),
+              description: "Discover independent writing across every topic.",
+              publisher: { "@id": `${SITE_URL}#organization` },
+              potentialAction: {
+                "@type": "SearchAction",
+                target: `${SITE_URL}/search?q={search_term_string}`,
+                "query-input": "required name=search_term_string",
+              },
+            },
+          ],
+        }}
+      />
       <SiteHeader />
 
       <main className="flex-1">

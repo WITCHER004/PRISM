@@ -6,8 +6,9 @@ import { SiteFooter } from "@/components/layout/SiteFooter"
 import { SearchClient } from "@/components/discovery/SearchClient"
 
 export const metadata: Metadata = {
-  title: "Search — Prism",
+  title: "Search",
   description: "Search stories, writers and topics on Prism.",
+  robots: { index: false, follow: true },
 }
 
 export default function SearchPage() {

@@ -1,0 +1,20 @@
+# Prism
+
+> Independent writing for curious readers. Discover stories across topics and follow the writers you value.
+
+Prism is a publishing platform demo. The site includes sample writers and stories; memberships and payouts shown in the interface are not live financial services.
+
+## Public pages
+
+- [Home](https://prism.pub/): Featured stories and writers.
+- [Explore](https://prism.pub/explore): Browse stories by topic.
+- [About](https://prism.pub/about): How Prism is designed to work.
+- [Membership](https://prism.pub/membership): Membership options shown in the demo.
+- [Terms of Service](https://prism.pub/terms)
+- [Privacy Policy](https://prism.pub/privacy)
+- [Content Policy](https://prism.pub/content-policy)
+- [XML sitemap](https://prism.pub/sitemap.xml)
+
+The legal pages are illustrative placeholders, not binding agreements or final policies. Membership checkout is simulated and does not take payments.
+
+Only publicly published stories and public writer profiles should be treated as public content. Drafts and browser-local story previews are not published.
