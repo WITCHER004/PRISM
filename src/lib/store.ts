@@ -46,6 +46,8 @@ export interface AppNotification {
 export interface Profile {
   displayName: string
   bio: string
+  avatarUrl?: string
+  email?: string
   websiteUrl: string
   twitterHandle: string
   emailDigest: boolean
@@ -73,9 +75,15 @@ interface UIState {
   setInterestedTopics: (topics: string[]) => void
   toggleInterestedTopic: (topic: string) => void
 
-  // session (demo auth)
-  currentUser: string | null // username of the signed-in user
+  // session (Firebase Auth)
+  currentUser: string | null // username or handle of the signed-in user
+  authEmail: string | null
+  authUid: string | null
+  authLoading: boolean
   setCurrentUser: (username: string | null) => void
+  setFirebaseUser: (
+    user: { uid: string; email: string | null; displayName: string | null; photoURL: string | null } | null
+  ) => void
   signIn: (email: string, name?: string) => string
   signOut: () => void
 
@@ -168,36 +176,94 @@ export const useUIStore = create<UIState>()(
             : [...s.interestedTopics, topic],
         })),
 
-      currentUser: me.username, // demo: start signed in as the sample writer
+      currentUser: null, // Start with NO user signed in by default (Real Auth)
+      authEmail: null,
+      authUid: null,
+      authLoading: true,
       setCurrentUser: (currentUser) => set({ currentUser }),
-      signIn: (email, name) => {
-        // Demo auth: match existing mock user if matching email/username, or create a new user profile
-        const local = email.split("@")[0].toLowerCase().replace(/[^a-z0-9]/g, "")
-        const match = MOCK_USERS.find((u) => u.username === local)
-        const username = match ? match.username : (local || "reader")
-        const displayName = name?.trim() || (match ? match.displayName : (local ? local.charAt(0).toUpperCase() + local.slice(1) : "Reader"))
-        
-        const welcomeNotif: AppNotification = {
-          id: `welcome-${Date.now()}`,
-          kind: "system",
-          text: `Welcome to Prism, ${displayName}! Your sanctuary for quiet reading is ready.`,
-          href: "/explore",
-          createdAt: new Date().toISOString(),
-          read: false,
+      setFirebaseUser: (fbUser) => {
+        if (!fbUser) {
+          set({
+            currentUser: null,
+            authEmail: null,
+            authUid: null,
+            authLoading: false,
+            profile: {
+              displayName: "",
+              bio: "",
+              avatarUrl: undefined,
+              email: undefined,
+              websiteUrl: "",
+              twitterHandle: "",
+              emailDigest: true,
+              emailReplies: true,
+            },
+          })
+          return
         }
 
+        const email = fbUser.email || ""
+        const baseHandle = (
+          fbUser.displayName?.toLowerCase().replace(/[^a-z0-9_]/g, "") ||
+          email.split("@")[0].toLowerCase().replace(/[^a-z0-9_]/g, "") ||
+          fbUser.uid.slice(0, 10)
+        ).slice(0, 20)
+
+        const displayName = fbUser.displayName || (email ? email.split("@")[0] : "Member")
+        const avatarUrl =
+          fbUser.photoURL ||
+          `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(baseHandle)}&backgroundColor=b6e3f4`
+
         set((s) => ({
-          currentUser: username,
+          currentUser: s.currentUser && s.currentUser !== "alexchen" ? s.currentUser : baseHandle,
+          authEmail: email,
+          authUid: fbUser.uid,
+          authLoading: false,
+          profile: {
+            ...s.profile,
+            displayName:
+              s.profile.displayName && s.profile.displayName !== "Alex Chen"
+                ? s.profile.displayName
+                : displayName,
+            avatarUrl,
+            email,
+          },
+        }))
+      },
+      signIn: (email, name) => {
+        const local = email.split("@")[0].toLowerCase().replace(/[^a-z0-9_]/g, "") || "member"
+        const displayName = name?.trim() || local.charAt(0).toUpperCase() + local.slice(1)
+
+        set((s) => ({
+          currentUser: local,
+          authEmail: email,
+          authLoading: false,
           profile: {
             ...s.profile,
             displayName,
-            bio: s.profile.bio || "Reader & thinker on Prism",
+            email,
+            bio: s.profile.bio || "Reader on Prism",
           },
-          notifications: [welcomeNotif, ...(s.notifications || [])],
         }))
-        return username
+        return local
       },
-      signOut: () => set({ currentUser: null }),
+      signOut: () =>
+        set({
+          currentUser: null,
+          authEmail: null,
+          authUid: null,
+          authLoading: false,
+          profile: {
+            displayName: "",
+            bio: "",
+            avatarUrl: undefined,
+            email: undefined,
+            websiteUrl: "",
+            twitterHandle: "",
+            emailDigest: true,
+            emailReplies: true,
+          },
+        }),
 
       clappedPosts: {},
       bookmarkedPosts: new Set<string>(),
@@ -333,10 +399,12 @@ export const useUIStore = create<UIState>()(
       },
 
       profile: {
-        displayName: me.displayName,
-        bio: me.bio,
-        websiteUrl: me.websiteUrl ?? "",
-        twitterHandle: me.twitterHandle ?? "",
+        displayName: "",
+        bio: "",
+        avatarUrl: undefined,
+        email: undefined,
+        websiteUrl: "",
+        twitterHandle: "",
         emailDigest: true,
         emailReplies: true,
       },

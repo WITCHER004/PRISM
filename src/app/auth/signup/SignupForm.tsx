@@ -176,25 +176,36 @@ export function SignupForm({
 
     setStatus("creating")
     try {
-      if (password && password.length >= 6) {
-        try {
-          await registerWithEmail(email, password)
-        } catch (authErr: any) {
-          console.warn("Firebase email sign-up warning:", authErr)
-          if (authErr?.code === "auth/email-already-in-use") {
-            setErrors({ email: "This email is already in use. Please sign in instead." })
-            setStatus("idle")
-            emailRef.current?.focus()
-            return
-          }
-          // Non-blocking fallback for other error codes during demo
-        }
+      // Create real account in Firebase
+      const userCredential = await registerWithEmail(email, password)
+      if (userCredential?.user) {
+        await firebaseUpdateProfile(userCredential.user, { displayName: name.trim() }).catch(() => {})
       }
-    } finally {
       setStatus("idle")
+      handleProceedToProfile(name, email)
+    } catch (authErr: any) {
+      console.error("Firebase email sign-up error:", authErr)
+      setStatus("idle")
+      if (authErr?.code === "auth/email-already-in-use") {
+        setErrors({ email: "This email is already registered. Please sign in instead." })
+        emailRef.current?.focus()
+        return
+      }
+      if (authErr?.code === "auth/weak-password") {
+        setErrors({ password: "Password is too weak. Please use at least 6 characters." })
+        passwordRef.current?.focus()
+        return
+      }
+      if (authErr?.code === "auth/operation-not-allowed") {
+        setErrors({ email: "Email/Password sign-up is not enabled in Firebase Console. Enable it under Authentication > Sign-in method." })
+        return
+      }
+      if (authErr?.code === "auth/configuration-not-found") {
+        setErrors({ email: "Firebase Authentication is not set up for project prism-2d284 yet. Please open Firebase Console > Authentication, click 'Get Started', and enable Email/Password & Google." })
+        return
+      }
+      setErrors({ email: authErr?.message || "Failed to create account. Please try again." })
     }
-
-    handleProceedToProfile(name, email)
   }
 
   const onProvider = async (p: Provider) => {
@@ -221,19 +232,21 @@ export function SignupForm({
         return
       }
     } catch (err: any) {
-      console.warn("Firebase OAuth sign-up warning:", err)
-      if (err?.code === "auth/popup-closed-by-user") {
-        setStatus("idle")
-        setProvider(null)
+      console.error("Firebase OAuth sign-up error:", err)
+      setStatus("idle")
+      setProvider(null)
+      if (err?.code === "auth/popup-closed-by-user" || err?.code === "auth/cancelled-popup-request") {
         return
       }
-      // Demo fallback
-      const defaultName = p === "google" ? "Google User" : "GitHub Dev"
-      const defaultEmail = `${p}.user@example.com`
-      setName(defaultName)
-      setEmail(defaultEmail)
-      setStatus("idle")
-      handleProceedToProfile(defaultName, defaultEmail)
+      if (err?.code === "auth/unauthorized-domain") {
+        setErrors({ name: "Domain unauthorized: Add 'localhost' to Authorized Domains in your Firebase Console (Authentication > Settings > Authorized domains)." })
+      } else if (err?.code === "auth/operation-not-allowed") {
+        setErrors({ name: `${p === "google" ? "Google" : "GitHub"} sign-in is not enabled in Firebase Console. Enable it under Authentication > Sign-in method.` })
+      } else if (err?.code === "auth/configuration-not-found") {
+        setErrors({ name: "Firebase Authentication is not set up for project prism-2d284 yet. Please open Firebase Console > Authentication, click 'Get Started', and enable Email/Password & Google." })
+      } else {
+        setErrors({ name: err?.message || `${p} registration failed. Please try again.` })
+      }
       return
     }
   }

@@ -94,6 +94,7 @@ export function LoginForm({ redirectTo }: { redirectTo?: string }) {
     e.preventDefault()
     if (busy) return
     const emailVal = email.trim()
+    const passVal = password.trim()
     if (!emailVal) {
       setError("Enter your email address.")
       emailRef.current?.focus()
@@ -104,49 +105,53 @@ export function LoginForm({ redirectTo }: { redirectTo?: string }) {
       emailRef.current?.focus()
       return
     }
+    if (!passVal) {
+      setError("Please enter your password.")
+      passwordRef.current?.focus()
+      return
+    }
 
     setError(undefined)
     setStatus("sending")
 
-    // If password provided, perform real Firebase Authentication
-    if (password) {
-      try {
-        const res = await logInWithEmail(emailVal, password)
-        if (res?.user) {
-          const u = res.user
-          const address = u.email || emailVal
-          const name = u.displayName || address.split("@")[0]
-          signIn(address, name)
-          setWelcomeName(name)
-          setStatus("categories")
-          return
-        }
-      } catch (err: any) {
-        console.warn("Firebase email sign-in error:", err)
-        setStatus("idle")
-        if (
-          err?.code === "auth/invalid-credential" ||
-          err?.code === "auth/wrong-password" ||
-          err?.code === "auth/user-not-found"
-        ) {
-          setError("Incorrect email or password. Please verify your credentials or create an account.")
-          passwordRef.current?.focus()
-          return
-        }
-        if (err?.code === "auth/too-many-requests") {
-          setError("Too many failed login attempts. Please reset your password or try again later.")
-          return
-        }
-        if (err?.message) {
-          setError(err.message)
-          return
-        }
+    try {
+      const res = await logInWithEmail(emailVal, passVal)
+      if (res?.user) {
+        const u = res.user
+        const address = u.email || emailVal
+        const name = u.displayName || address.split("@")[0]
+        signIn(address, name)
+        setWelcomeName(name)
+        setStatus("categories")
+        return
       }
+    } catch (err: any) {
+      console.error("Firebase email sign-in error:", err)
+      setStatus("idle")
+      if (
+        err?.code === "auth/invalid-credential" ||
+        err?.code === "auth/wrong-password" ||
+        err?.code === "auth/user-not-found"
+      ) {
+        setError("Incorrect email or password. Please verify your credentials or create an account.")
+        passwordRef.current?.focus()
+        return
+      }
+      if (err?.code === "auth/too-many-requests") {
+        setError("Too many failed login attempts. Please reset your password or try again later.")
+        return
+      }
+      if (err?.code === "auth/operation-not-allowed") {
+        setError("Email/Password sign-in is not enabled in Firebase Console. Go to Authentication > Sign-in method and enable Email/Password.")
+        return
+      }
+      if (err?.code === "auth/configuration-not-found") {
+        setError("Firebase Authentication is not set up for project prism-2d284 yet. Please open Firebase Console > Authentication, click 'Get Started', and enable Email/Password & Google.")
+        return
+      }
+      setError(err?.message || "Failed to sign in. Please verify your credentials.")
+      return
     }
-
-    // Direct passwordless sign-in or demo sign-in
-    await wait(600)
-    await handleAuthSuccess(emailVal)
   }
 
   const onProvider = async (p: Provider) => {
@@ -173,18 +178,21 @@ export function LoginForm({ redirectTo }: { redirectTo?: string }) {
         return
       }
     } catch (err: any) {
-      console.warn("Firebase OAuth sign-in:", err)
-      if (err?.code === "auth/popup-closed-by-user") {
-        setStatus("idle")
-        setProvider(null)
+      console.error("Firebase OAuth sign-in error:", err)
+      setStatus("idle")
+      setProvider(null)
+      if (err?.code === "auth/popup-closed-by-user" || err?.code === "auth/cancelled-popup-request") {
         return
       }
       if (err?.code === "auth/unauthorized-domain") {
-        setError("Firebase note: Ensure localhost is added to authorized domains in Firebase Console. Falling back to local demo.")
+        setError("Domain not authorized: Please add 'localhost' to Authorized Domains in your Firebase Console (Authentication > Settings > Authorized domains).")
+      } else if (err?.code === "auth/operation-not-allowed") {
+        setError(`${p === "google" ? "Google" : "GitHub"} sign-in is not enabled in your Firebase Console. Go to Authentication > Sign-in method to enable it.`)
+      } else if (err?.code === "auth/configuration-not-found") {
+        setError("Firebase Authentication is not set up for project prism-2d284 yet. Please open Firebase Console > Authentication, click 'Get Started', and enable Email/Password & Google.")
+      } else {
+        setError(err?.message || `${p} sign-in failed. Please try again.`)
       }
-      // Demo fallback
-      await wait(600)
-      await handleAuthSuccess(`${MOCK_USERS[0].username}@${p}.demo`)
       return
     }
   }
