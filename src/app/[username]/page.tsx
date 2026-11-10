@@ -14,7 +14,9 @@ interface ProfilePageProps {
 export async function generateMetadata({ params }: ProfilePageProps): Promise<Metadata> {
   const { username } = await params
   const user = MOCK_USERS.find((u) => u.username === username)
-  if (!user) return { title: "Writer not found — Prism" }
+  if (!user) {
+    return { title: `@${username} — Prism` }
+  }
   return {
     title: `${user.displayName} — Prism`,
     description: user.bio,
@@ -23,8 +25,23 @@ export async function generateMetadata({ params }: ProfilePageProps): Promise<Me
 
 export default async function ProfilePage({ params }: ProfilePageProps) {
   const { username } = await params
-  const user = MOCK_USERS.find((u) => u.username === username)
-  if (!user) notFound()
+  let user = MOCK_USERS.find((u) => u.username === username)
+  if (!user) {
+    // Dynamic user profile fallback for newly registered authors/readers
+    user = {
+      id: `u-${username}`,
+      username,
+      displayName: username.charAt(0).toUpperCase() + username.slice(1),
+      bio: "Curious thinker and reader on Prism.",
+      avatarUrl: `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(username)}&backgroundColor=d1d4f9`,
+      role: "WRITER",
+      isVerifiedHuman: true,
+      followerCount: 0,
+      followingCount: 0,
+      postCount: 0,
+      createdAt: new Date().toISOString(),
+    }
+  }
 
   const posts = (await getFeedPosts(30))
     .filter((p) => p.author.username === username && p.status === "PUBLISHED")

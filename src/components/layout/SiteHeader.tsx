@@ -24,6 +24,7 @@ import {
   LogOut,
   LayoutDashboard,
   Compass,
+  UserPlus,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -43,7 +44,21 @@ export function SiteHeader() {
   const [mobileOpen, setMobileOpen] = useState(false)
   const [userMenuOpen, setUserMenuOpen] = useState(false)
 
-  const user = MOCK_USERS.find((u) => u.username === currentUser)
+  const user = currentUser
+    ? (MOCK_USERS.find((u) => u.username === currentUser) ?? {
+        id: `u-${currentUser}`,
+        username: currentUser,
+        displayName: profile.displayName || currentUser,
+        bio: profile.bio || "Reader on Prism",
+        avatarUrl: `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(currentUser)}&backgroundColor=d1d4f9`,
+        role: "WRITER" as const,
+        isVerifiedHuman: true,
+        followerCount: 0,
+        followingCount: 0,
+        postCount: 0,
+        createdAt: new Date().toISOString(),
+      })
+    : null
   const isEditor = pathname?.startsWith("/editor")
 
   // ⌘K / Ctrl+K jumps to search
@@ -216,6 +231,15 @@ export function SiteHeader() {
                             </Link>
                           ))}
                           <div className="my-1 h-px bg-[var(--border)]" />
+                          <Link
+                            href="/signup"
+                            role="menuitem"
+                            onClick={() => setUserMenuOpen(false)}
+                            className="flex items-center gap-3 px-2.5 py-2 rounded-[10px] text-sm text-[var(--fg-muted)] hover:bg-[var(--surface)] hover:text-[var(--fg)] w-full transition-colors"
+                          >
+                            <UserPlus className="w-4 h-4" />
+                            Create another account
+                          </Link>
                           <button
                             role="menuitem"
                             onClick={() => {
@@ -237,10 +261,10 @@ export function SiteHeader() {
               </>
             ) : (
               <div className="flex items-center gap-1">
-                <Link href="/auth/login" className="hidden sm:inline-flex h-10 px-4 items-center rounded-full text-sm text-[var(--fg-secondary)] hover:bg-[var(--surface)]">
+                <Link href="/login" className="hidden sm:inline-flex h-10 px-4 items-center rounded-full text-sm text-[var(--fg-secondary)] hover:bg-[var(--surface)]">
                   Sign in
                 </Link>
-                <Link href="/auth/signup" className="inline-flex h-10 px-4 items-center rounded-full text-sm font-medium bg-[var(--fg)] text-[var(--bg)]">
+                <Link href="/signup" className="inline-flex h-10 px-4 items-center rounded-full text-sm font-medium bg-[var(--fg)] text-[var(--bg)] hover:bg-[var(--fg-secondary)] transition-colors">
                   Join Prism
                 </Link>
               </div>
@@ -301,7 +325,7 @@ export function SiteHeader() {
                   </button>
                 ))}
               </div>
-              {user && (
+              {user ? (
                 <Link
                   href="/editor/new"
                   onClick={() => setMobileOpen(false)}
@@ -310,6 +334,23 @@ export function SiteHeader() {
                   <PenLine className="w-4 h-4" />
                   Write
                 </Link>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <Link
+                    href="/login"
+                    onClick={() => setMobileOpen(false)}
+                    className="inline-flex items-center justify-center h-9 px-3 rounded-full text-sm font-medium text-[var(--fg-secondary)] hover:bg-[var(--surface)]"
+                  >
+                    Sign in
+                  </Link>
+                  <Link
+                    href="/signup"
+                    onClick={() => setMobileOpen(false)}
+                    className="inline-flex items-center justify-center h-9 px-3.5 rounded-full text-sm font-medium bg-[var(--fg)] text-[var(--bg)]"
+                  >
+                    Join Prism
+                  </Link>
+                </div>
               )}
             </div>
           </motion.nav>

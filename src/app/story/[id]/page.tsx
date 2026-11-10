@@ -6,6 +6,7 @@ import { ArrowLeft, FileQuestion, Pencil, PenLine } from "lucide-react"
 import { SiteHeader } from "@/components/layout/SiteHeader"
 import { SiteFooter } from "@/components/layout/SiteFooter"
 import { StoryArticle } from "@/components/studio/StoryArticle"
+import { PeerReviewSection } from "@/components/posts/PeerReviewSection"
 import { useHydrated } from "@/components/studio/useHydrated"
 import { useWriter } from "@/components/studio/studio-ui"
 import { useUIStore } from "@/lib/store"
@@ -86,6 +87,7 @@ export default function LocalStoryPage() {
             )}
 
             <StoryArticle
+              id={draft.id}
               title={draft.title}
               subtitle={draft.subtitle}
               html={draft.contentHtml}
@@ -95,6 +97,8 @@ export default function LocalStoryPage() {
               author={user}
               authorName={displayName}
             />
+
+            <PeerReviewSection postId={draft.id} postTitle={draft.title} />
 
             <div className="mt-16 pt-8 border-t border-[var(--border)] flex flex-wrap items-center justify-between gap-3">
               <p className="meta">

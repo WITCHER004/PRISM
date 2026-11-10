@@ -68,6 +68,7 @@ model User {
   claps             Clap[]
   bookmarks         Bookmark[]
   comments          Comment[]
+  peerReviews       PeerReview[]
   readSessions      ReadSession[]
   followers         Follow[]     @relation("FollowerUser")
   following         Follow[]     @relation("FollowingUser")
@@ -108,6 +109,7 @@ model Post {
   claps           Clap[]
   bookmarks       Bookmark[]
   comments        Comment[]
+  peerReviews     PeerReview[]
   readSessions    ReadSession[]
 
   @@index([authorId, status])
@@ -199,4 +201,39 @@ model Follow {
 
   @@id([followerId, followingId])
 }
+
+enum PeerReviewDecision {
+  ENDORSED
+  ACCEPTED
+  REVISIONS_REQUESTED
+  DISPUTED
+}
+
+model PeerReview {
+  id                 String             @id @default(cuid())
+  postId             String
+  authorId           String
+  affiliation        String?
+  decision           PeerReviewDecision @default(ACCEPTED)
+  methodologyScore   Int                @default(5)
+  clarityScore       Int                @default(5)
+  rigorScore         Int                @default(5)
+  citationsScore     Int                @default(5)
+  overallScore       Float              @default(5.0)
+  summary            String
+  strengths          String[]
+  critique           String
+  competingInterests String?
+  upvotes            Int                @default(0)
+  isVerifiedPeer     Boolean            @default(true)
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  post               Post               @relation(fields: [postId], references: [id], onDelete: Cascade)
+  author             User               @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([postId])
+  @@index([authorId])
+}
+
 

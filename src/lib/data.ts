@@ -60,6 +60,32 @@ export interface Comment {
   replies?: Comment[]
 }
 
+export type PeerReviewDecision = "ENDORSED" | "ACCEPTED" | "REVISIONS_REQUESTED" | "DISPUTED"
+
+export interface PeerReviewCriteriaScores {
+  methodology: number // 1-5
+  clarity: number // 1-5
+  rigor: number // 1-5
+  citations: number // 1-5
+}
+
+export interface PeerReview {
+  id: string
+  postId: string
+  author: User
+  affiliation?: string
+  decision: PeerReviewDecision
+  scores: PeerReviewCriteriaScores
+  overallScore: number // 1.0 - 5.0
+  summary: string
+  strengths: string[]
+  critique: string
+  competingInterests?: string
+  createdAt: string
+  upvotes: number
+  isVerifiedPeer?: boolean
+}
+
 // ─── Mock Users ───────────────────────────────────────────────────────────────
 
 export const MOCK_USERS: User[] = [
@@ -351,4 +377,161 @@ export const MOCK_COMMENTS: Comment[] = [
     replies: []
   },
 ]
+
+// ─── Mock Peer Reviews ────────────────────────────────────────────────────────
+
+export const MOCK_PEER_REVIEWS: Record<string, PeerReview[]> = {
+  p1: [
+    {
+      id: "pr1-p1",
+      postId: "p1",
+      author: MOCK_USERS[3], // Sarah Kim
+      affiliation: "Distributed Systems & Glaciological Computing Group",
+      decision: "ENDORSED",
+      overallScore: 4.8,
+      scores: {
+        methodology: 5,
+        clarity: 5,
+        rigor: 5,
+        citations: 4,
+      },
+      summary:
+        "An exceptionally grounded, production-tested deconstruction of distributed consensus failures. Chen articulates the exact divergence point between whiteboard theory and production reality.",
+      strengths: [
+        "Unambiguous explanation of 2PC coordinator failure blocking states.",
+        "Crucial distinction between business tolerance and technical atomicity.",
+        "Concrete architectural guidance on saga orchestration with persistent state machines.",
+      ],
+      critique:
+        "Could expand on cross-region clock synchronization (such as Spanner's TrueTime or hybrid logical clocks) to frame when bounded staleness is preferable to compensating sagas.",
+      competingInterests: "No competing financial or corporate affiliations.",
+      createdAt: "2024-11-02T10:15:00Z",
+      upvotes: 28,
+      isVerifiedPeer: true,
+    },
+    {
+      id: "pr2-p1",
+      postId: "p1",
+      author: MOCK_USERS[2], // Marcus Williams
+      affiliation: "Infrastructure Policy & Financial Systems Observatory",
+      decision: "ACCEPTED",
+      overallScore: 4.6,
+      scores: {
+        methodology: 4,
+        clarity: 5,
+        rigor: 5,
+        citations: 4,
+      },
+      summary:
+        "Highly valuable practitioner-led inquiry. It demystifies the trade-offs that bank audit committees often misunderstand when evaluating modern ledger architectures.",
+      strengths: [
+        "Empirical framing that bridges engineering reality with compliance expectations.",
+        "Actionable recommendations for dead-letter queues and idempotency keys.",
+      ],
+      critique:
+        "Citing formal verification tooling (e.g. TLA+ or Alloy models for compensating transaction verification) would add rigor for enterprise reviewers.",
+      competingInterests: "None declared.",
+      createdAt: "2024-11-03T16:40:00Z",
+      upvotes: 19,
+      isVerifiedPeer: true,
+    },
+  ],
+  p2: [
+    {
+      id: "pr1-p2",
+      postId: "p2",
+      author: MOCK_USERS[0], // Alex Chen
+      affiliation: "Principal Infrastructure Architect",
+      decision: "ENDORSED",
+      overallScore: 4.9,
+      scores: {
+        methodology: 5,
+        clarity: 5,
+        rigor: 5,
+        citations: 4,
+      },
+      summary:
+        "The three-layer taxonomy (Global -> Semantic Alias -> Component) is the cleanest formulation I've encountered to resolve the recurring 'palette sprawl' anti-pattern in large-scale multi-platform design systems.",
+      strengths: [
+        "Eliminates hardcoded primitive values across component codebases.",
+        "Provides an intuitive framework for automated linting and token migration.",
+        "Clear demarcation of roles between visual designers and software engineers.",
+      ],
+      critique:
+        "Could include an example of dynamic multi-brand theming alongside the light/dark contrast layer.",
+      competingInterests: "None declared.",
+      createdAt: "2024-10-29T14:20:00Z",
+      upvotes: 34,
+      isVerifiedPeer: true,
+    },
+  ],
+}
+
+export interface PeerReviewStats {
+  totalReviews: number
+  averageOverall: number
+  endorsementRate: number
+  criteriaAverages: {
+    methodology: number
+    clarity: number
+    rigor: number
+    citations: number
+  }
+  decisions: {
+    endorsed: number
+    accepted: number
+    revisions: number
+    disputed: number
+  }
+}
+
+export function calculatePeerReviewStats(reviews: PeerReview[]): PeerReviewStats {
+  if (!reviews || reviews.length === 0) {
+    return {
+      totalReviews: 0,
+      averageOverall: 0,
+      endorsementRate: 0,
+      criteriaAverages: { methodology: 0, clarity: 0, rigor: 0, citations: 0 },
+      decisions: { endorsed: 0, accepted: 0, revisions: 0, disputed: 0 },
+    }
+  }
+
+  let totalOverall = 0
+  let totalMethodology = 0
+  let totalClarity = 0
+  let totalRigor = 0
+  let totalCitations = 0
+
+  const decisions = { endorsed: 0, accepted: 0, revisions: 0, disputed: 0 }
+
+  for (const r of reviews) {
+    totalOverall += r.overallScore
+    totalMethodology += r.scores.methodology
+    totalClarity += r.scores.clarity
+    totalRigor += r.scores.rigor
+    totalCitations += r.scores.citations
+
+    if (r.decision === "ENDORSED") decisions.endorsed++
+    else if (r.decision === "ACCEPTED") decisions.accepted++
+    else if (r.decision === "REVISIONS_REQUESTED") decisions.revisions++
+    else if (r.decision === "DISPUTED") decisions.disputed++
+  }
+
+  const n = reviews.length
+  const positive = decisions.endorsed + decisions.accepted
+
+  return {
+    totalReviews: n,
+    averageOverall: Number((totalOverall / n).toFixed(1)),
+    endorsementRate: Math.round((positive / n) * 100),
+    criteriaAverages: {
+      methodology: Number((totalMethodology / n).toFixed(1)),
+      clarity: Number((totalClarity / n).toFixed(1)),
+      rigor: Number((totalRigor / n).toFixed(1)),
+      citations: Number((totalCitations / n).toFixed(1)),
+    },
+    decisions,
+  }
+}
+
 

@@ -2,7 +2,7 @@
 
 import { create } from "zustand"
 import { persist, createJSONStorage } from "zustand/middleware"
-import { MOCK_USERS } from "@/lib/data"
+import { MOCK_USERS, type PeerReview, MOCK_PEER_REVIEWS } from "@/lib/data"
 
 // Prism runs without a database in demo mode, so this store is the "backend":
 // everything a reader or writer does is kept here and saved to localStorage.
@@ -65,10 +65,13 @@ interface UIState {
   fontSize: FontSize
   focusMode: boolean
   ttsEnabled: boolean
+  interestedTopics: string[]
   setTheme: (theme: Theme) => void
   setFontSize: (size: FontSize) => void
   toggleFocusMode: () => void
   toggleTTS: () => void
+  setInterestedTopics: (topics: string[]) => void
+  toggleInterestedTopic: (topic: string) => void
 
   // session (demo auth)
   currentUser: string | null // username of the signed-in user
@@ -93,6 +96,12 @@ interface UIState {
   // comments added in this browser
   comments: LocalComment[]
   addComment: (c: Omit<LocalComment, "id" | "createdAt" | "author">) => LocalComment | null
+
+  // peer reviews of papers and articles
+  peerReviews: Record<string, PeerReview[]>
+  upvotedReviews: Set<string>
+  addPeerReview: (review: Omit<PeerReview, "id" | "createdAt" | "upvotes">) => PeerReview
+  toggleUpvotePeerReview: (reviewId: string) => void
 
   // writing
   drafts: Record<string, Draft>
@@ -146,21 +155,45 @@ export const useUIStore = create<UIState>()(
       fontSize: "md",
       focusMode: false,
       ttsEnabled: true, // "Read aloud" (Listen button on articles) is on unless turned off in Settings
+      interestedTopics: ["philosophy", "design", "programming"],
       setTheme: (theme) => set({ theme }),
       setFontSize: (fontSize) => set({ fontSize }),
       toggleFocusMode: () => set((s) => ({ focusMode: !s.focusMode })),
       toggleTTS: () => set((s) => ({ ttsEnabled: !s.ttsEnabled })),
+      setInterestedTopics: (interestedTopics) => set({ interestedTopics }),
+      toggleInterestedTopic: (topic) =>
+        set((s) => ({
+          interestedTopics: s.interestedTopics.includes(topic)
+            ? s.interestedTopics.filter((t) => t !== topic)
+            : [...s.interestedTopics, topic],
+        })),
 
       currentUser: me.username, // demo: start signed in as the sample writer
       setCurrentUser: (currentUser) => set({ currentUser }),
       signIn: (email, name) => {
-        // Demo auth: a known sample user's email maps to them; anyone else signs in as the sample writer
+        // Demo auth: match existing mock user if matching email/username, or create a new user profile
         const local = email.split("@")[0].toLowerCase().replace(/[^a-z0-9]/g, "")
         const match = MOCK_USERS.find((u) => u.username === local)
-        const username = match ? match.username : me.username
+        const username = match ? match.username : (local || "reader")
+        const displayName = name?.trim() || (match ? match.displayName : (local ? local.charAt(0).toUpperCase() + local.slice(1) : "Reader"))
+        
+        const welcomeNotif: AppNotification = {
+          id: `welcome-${Date.now()}`,
+          kind: "system",
+          text: `Welcome to Prism, ${displayName}! Your sanctuary for quiet reading is ready.`,
+          href: "/explore",
+          createdAt: new Date().toISOString(),
+          read: false,
+        }
+
         set((s) => ({
           currentUser: username,
-          profile: name ? { ...s.profile, displayName: name } : s.profile,
+          profile: {
+            ...s.profile,
+            displayName,
+            bio: s.profile.bio || "Reader & thinker on Prism",
+          },
+          notifications: [welcomeNotif, ...(s.notifications || [])],
         }))
         return username
       },
@@ -208,6 +241,56 @@ export const useUIStore = create<UIState>()(
         set((s) => ({ comments: [...s.comments, comment] }))
         return comment
       },
+
+      peerReviews: MOCK_PEER_REVIEWS,
+      upvotedReviews: new Set<string>(),
+      addPeerReview: (reviewData) => {
+        const id = "pr_" + uid()
+        const newReview: PeerReview = {
+          ...reviewData,
+          id,
+          createdAt: now(),
+          upvotes: 0,
+        }
+        set((s) => {
+          const postList = s.peerReviews[reviewData.postId] || []
+          return {
+            peerReviews: {
+              ...s.peerReviews,
+              [reviewData.postId]: [newReview, ...postList],
+            },
+            notifications: [
+              {
+                id: "notif_" + uid(),
+                kind: "system",
+                text: `New peer review submitted with verdict: ${reviewData.decision}.`,
+                href: `#peer-reviews`,
+                createdAt: now(),
+                read: false,
+              },
+              ...s.notifications,
+            ],
+          }
+        })
+        return newReview
+      },
+      toggleUpvotePeerReview: (reviewId) =>
+        set((s) => {
+          const upvoted = new Set(s.upvotedReviews)
+          const isUpvoted = upvoted.has(reviewId)
+          if (isUpvoted) {
+            upvoted.delete(reviewId)
+          } else {
+            upvoted.add(reviewId)
+          }
+          const nextReviews: Record<string, PeerReview[]> = {}
+          for (const [postId, list] of Object.entries(s.peerReviews)) {
+            nextReviews[postId] = list.map((r) =>
+              r.id === reviewId ? { ...r, upvotes: Math.max(0, r.upvotes + (isUpvoted ? -1 : 1)) } : r
+            )
+          }
+          return { upvotedReviews: upvoted, peerReviews: nextReviews }
+        }),
 
       drafts: {},
       saveDraft: (d) => {

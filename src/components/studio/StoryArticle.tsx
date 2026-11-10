@@ -7,6 +7,7 @@ import { MOCK_TAGS, type User } from "@/lib/data"
 import type { PaywallChoice } from "@/lib/store"
 import { formatDate, numberWithCommas } from "@/lib/utils"
 import { hasBody, wordCount } from "@/components/studio/studio-ui"
+import { PeerReviewBadge } from "@/components/posts/PeerReviewBadge"
 
 export function topicLabel(tag: string) {
   const known = MOCK_TAGS.find((t) => t.slug === tag)
@@ -21,6 +22,7 @@ const PAYWALL_LABEL: Record<PaywallChoice, string | null> = {
 }
 
 interface StoryArticleProps {
+  id?: string
   title: string
   subtitle?: string
   html: string
@@ -32,7 +34,7 @@ interface StoryArticleProps {
 }
 
 // The reader's view of a story written in Prism — same structure and type as the article page.
-export function StoryArticle({ title, subtitle, html, tags, paywall, date, author, authorName }: StoryArticleProps) {
+export function StoryArticle({ id, title, subtitle, html, tags, paywall, date, author, authorName }: StoryArticleProps) {
   const topic = tags[0]
   const known = topic ? MOCK_TAGS.find((t) => t.slug === topic) : undefined
   const minutes = Math.max(1, Math.ceil(wordCount(html) / 238))
@@ -99,6 +101,7 @@ export function StoryArticle({ title, subtitle, html, tags, paywall, date, autho
               <dd>{minutes} min read</dd>
             </div>
           </dl>
+          {id && <PeerReviewBadge postId={id} />}
         </div>
       </header>
 

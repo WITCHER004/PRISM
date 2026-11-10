@@ -5,6 +5,8 @@ import { SiteHeader } from "@/components/layout/SiteHeader"
 import { SiteFooter } from "@/components/layout/SiteFooter"
 import { Avatar } from "@/components/ui/Avatar"
 import { CommentSection } from "@/components/posts/CommentSection"
+import { PeerReviewBadge } from "@/components/posts/PeerReviewBadge"
+import { PeerReviewSection } from "@/components/posts/PeerReviewSection"
 import { PaywallGate } from "@/components/posts/PaywallGate"
 import { PaywalledBody, UnlockedOnly, LockedOnly } from "@/components/posts/PaywallContent"
 import { FollowButton } from "@/components/ui/FollowButton"
@@ -210,6 +212,7 @@ export default async function PostPage({ params }: PostPageProps) {
                     <dd>{post.readingTimeMin} min read</dd>
                   </div>
                 </dl>
+                <PeerReviewBadge postId={post.id} />
                 <UnlockedOnly postId={post.id} paywalled={isPaywalled}>
                   <ListenMode
                     title={post.title}
@@ -315,6 +318,8 @@ export default async function PostPage({ params }: PostPageProps) {
                       </div>
                     </div>
                   </section>
+
+                  <PeerReviewSection postId={post.id} postTitle={post.title} />
 
                   <CommentSection postId={post.id} comments={MOCK_COMMENTS} postTitle={post.title} />
                 </>

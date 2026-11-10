@@ -58,19 +58,19 @@ export const swap = {
 export function AuthShell({ children, aside }: { children: React.ReactNode; aside: React.ReactNode }) {
   return (
     <div className="min-h-screen flex flex-col bg-[var(--bg)]">
-      <div className="flex-1 grid lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)] gap-3 p-3">
+      <div className="flex-1 grid lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)] gap-2.5 sm:gap-3 p-2 sm:p-3">
         {/* Form side */}
-        <div className="flex flex-col px-3 sm:px-6 py-4">
-          <div className="flex items-center justify-between">
+        <div className="flex flex-col px-2.5 sm:px-6 py-3 sm:py-4">
+          <div className="flex items-center justify-between gap-2">
             <Wordmark />
             <Link
               href="/"
-              className="inline-flex items-center h-10 px-4 rounded-full text-sm text-[var(--fg-muted)] hover:text-[var(--fg)] hover:bg-[var(--surface)] transition-colors"
+              className="inline-flex items-center h-9 sm:h-10 px-3 sm:px-4 rounded-full text-xs sm:text-sm text-[var(--fg-muted)] hover:text-[var(--fg)] hover:bg-[var(--surface)] transition-colors touch-manipulation"
             >
               Back to reading
             </Link>
           </div>
-          <div className="flex-1 flex items-center justify-center py-10">
+          <div className="flex-1 flex items-center justify-center py-5 sm:py-8 lg:py-10">
             <div className="w-full max-w-[400px]">{children}</div>
           </div>
           <DemoNote />
@@ -89,7 +89,7 @@ export function AuthShell({ children, aside }: { children: React.ReactNode; asid
 
 function DemoNote() {
   return (
-    <p className="mx-auto flex items-start gap-2 max-w-[400px] text-xs leading-relaxed text-[var(--fg-muted)]">
+    <p className="mx-auto flex items-start gap-2 max-w-[400px] text-[11px] sm:text-xs leading-relaxed text-[var(--fg-muted)] pt-3 pb-1">
       <FlaskConical className="w-3.5 h-3.5 mt-0.5 shrink-0 text-[var(--accent)]" />
       <span>
         <span className="font-medium text-[var(--fg-secondary)]">Demo mode.</span> No emails are sent and no
@@ -128,7 +128,7 @@ export const Field = forwardRef<HTMLInputElement, FieldProps>(function Field(
         aria-invalid={!!error || undefined}
         aria-describedby={error ? msgId : undefined}
         className={cn(
-          "w-full h-11 px-4 rounded-[12px] bg-[var(--panel)] border text-[var(--fg)] placeholder:text-[var(--fg-subtle)] outline-none transition-colors focus:border-[var(--fg)] disabled:opacity-60",
+          "w-full h-11 px-4 rounded-[12px] bg-[var(--panel)] border text-base sm:text-sm text-[var(--fg)] placeholder:text-[var(--fg-subtle)] outline-none transition-colors focus:border-[var(--fg)] disabled:opacity-60",
           error ? "border-[var(--error)]" : "border-[var(--border)] hover:border-[var(--border-strong)]"
         )}
         {...props}
@@ -186,7 +186,7 @@ export function OAuthButtons({
     { id: "github", label: "GitHub", icon: <GitHubIcon /> },
   ]
   return (
-    <div className="grid grid-cols-2 gap-2">
+    <div className="grid grid-cols-2 gap-2 sm:gap-2.5">
       {providers.map((p) => (
         <button
           key={p.id}
@@ -194,7 +194,7 @@ export function OAuthButtons({
           onClick={() => onSelect(p.id)}
           disabled={disabled}
           aria-label={`${verb} with ${p.label}`}
-          className="h-11 inline-flex items-center justify-center gap-2 rounded-full bg-[var(--panel)] border border-[var(--border-strong)] text-sm font-medium text-[var(--fg)] hover:border-[var(--fg)] active:scale-[0.98] transition-[border-color,transform] disabled:opacity-50 disabled:pointer-events-none"
+          className="h-11 inline-flex items-center justify-center gap-2 rounded-full bg-[var(--panel)] border border-[var(--border-strong)] text-xs sm:text-sm font-medium text-[var(--fg)] hover:border-[var(--fg)] active:scale-[0.98] transition-[border-color,transform] disabled:opacity-50 disabled:pointer-events-none touch-manipulation"
         >
           {pending === p.id ? <Loader2 className="w-4 h-4 animate-spin" /> : p.icon}
           {p.label}
