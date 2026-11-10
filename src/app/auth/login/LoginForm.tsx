@@ -4,12 +4,12 @@ import { useRef, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { AnimatePresence, motion } from "motion/react"
-import { ArrowRight, Check, Sparkles, BookOpen, RotateCcw } from "lucide-react"
+import { ArrowRight, Check, Sparkles, BookOpen, RotateCcw, Eye, EyeOff } from "lucide-react"
 import { useUIStore } from "@/lib/store"
 import { MOCK_USERS, MOCK_TAGS } from "@/lib/data"
 import { dur, ease, spring } from "@/lib/motion"
 import { cn } from "@/lib/utils"
-import { signInWithGoogle, signInWithGithub, logOutFirebase } from "@/lib/firebase"
+import { signInWithGoogle, signInWithGithub, logInWithEmail, resetPassword, logOutFirebase } from "@/lib/firebase"
 import {
   AuthShell,
   Divider,
@@ -39,12 +39,16 @@ export function LoginForm({ redirectTo }: { redirectTo?: string }) {
   const { hydrated, settled } = useSettled()
 
   const [email, setEmail] = useState("")
+  const [password, setPassword] = useState("")
+  const [showPassword, setShowPassword] = useState(false)
+  const [resetSent, setResetSent] = useState(false)
   const [error, setError] = useState<string>()
   const [status, setStatus] = useState<Status>("idle")
   const [provider, setProvider] = useState<Provider | null>(null)
   const [welcomeName, setWelcomeName] = useState("")
   const [selectedTopics, setSelectedTopics] = useState<string[]>(interestedTopics || ["philosophy", "design"])
   const emailRef = useRef<HTMLInputElement>(null)
+  const passwordRef = useRef<HTMLInputElement>(null)
 
   const busy = status === "sending"
 
@@ -63,24 +67,86 @@ export function LoginForm({ redirectTo }: { redirectTo?: string }) {
     setStatus("categories")
   }
 
-  const onSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (busy) return
+  const handleResetPassword = async () => {
     const value = email.trim()
     if (!value) {
-      setError("Enter your email address.")
+      setError("Please enter your email above to receive password reset instructions.")
       emailRef.current?.focus()
       return
     }
     if (!EMAIL_RE.test(value)) {
-      setError("That doesn't look like an email address.")
+      setError("That doesn't look like a valid email address.")
       emailRef.current?.focus()
       return
     }
     setError(undefined)
+    try {
+      await resetPassword(value)
+      setResetSent(true)
+      toast("Password reset instructions sent to your email!", { tone: "success" })
+    } catch (err: any) {
+      console.warn("Password reset error:", err)
+      setError(err?.message || "Failed to send reset email.")
+    }
+  }
+
+  const onSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (busy) return
+    const emailVal = email.trim()
+    if (!emailVal) {
+      setError("Enter your email address.")
+      emailRef.current?.focus()
+      return
+    }
+    if (!EMAIL_RE.test(emailVal)) {
+      setError("That doesn't look like an email address.")
+      emailRef.current?.focus()
+      return
+    }
+
+    setError(undefined)
     setStatus("sending")
-    await wait(700)
-    await handleAuthSuccess(value)
+
+    // If password provided, perform real Firebase Authentication
+    if (password) {
+      try {
+        const res = await logInWithEmail(emailVal, password)
+        if (res?.user) {
+          const u = res.user
+          const address = u.email || emailVal
+          const name = u.displayName || address.split("@")[0]
+          signIn(address, name)
+          setWelcomeName(name)
+          setStatus("categories")
+          return
+        }
+      } catch (err: any) {
+        console.warn("Firebase email sign-in error:", err)
+        setStatus("idle")
+        if (
+          err?.code === "auth/invalid-credential" ||
+          err?.code === "auth/wrong-password" ||
+          err?.code === "auth/user-not-found"
+        ) {
+          setError("Incorrect email or password. Please verify your credentials or create an account.")
+          passwordRef.current?.focus()
+          return
+        }
+        if (err?.code === "auth/too-many-requests") {
+          setError("Too many failed login attempts. Please reset your password or try again later.")
+          return
+        }
+        if (err?.message) {
+          setError(err.message)
+          return
+        }
+      }
+    }
+
+    // Direct passwordless sign-in or demo sign-in
+    await wait(600)
+    await handleAuthSuccess(emailVal)
   }
 
   const onProvider = async (p: Provider) => {
@@ -303,8 +369,59 @@ export function LoginForm({ redirectTo }: { redirectTo?: string }) {
               if (error) setError(undefined)
             }}
           />
+
+          <div>
+            <div className="flex items-baseline justify-between gap-2 mb-1.5">
+              <label htmlFor="login-pass" className="text-sm font-medium text-[var(--fg)]">
+                Password
+              </label>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={handleResetPassword}
+                  className="text-xs text-[var(--fg-muted)] hover:text-[var(--fg)] transition-colors underline-offset-2 hover:underline touch-manipulation"
+                >
+                  Forgot password?
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((p) => !p)}
+                  className="text-xs text-[var(--fg-muted)] hover:text-[var(--fg)] inline-flex items-center gap-1 transition-colors py-0.5 touch-manipulation"
+                >
+                  {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                  {showPassword ? "Hide" : "Show"}
+                </button>
+              </div>
+            </div>
+            <input
+              ref={passwordRef}
+              id="login-pass"
+              type={showPassword ? "text" : "password"}
+              name="password"
+              autoComplete="current-password"
+              placeholder="Enter your password"
+              value={password}
+              disabled={busy}
+              onChange={(e) => {
+                setPassword(e.target.value)
+                if (error) setError(undefined)
+              }}
+              className={cn(
+                "w-full h-11 px-4 rounded-[12px] bg-[var(--panel)] border text-base sm:text-sm text-[var(--fg)] placeholder:text-[var(--fg-subtle)] outline-none transition-colors focus:border-[var(--fg)] disabled:opacity-60",
+                error
+                  ? "border-[var(--error)]"
+                  : "border-[var(--border)] hover:border-[var(--border-strong)]"
+              )}
+            />
+            {resetSent && (
+              <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-1.5">
+                ✓ Password reset email sent. Please check your spam or inbox folder.
+              </p>
+            )}
+          </div>
+
           <SubmitButton pending={status === "sending" && !provider} pendingLabel="Signing in…">
-            Continue with email <ArrowRight className="w-4 h-4" />
+            Sign in with email <ArrowRight className="w-4 h-4" />
           </SubmitButton>
         </form>
 

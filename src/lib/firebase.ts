@@ -6,6 +6,7 @@ import {
   signInWithPopup,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
+  sendPasswordResetEmail,
   signOut as firebaseSignOut,
   onAuthStateChanged,
   updateProfile,
@@ -68,6 +69,10 @@ export async function logInWithEmail(email: string, pass: string) {
 
 export async function registerWithEmail(email: string, pass: string) {
   return createUserWithEmailAndPassword(auth, email, pass)
+}
+
+export async function resetPassword(email: string) {
+  return sendPasswordResetEmail(auth, email)
 }
 
 export async function logOutFirebase() {

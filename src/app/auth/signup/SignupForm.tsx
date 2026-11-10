@@ -133,7 +133,9 @@ export function SignupForm({
     if (!e) next.email = "Enter your email address."
     else if (!EMAIL_RE.test(e)) next.email = "That doesn't look like an email address."
 
-    if (password && password.length < 6) {
+    if (!password) {
+      next.password = "Create a password for your account."
+    } else if (password.length < 6) {
       next.password = "Password must be at least 6 characters."
     }
 
@@ -526,7 +528,7 @@ export function SignupForm({
           <div>
             <div className="flex items-baseline justify-between gap-2 mb-1.5">
               <label htmlFor="signup-pass" className="text-sm font-medium text-[var(--fg)]">
-                Password <span className="text-xs font-normal text-[var(--fg-subtle)]">(optional)</span>
+                Password <span className="text-xs font-normal text-[var(--fg-subtle)]">(min 6 characters)</span>
               </label>
               <button
                 type="button"
@@ -543,7 +545,7 @@ export function SignupForm({
               type={showPassword ? "text" : "password"}
               name="password"
               autoComplete="new-password"
-              placeholder="Create a password, or leave blank for magic link"
+              placeholder="Create a password (min 6 characters)"
               value={password}
               disabled={busy}
               onChange={(e) => {
