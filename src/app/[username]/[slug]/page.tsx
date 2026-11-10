@@ -25,6 +25,8 @@ import Link from "next/link"
 import { formatDate, generateSlug, numberWithCommas } from "@/lib/utils"
 import { BadgeCheck, Lock, ArrowLeft } from "lucide-react"
 import type { Metadata } from "next"
+import { JsonLd } from "@/components/seo/JsonLd"
+import { absoluteUrl, SITE_URL, socialImageUrl, truncateDescription } from "@/lib/seo"
 
 interface PostPageProps {
   params: Promise<{ username: string; slug: string }>
@@ -83,21 +85,30 @@ function toSpeechChunks(title: string, html: string): string[] {
 export async function generateMetadata({ params }: PostPageProps): Promise<Metadata> {
   const { username, slug } = await params
   const post = await getPostBySlug(username, slug)
-  if (!post) return { title: "Not Found" }
+  if (!post || post.status !== "PUBLISHED") {
+    return { title: "Not Found", robots: { index: false, follow: false } }
+  }
+  const description = truncateDescription(post.excerpt)
+  const image = post.coverImageUrl ?? socialImageUrl(post.title, description)
+  const canonical = `/${post.author.username}/${post.slug}`
   return {
     title: post.title,
-    description: post.excerpt,
+    description,
+    alternates: { canonical },
     openGraph: {
       title: post.title,
-      description: post.excerpt,
-      images: post.coverImageUrl ? [{ url: post.coverImageUrl }] : [],
+      description,
+      url: canonical,
+      images: [{ url: image, alt: post.title }],
       type: "article",
       authors: [post.author.displayName],
+      publishedTime: post.publishedAt,
     },
     twitter: {
       card: "summary_large_image",
       title: post.title,
-      description: post.excerpt,
+      description,
+      images: [{ url: image, alt: post.title }],
     },
   }
 }
@@ -105,7 +116,7 @@ export async function generateMetadata({ params }: PostPageProps): Promise<Metad
 export default async function PostPage({ params }: PostPageProps) {
   const { username, slug } = await params
   const post = await getPostBySlug(username, slug)
-  if (!post) notFound()
+  if (!post || post.status !== "PUBLISHED") notFound()
 
   // Locked stories show a clipped preview; PaywalledBody releases it once the reader unlocks
   // (demo only: the full HTML is still sent — real gating must withhold it on the server)
@@ -132,6 +143,29 @@ export default async function PostPage({ params }: PostPageProps) {
 
   return (
     <div className="relative min-h-screen flex flex-col bg-[var(--bg)]" style={hueStyle(topic?.slug)}>
+      <JsonLd
+        data={{
+          "@context": "https://schema.org",
+          "@type": "BlogPosting",
+          headline: post.title,
+          description: truncateDescription(post.excerpt),
+          datePublished: post.publishedAt,
+          inLanguage: "en",
+          isAccessibleForFree: post.paywallTier === "FREE",
+          mainEntityOfPage: absoluteUrl(`/${post.author.username}/${post.slug}`),
+          image: post.coverImageUrl ?? socialImageUrl(post.title, truncateDescription(post.excerpt)),
+          author: {
+            "@type": "Person",
+            name: post.author.displayName,
+            url: absoluteUrl(`/${post.author.username}`),
+          },
+          publisher: {
+            "@type": "Organization",
+            name: "Prism",
+            url: SITE_URL.toString(),
+          },
+        }}
+      />
       <ReadingProgress />
       <ReadTimeTracker postId={post.id} />
 

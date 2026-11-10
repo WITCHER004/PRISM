@@ -4,7 +4,8 @@ import { LegalPage, type LegalSection } from "@/components/legal/LegalPage"
 
 export const metadata: Metadata = {
   title: "Privacy Policy",
-  description: "What Prism collects, why, and the choices you have (demo placeholder).",
+  description: "Prism's demo privacy page: account details, drafts, and preferences stay in your browser.",
+  alternates: { canonical: "/privacy" },
 }
 
 const sections: LegalSection[] = [

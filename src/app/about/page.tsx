@@ -6,10 +6,23 @@ import { SiteFooter } from "@/components/layout/SiteFooter"
 import { Reveal } from "@/components/motion/Reveal"
 import { RevealText } from "@/components/motion/RevealText"
 import { hueStyle } from "@/lib/topics"
+import { socialImageUrl } from "@/lib/seo"
 
 export const metadata: Metadata = {
   title: "About",
   description: "Why Prism exists, how writers get paid, and what we will and won't do.",
+  alternates: { canonical: "/about" },
+  openGraph: {
+    title: "About Prism",
+    description: "Why Prism exists, how writers get paid, and what we will and won't do.",
+    images: [socialImageUrl("About Prism", "Why Prism exists, how writers get paid, and what we will and won't do.")],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "About Prism",
+    description: "Why Prism exists, how writers get paid, and what we will and won't do.",
+    images: [socialImageUrl("About Prism", "Why Prism exists, how writers get paid, and what we will and won't do.")],
+  },
 }
 
 const STEPS = [

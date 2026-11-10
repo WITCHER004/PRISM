@@ -14,6 +14,7 @@ import { getFeedPosts } from "@/actions/posts"
 import { MOCK_TAGS, type Tag, type User } from "@/lib/data"
 import { hueStyle } from "@/lib/topics"
 import { numberWithCommas } from "@/lib/utils"
+import { socialImageUrl } from "@/lib/seo"
 
 interface TagPageProps {
   params: Promise<{ tag: string }>
@@ -23,9 +24,23 @@ export async function generateMetadata({ params }: TagPageProps): Promise<Metada
   const { tag: tagSlug } = await params
   const tag = MOCK_TAGS.find((t) => t.slug === tagSlug)
   if (!tag) return { title: "Topic not found — Prism" }
+  const title = `${tag.name} stories`
+  const description = `Discover the best ${tag.name} stories on Prism.`
   return {
-    title: `${tag.name} — Prism`,
-    description: `Discover the best ${tag.name} stories on Prism.`,
+    title: tag.name,
+    description,
+    alternates: { canonical: `/explore/${tag.slug}` },
+    openGraph: {
+      title,
+      description,
+      images: [socialImageUrl(title, description)],
+    },
+    twitter: {
+      card: "summary_large_image",
+      title,
+      description,
+      images: [socialImageUrl(title, description)],
+    },
   }
 }
 

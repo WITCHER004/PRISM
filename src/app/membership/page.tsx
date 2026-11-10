@@ -4,7 +4,8 @@ import { MembershipClient } from "./MembershipClient"
 
 export const metadata: Metadata = {
   title: "Membership",
-  description: "Fund the writers you actually read. Free, Reader and Patron plans.",
+  description: "Explore Prism's demo membership plans. Checkout is simulated and no payment is taken.",
+  alternates: { canonical: "/membership" },
 }
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>

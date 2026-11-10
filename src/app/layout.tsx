@@ -2,6 +2,7 @@ import type { Metadata } from "next"
 import { Bricolage_Grotesque, Source_Serif_4, Geist, Geist_Mono } from "next/font/google"
 import "./globals.css"
 import { ThemeProvider } from "@/components/providers/ThemeProvider"
+import { SITE_URL, socialImageUrl } from "@/lib/seo"
 
 const bricolage = Bricolage_Grotesque({
   subsets: ["latin"],
@@ -15,6 +16,7 @@ const sourceSerif = Source_Serif_4({
   axes: ["opsz"],
   variable: "--font-source-serif",
   display: "swap",
+  preload: false,
 })
 
 const geist = Geist({
@@ -27,25 +29,40 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
   variable: "--font-geist-mono",
   display: "swap",
+  preload: false,
 })
 
 export const metadata: Metadata = {
+  metadataBase: SITE_URL,
   title: {
     template: "%s | Prism",
-    default: "Prism — Ideas, refracted",
+    default: "Ideas, refracted",
   },
   description:
     "A modern publishing platform for independent thinkers. Read, write, and earn without compromise.",
-  metadataBase: new URL("https://prism.pub"),
   openGraph: {
     type: "website",
     siteName: "Prism",
     title: "Prism — Ideas, refracted",
     description: "A modern publishing platform for independent thinkers.",
+    images: [
+      {
+        url: socialImageUrl("Prism — Ideas, refracted", "Independent writing, read by humans."),
+        width: 1200,
+        height: 630,
+        alt: "Prism — independent writing, read by humans",
+      },
+    ],
   },
   twitter: {
     card: "summary_large_image",
     site: "@prism_pub",
+    images: [
+      {
+        url: socialImageUrl("Prism — Ideas, refracted", "Independent writing, read by humans."),
+        alt: "Prism — independent writing, read by humans",
+      },
+    ],
   },
 }
 

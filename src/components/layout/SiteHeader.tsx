@@ -65,10 +65,8 @@ export function SiteHeader() {
   // Step out of the way while reading down the page; come back on any upward scroll
   const { scrollY } = useScroll()
   const [hidden, setHidden] = useState(false)
-  const [scrolled, setScrolled] = useState(false)
   useMotionValueEvent(scrollY, "change", (y) => {
     const prev = scrollY.getPrevious() ?? 0
-    setScrolled(y > 24)
     setHidden(y > prev && y > 160 && !mobileOpen && !userMenuOpen)
   })
 
@@ -90,15 +88,12 @@ export function SiteHeader() {
 
   return (
     <motion.header
-      className="site-header sticky top-0 z-50 px-3 sm:px-5 pt-3"
+      className="site-header sticky top-0 z-50 px-3 sm:px-5 pt-3 bg-[var(--bg)]/95 backdrop-blur-xl"
       animate={{ y: hidden ? "-110%" : "0%" }}
       transition={{ duration: hidden ? dur.fast * 1.5 : dur.base, ease: hidden ? ease.in : ease.out }}
     >
       <div
-        className={cn(
-          "max-w-7xl mx-auto rounded-full border border-[var(--border)] backdrop-blur-xl transition-[background-color,box-shadow] duration-300",
-          scrolled ? "bg-[var(--panel)]/90 shadow-[var(--shadow-lift)]" : "bg-[var(--panel)]/80 shadow-[var(--shadow)]"
-        )}
+        className="max-w-7xl mx-auto"
       >
         <div className="flex items-center gap-3 h-14 pl-4 pr-2 sm:pl-5">
           <Wordmark />
@@ -119,7 +114,7 @@ export function SiteHeader() {
           {/* Search trigger */}
           <Link
             href="/search"
-            className="hidden sm:flex flex-1 max-w-sm mx-auto items-center gap-2 h-10 pl-3.5 pr-2 rounded-full bg-[var(--bg)] border border-[var(--border)] text-sm text-[var(--fg-subtle)] hover:border-[var(--border-strong)] transition-colors"
+            className="hidden sm:flex flex-1 max-w-sm mx-auto items-center gap-2 h-10 pl-3.5 pr-2 text-sm text-[var(--fg-subtle)] transition-colors hover:text-[var(--fg-muted)]"
           >
             <Search className="w-4 h-4" />
             <span className="flex-1">Search ideas, people, topics</span>
