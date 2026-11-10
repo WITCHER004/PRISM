@@ -9,6 +9,7 @@ import { useUIStore } from "@/lib/store"
 import { MOCK_USERS, MOCK_TAGS } from "@/lib/data"
 import { dur, ease, spring } from "@/lib/motion"
 import { cn } from "@/lib/utils"
+import { signInWithGoogle, signInWithGithub, logOutFirebase } from "@/lib/firebase"
 import {
   AuthShell,
   Divider,
@@ -86,8 +87,40 @@ export function LoginForm({ redirectTo }: { redirectTo?: string }) {
     if (busy) return
     setProvider(p)
     setStatus("sending")
-    await wait(700)
-    await handleAuthSuccess(`${MOCK_USERS[0].username}@${p}.demo`)
+    setError(undefined)
+
+    try {
+      let result: any = null
+      if (p === "google") {
+        result = await signInWithGoogle()
+      } else if (p === "github") {
+        result = await signInWithGithub()
+      }
+
+      if (result?.user) {
+        const u = result.user
+        const address = u.email || `${u.uid}@${p}.firebase`
+        const name = u.displayName || address.split("@")[0]
+        signIn(address, name)
+        setWelcomeName(name)
+        setStatus("categories")
+        return
+      }
+    } catch (err: any) {
+      console.warn("Firebase OAuth sign-in:", err)
+      if (err?.code === "auth/popup-closed-by-user") {
+        setStatus("idle")
+        setProvider(null)
+        return
+      }
+      if (err?.code === "auth/unauthorized-domain") {
+        setError("Firebase note: Ensure localhost is added to authorized domains in Firebase Console. Falling back to local demo.")
+      }
+      // Demo fallback
+      await wait(600)
+      await handleAuthSuccess(`${MOCK_USERS[0].username}@${p}.demo`)
+      return
+    }
   }
 
   // Complete category selection
@@ -234,6 +267,7 @@ export function LoginForm({ redirectTo }: { redirectTo?: string }) {
               type="button"
               onClick={() => {
                 signOut()
+                logOutFirebase().catch(() => {})
                 toast("Signed out")
               }}
               className="shrink-0 inline-flex items-center gap-1 font-medium text-[var(--fg-secondary)] hover:text-[var(--fg)] transition-colors py-1 px-2 rounded-lg hover:bg-[var(--panel)] touch-manipulation"

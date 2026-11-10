@@ -23,6 +23,13 @@ import { dur, ease, spring } from "@/lib/motion"
 import { cn } from "@/lib/utils"
 import { Avatar } from "@/components/ui/Avatar"
 import {
+  signInWithGoogle,
+  signInWithGithub,
+  registerWithEmail,
+  auth,
+  updateProfile as firebaseUpdateProfile,
+} from "@/lib/firebase"
+import {
   AuthShell,
   Divider,
   EMAIL_RE,
@@ -156,7 +163,7 @@ export function SignupForm({
     setStep("profile")
   }
 
-  const onSubmitCredentials = (e: React.FormEvent) => {
+  const onSubmitCredentials = async (e: React.FormEvent) => {
     e.preventDefault()
     if (busy) return
     const next = validateCredentials()
@@ -165,6 +172,26 @@ export function SignupForm({
     if (next.email) return emailRef.current?.focus()
     if (next.password) return passwordRef.current?.focus()
 
+    setStatus("creating")
+    try {
+      if (password && password.length >= 6) {
+        try {
+          await registerWithEmail(email, password)
+        } catch (authErr: any) {
+          console.warn("Firebase email sign-up warning:", authErr)
+          if (authErr?.code === "auth/email-already-in-use") {
+            setErrors({ email: "This email is already in use. Please sign in instead." })
+            setStatus("idle")
+            emailRef.current?.focus()
+            return
+          }
+          // Non-blocking fallback for other error codes during demo
+        }
+      }
+    } finally {
+      setStatus("idle")
+    }
+
     handleProceedToProfile(name, email)
   }
 
@@ -172,13 +199,41 @@ export function SignupForm({
     if (busy) return
     setProvider(p)
     setStatus("creating")
-    await wait(700)
-    setStatus("idle")
-    const defaultName = p === "google" ? "Google User" : "GitHub Dev"
-    const defaultEmail = `${p}.user@example.com`
-    setName(defaultName)
-    setEmail(defaultEmail)
-    handleProceedToProfile(defaultName, defaultEmail)
+    setErrors({})
+    try {
+      let result: any = null
+      if (p === "google") {
+        result = await signInWithGoogle()
+      } else if (p === "github") {
+        result = await signInWithGithub()
+      }
+
+      if (result?.user) {
+        const u = result.user
+        const providerName = u.displayName || (p === "google" ? "Google User" : "GitHub Dev")
+        const providerEmail = u.email || `${u.uid}@${p}.prism`
+        setName(providerName)
+        setEmail(providerEmail)
+        setStatus("idle")
+        handleProceedToProfile(providerName, providerEmail)
+        return
+      }
+    } catch (err: any) {
+      console.warn("Firebase OAuth sign-up warning:", err)
+      if (err?.code === "auth/popup-closed-by-user") {
+        setStatus("idle")
+        setProvider(null)
+        return
+      }
+      // Demo fallback
+      const defaultName = p === "google" ? "Google User" : "GitHub Dev"
+      const defaultEmail = `${p}.user@example.com`
+      setName(defaultName)
+      setEmail(defaultEmail)
+      setStatus("idle")
+      handleProceedToProfile(defaultName, defaultEmail)
+      return
+    }
   }
 
   // Complete Step 2 and Finish Registration
@@ -209,6 +264,9 @@ export function SignupForm({
     })
 
     setFinalIdentity({ name: finalDisplayName, handle: finalHandle })
+    if (auth.currentUser && finalDisplayName) {
+      firebaseUpdateProfile(auth.currentUser, { displayName: finalDisplayName }).catch(() => {})
+    }
     setStatus("done")
     toast(`Welcome to Prism, @${finalHandle}!`, { tone: "success" })
     await wait(1200)

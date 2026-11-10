@@ -27,6 +27,7 @@ import {
   UserPlus,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { logOutFirebase } from "@/lib/firebase"
 
 const THEMES = [
   { value: "light", icon: Sun, label: "Light" },
@@ -240,6 +241,7 @@ export function SiteHeader() {
                             onClick={() => {
                               setUserMenuOpen(false)
                               signOut()
+                              logOutFirebase().catch(() => {})
                               toast("Signed out")
                               router.push("/")
                             }}
