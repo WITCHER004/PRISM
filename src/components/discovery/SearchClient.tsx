@@ -6,7 +6,7 @@ import Image from "next/image"
 import { useRouter, useSearchParams } from "next/navigation"
 import { AnimatePresence, motion } from "motion/react"
 import { ArrowRight, BadgeCheck, CornerDownLeft, History, Search, SearchX, X } from "lucide-react"
-import { MOCK_POSTS, MOCK_TAGS, MOCK_USERS, type Post, type Tag, type User } from "@/lib/data"
+import { MOCK_POSTS, MOCK_TAGS, SAMPLE_WRITERS, type Post, type Tag, type User } from "@/lib/data"
 import { Avatar } from "@/components/ui/Avatar"
 import { FollowButton } from "@/components/ui/FollowButton"
 import { PillTabs } from "./PillTabs"
@@ -41,7 +41,7 @@ function searchStories(terms: string[]): Post[] {
 }
 
 function searchPeople(terms: string[]): User[] {
-  return MOCK_USERS.filter((u) => hasAll(`${u.displayName} ${u.username} ${u.bio}`.toLowerCase(), terms)).sort(
+  return SAMPLE_WRITERS.filter((u) => hasAll(`${u.displayName} ${u.username} ${u.bio}`.toLowerCase(), terms)).sort(
     (a, b) => hits(`${b.displayName} ${b.username}`, terms) - hits(`${a.displayName} ${a.username}`, terms) || b.followerCount - a.followerCount
   )
 }

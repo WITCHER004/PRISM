@@ -11,14 +11,72 @@ enum UserRole {
   READER
   WRITER
   PUBLICATION_EDITOR
+  EMPLOYEE // staff member; may work the Phase 2 review queue
+  REVIEWER // dedicated content reviewer; may work the Phase 2 review queue
+  PEER_REVIEWER // member of the 10-person Elite peer panel
   ADMIN
 }
 
+enum Tier {
+  FREE
+  ELITE
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum ReviewTrack {
+  EMPLOYEE
+  PEER_PANEL
+}
+
+enum PanelDecision {
+  PASS
+  FAIL
+}
+
+enum ReconsiderationStatus {
+  NONE
+  PENDING
+  ACCEPTED
+  UPHELD
+}
+
+enum PayoutStatus {
+  PENDING
+  PAID
+  FAILED
+}
+
+enum BadgeType {
+  ELITE_AUTHOR
+  PEER_REVIEWED_SCHOLAR
+  TOP_MONETIZED_WRITER
+  HUMAN_VERIFIED_95
+}
+
+// Two-phase publishing state machine (see src/lib/moderation/workflow.ts):
+// DRAFT -> (150-word + Phase 1 AI check) -> PHASE_1_FAILED | PENDING_EMPLOYEE_REVIEW | PENDING_PEER_PANEL (Elite)
+// PENDING_EMPLOYEE_REVIEW -> (Phase 2 employee review) -> PUBLISHED | REJECTED
+// PENDING_PEER_PANEL -> (10 votes) -> PUBLISHED | REJECTED
+// REJECTED -> (writer counter-reason) -> COUNTER_SUBMITTED -> PUBLISHED | REJECTED
 enum PostStatus {
   DRAFT
-  SCHEDULED
+  PHASE_1_FAILED
+  PENDING_EMPLOYEE_REVIEW
+  PENDING_PEER_PANEL
+  COUNTER_SUBMITTED
   PUBLISHED
+  REJECTED
+  SCHEDULED
   ARCHIVED
+}
+
+enum ReviewDecision {
+  APPROVED
+  REJECTED
 }
 
 enum PaywallTier {
@@ -48,6 +106,8 @@ model User {
   websiteUrl        String?
   twitterHandle     String?
   githubHandle      String?
+  linkedinHandle    String?
+  instagramHandle   String?
   role              UserRole    @default(READER)
   trustLevel        TrustLevel  @default(UNVERIFIED)
   isVerifiedHuman   Boolean     @default(false)
@@ -61,6 +121,14 @@ model User {
   stripeConnectAccountId  String?  @unique
   stripeConnectOnboarded  Boolean  @default(false)
 
+  // Elite subscription (guards: src/lib/elite/subscription.ts isEliteActive)
+  tier                  Tier               @default(FREE)
+  subscriptionStatus    SubscriptionStatus @default(INACTIVE)
+  subscribedAt          DateTime?
+  expiresAt             DateTime?
+  subscriptionProvider  String?            // "mock" | "stripe" | "razorpay"
+  subscriptionRef       String?            // provider checkout/payment id (webhook idempotency)
+
   createdAt         DateTime    @default(now())
   updatedAt         DateTime    @updatedAt
 
@@ -69,6 +137,13 @@ model User {
   bookmarks         Bookmark[]
   comments          Comment[]
   readSessions      ReadSession[]
+  articleReviews    ArticleReview[]
+  reviewedPosts     Post[]       @relation("PostReviewer")
+  panelReviews      PeerPanelReview[] @relation("PanelMember")
+  wallet            WriterWallet?
+  payouts           Payout[]
+  badges            UserBadge[]
+  articleViews      ArticleView[]
   followers         Follow[]     @relation("FollowerUser")
   following         Follow[]     @relation("FollowingUser")
 
@@ -103,7 +178,42 @@ model Post {
   createdAt       DateTime     @default(now())
   updatedAt       DateTime     @updatedAt
 
+  // Phase 1: automated AI-content check (latest run)
+  aiScore         Float?       // 0-100, share of the text judged machine-written
+  humanScore      Float?       // 0-100, = 100 - aiScore
+  phase1Report    Json?        // full Phase1Report (signals, flagged passages, provider)
+  submittedAt     DateTime?
+
+  // Phase 2: employee review (latest decision)
+  reviewDecision  ReviewDecision?
+  reviewerNotes   String?
+  reviewedById    String?
+  reviewedAt      DateTime?
+
+  // Which Phase 2 the latest submission went through
+  reviewTrack     ReviewTrack  @default(EMPLOYEE)
+
+  // Writer counter-reason on an employee rejection
+  counterReason         String?
+  counterClarification  String?
+  counterSubmittedAt    DateTime?
+  reconsiderationStatus ReconsiderationStatus @default(NONE)
+  reconsiderationNote   String?
+  reconsideredAt        DateTime?
+
+  // Monetization (denormalized from ArticleView)
+  monetizedViewCount Int      @default(0)
+  earnings           Decimal  @default(0) @db.Decimal(12, 4)
+
+  // Reader ratings (denormalized from ArticleReview)
+  ratingAverage   Float        @default(0)
+  ratingCount     Int          @default(0)
+
   author          User         @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  reviewedBy      User?        @relation("PostReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  articleReviews  ArticleReview[]
+  panelReviews    PeerPanelReview[]
+  views           ArticleView[]
   tags            PostTag[]
   claps           Clap[]
   bookmarks       Bookmark[]
@@ -111,6 +221,7 @@ model Post {
   readSessions    ReadSession[]
 
   @@index([authorId, status])
+  @@index([status, submittedAt])
   @@index([slug])
 }
 
@@ -200,3 +311,106 @@ model Follow {
   @@id([followerId, followingId])
 }
 
+
+// Reader star rating + written review. One per reader per article.
+model ArticleReview {
+  id        String   @id @default(cuid())
+  userId    String
+  postId    String
+  rating    Int      // 1-5, validated in src/actions/reviews.ts
+  body      String   @default("")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, postId])
+  @@index([postId])
+}
+
+
+// One vote of the 10-member peer panel, plus the writer's counter-reason and its reconsideration.
+model PeerPanelReview {
+  id                    String                @id @default(cuid())
+  postId                String
+  reviewerId            String
+  round                 Int                   @default(1) // bumps when the writer resubmits
+  decision              PanelDecision?        // null until cast
+  failureReason         String?               // required when decision = FAIL
+  decidedAt             DateTime?
+  originalDecision      PanelDecision?        // set when a FAIL is flipped on reconsideration
+  counterReason         String?
+  counterClarification  String?
+  counterSubmittedAt    DateTime?
+  reconsiderationStatus ReconsiderationStatus @default(NONE)
+  reconsiderationNote   String?
+  reconsideredById      String?
+  reconsideredAt        DateTime?
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
+
+  post     Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+  reviewer User @relation("PanelMember", fields: [reviewerId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, reviewerId, round])
+  @@index([reviewerId, decision])
+  @@index([postId, round])
+}
+
+// A valid (deduplicated) read. One per article per reader/fingerprint per 24 hours.
+model ArticleView {
+  id          String   @id @default(cuid())
+  postId      String
+  viewerId    String?
+  fingerprint String   // user id, or a hash of IP + user agent for signed-out readers
+  monetized   Boolean  @default(false)
+  amount      Decimal  @default(0) @db.Decimal(12, 4)
+  createdAt   DateTime @default(now())
+
+  post   Post  @relation(fields: [postId], references: [id], onDelete: Cascade)
+  viewer User? @relation(fields: [viewerId], references: [id], onDelete: SetNull)
+
+  @@index([postId, fingerprint, createdAt])
+  @@index([createdAt])
+}
+
+// Elite writer balance; credited as monetized views arrive.
+model WriterWallet {
+  userId           String   @id
+  totalViews       Int      @default(0)
+  monetizedViews   Int      @default(0)
+  totalEarnings    Decimal  @default(0) @db.Decimal(12, 4)
+  availableBalance Decimal  @default(0) @db.Decimal(12, 4)
+  pendingPayout    Decimal  @default(0) @db.Decimal(12, 4)
+  updatedAt        DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Payout {
+  id          String       @id @default(cuid())
+  userId      String
+  amount      Decimal      @db.Decimal(12, 2)
+  status      PayoutStatus @default(PENDING)
+  provider    String?
+  providerRef String?
+  requestedAt DateTime     @default(now())
+  paidAt      DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, requestedAt])
+}
+
+// Paid-only badges. Display is gated on an active Elite subscription.
+model UserBadge {
+  id        String    @id @default(cuid())
+  userId    String
+  badge     BadgeType
+  awardedAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, badge])
+}

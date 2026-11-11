@@ -1,361 +1,320 @@
 "use client"
 
-import { useEffect, useMemo, useRef, useState } from "react"
-import { AnimatePresence, motion } from "motion/react"
-import { ArrowUpRight, Banknote, CalendarClock, CircleCheck, Coffee, Download, Info, Landmark, Loader2, Wallet } from "lucide-react"
+import { useEffect, useMemo, useState } from "react"
+import Link from "next/link"
+import { Banknote, CircleCheck, Clock, Download, Eye, FlaskConical, Loader2, TrendingUp, Wallet } from "lucide-react"
 import { useUIStore, toast } from "@/lib/store"
+import { MOCK_POSTS } from "@/lib/data"
 import { Button } from "@/components/ui/Button"
-import { Reveal } from "@/components/motion/Reveal"
 import { StudioDialog, DialogActions } from "@/components/studio/StudioDialog"
-import { PageHead, SampleBadge, StatTile, money, useWriter } from "@/components/studio/studio-ui"
-import { dur, ease } from "@/lib/motion"
-import { cn, formatRelativeDate } from "@/lib/utils"
-
-interface Payout {
-  id: string
-  date: string
-  amount: number
-  status: "Paid" | "Processing"
-  readMinutes: number
-  tips: number
-}
-
-// Sample history (demo mode has no Stripe account behind it)
-const SAMPLE_PAYOUTS: Payout[] = [
-  { id: "po_8KQ2", date: "2026-10-28", amount: 384.2, status: "Paid", readMinutes: 42100, tips: 45 },
-  { id: "po_7JD9", date: "2026-09-30", amount: 312.5, status: "Paid", readMinutes: 36400, tips: 20 },
-  { id: "po_6HX1", date: "2026-08-31", amount: 289.1, status: "Paid", readMinutes: 31800, tips: 35 },
-  { id: "po_5GW4", date: "2026-07-31", amount: 241.75, status: "Paid", readMinutes: 27300, tips: 15 },
-  { id: "po_4FV7", date: "2026-06-30", amount: 198.4, status: "Paid", readMinutes: 22900, tips: 10 },
-  { id: "po_3EU2", date: "2026-05-31", amount: 162.9, status: "Paid", readMinutes: 19100, tips: 5 },
-]
-const SAMPLE_UNPAID = 124.8
-const MIN_PAYOUT = 10
-
-const fmtDate = (iso: string) =>
-  new Date(iso + (iso.length === 10 ? "T12:00:00Z" : "")).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" })
+import { PageHead, StatTile, money, samplePostsFor, useWriter } from "@/components/studio/studio-ui"
+import { EliteGate } from "@/components/elite/EliteGate"
+import { UserBadges } from "@/components/elite/EliteBadges"
+import { useWallet } from "@/components/elite/hooks"
+import { DEMO_PAYOUT_SETTLE_MS, MIN_PAYOUT_USD, PAYOUT_RPM_USD, TOP_MONETIZED_VIEWS } from "@/lib/elite/config"
+import { earningsByDay, earningsByPost } from "@/lib/elite/wallet"
+import { DEV_TOOLS } from "@/lib/devtools"
+import { cn, formatRelativeDate, numberWithCommas } from "@/lib/utils"
 
 export default function EarningsPage() {
-  const tips = useUIStore((s) => s.tips)
+  return (
+    <EliteGate
+      feature="Earn from every unique reader"
+      description={`Elite writers earn $${PAYOUT_RPM_USD.toFixed(2)} per 1,000 unique views of their published articles, with a per-article breakdown and payouts on request.`}
+    >
+      <EarningsDashboard />
+    </EliteGate>
+  )
+}
+
+const fmtShort = (iso: string) => new Date(iso + "T12:00:00Z").toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" })
+
+function EarningsDashboard() {
   const { user } = useWriter()
-  const [requested, setRequested] = useState<Payout[]>([])
-  const [payoutPhase, setPayoutPhase] = useState<null | "confirm" | "processing" | "done">(null)
-  const [stripeOpen, setStripeOpen] = useState(false)
-  const [mounted, setMounted] = useState(false)
-  useEffect(() => setMounted(true), [])
-  const timer = useRef<number | undefined>(undefined)
-  useEffect(() => () => window.clearTimeout(timer.current), [])
+  const me = user.username
+  const views = useUIStore((s) => s.views)
+  const payouts = useUIStore((s) => s.payouts)
+  const drafts = useUIStore((s) => s.drafts)
+  const requestPayout = useUIStore((s) => s.requestPayout)
+  const settlePayouts = useUIStore((s) => s.settlePayouts)
+  const devSimulateViews = useUIStore((s) => s.devSimulateViews)
+  const wallet = useWallet(me)
+  const [confirm, setConfirm] = useState(false)
+  const [busy, setBusy] = useState(false)
 
-  const myTips = useMemo(() => tips.filter((t) => t.authorUsername === user.username), [tips, user.username])
-  const tipsTotal = myTips.reduce((a, t) => a + t.amount, 0)
-  const paidOut = requested.reduce((a, p) => a + p.amount, 0)
-  const available = Math.max(0, SAMPLE_UNPAID + tipsTotal - paidOut)
-  const payouts = [...requested, ...SAMPLE_PAYOUTS]
-  const lifetime = SAMPLE_PAYOUTS.reduce((a, p) => a + p.amount, 0) + SAMPLE_UNPAID + tipsTotal
+  // Demo: requested payouts settle after a minute
+  useEffect(() => {
+    settlePayouts()
+    const t = window.setInterval(settlePayouts, 5000)
+    return () => window.clearInterval(t)
+  }, [settlePayouts])
 
-  const months = [...SAMPLE_PAYOUTS].reverse()
-  const maxMonth = Math.max(...months.map((m) => m.amount))
+  const titles = useMemo(() => {
+    const m = new Map<string, { title: string; href: string }>()
+    for (const p of MOCK_POSTS) m.set(p.id, { title: p.title, href: `/${p.author.username}/${p.slug}` })
+    for (const d of Object.values(drafts)) if (d.live) m.set(d.id, { title: d.live.title || "Untitled story", href: `/story/${d.id}` })
+    return m
+  }, [drafts])
+
+  // Articles a dev simulation can send readers to: live stories by this writer plus their sample posts
+  const myArticleIds = useMemo(
+    () => [
+      ...Object.values(drafts).filter((d) => d.authorUsername === me && d.live).map((d) => d.id),
+      ...samplePostsFor(me).map((p) => p.id),
+    ],
+    [drafts, me]
+  )
+
+  const rows = useMemo(() => earningsByPost(me, views), [me, views])
+  const days = useMemo(() => earningsByDay(me, views, 30), [me, views])
+  const maxDay = Math.max(0.0001, ...days.map((d) => d.earnings))
+  const myPayouts = payouts.filter((p) => p.username === me)
+  const canWithdraw = wallet.availableBalance >= MIN_PAYOUT_USD
+
+  const simulate = (n: number) => {
+    const monetized = devSimulateViews(me, myArticleIds, n)
+    toast(`Simulated ${n} unique readers · ${monetized} monetized`, { tone: "success" })
+  }
 
   const exportCsv = () => {
-    const rows = [
-      ["type", "id", "date", "amount_usd", "status", "read_minutes", "tips_usd"],
-      ...payouts.map((p) => ["payout", p.id, p.date, p.amount.toFixed(2), p.status, String(p.readMinutes), p.tips.toFixed(2)]),
-      ...myTips.map((t, i) => ["tip", `tip_${i + 1}`, t.at.slice(0, 10), t.amount.toFixed(2), "Received", "", t.amount.toFixed(2)]),
+    const lines = [
+      ["article", "views", "monetized_views", "earnings_usd"],
+      ...rows.map((r) => [titles.get(r.postId)?.title ?? r.postId, String(r.views), String(r.monetizedViews), r.earnings.toFixed(4)]),
     ]
-    const csv = rows.map((r) => r.map((c) => (/[",\n]/.test(c) ? `"${c.replace(/"/g, '""')}"` : c)).join(",")).join("\n")
+    const csv = lines.map((r) => r.map((c) => (/[",\n]/.test(c) ? `"${c.replace(/"/g, '""')}"` : c)).join(",")).join("\n")
     const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }))
     const a = document.createElement("a")
     a.href = url
     a.download = `prism-earnings-${new Date().toISOString().slice(0, 10)}.csv`
-    document.body.appendChild(a)
     a.click()
-    a.remove()
     setTimeout(() => URL.revokeObjectURL(url), 1000)
-    toast(`Exported ${rows.length - 1} rows to CSV`, { tone: "success" })
-  }
-
-  const startPayout = () => {
-    setPayoutPhase("processing")
-    timer.current = window.setTimeout(() => {
-      setRequested((r) => [
-        {
-          id: "po_" + Math.random().toString(36).slice(2, 6).toUpperCase(),
-          date: new Date().toISOString().slice(0, 10),
-          amount: Math.round(available * 100) / 100,
-          status: "Processing",
-          readMinutes: 13200,
-          tips: tipsTotal,
-        },
-        ...r,
-      ])
-      setPayoutPhase("done")
-    }, 1800)
   }
 
   return (
     <>
       <PageHead
         title="Earnings"
-        lede="What your writing earns from member reading time and reader tips, and when it lands in your bank."
-        actions={
+        lede={
           <>
-            <Button variant="secondary" size="lg" onClick={exportCsv}>
-              <Download className="w-4 h-4" /> Export CSV
-            </Button>
-            <Button variant="outline" size="lg" onClick={() => setStripeOpen(true)}>
-              <Landmark className="w-4 h-4" /> Payout settings
-            </Button>
+            You earn <b className="text-[var(--fg)]">${PAYOUT_RPM_USD.toFixed(2)} per 1,000 unique views</b> of your published
+            articles. Each reader counts once per article every 24 hours; your own reads don&apos;t count.
           </>
         }
+        actions={
+          <Button variant="secondary" size="lg" onClick={exportCsv} disabled={!rows.length}>
+            <Download className="w-4 h-4" /> Export CSV
+          </Button>
+        }
       />
+      <UserBadges username={me} className="mt-5" />
 
       {/* Balance */}
-      <section className="mt-10 relative overflow-hidden panel p-6 sm:p-8">
-        <div aria-hidden className="absolute inset-x-0 top-0 h-1 spectrum-bg" />
-        <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-8">
+      <section className="mt-8 panel p-6 sm:p-8" aria-label="Balance">
+        <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-6">
           <div>
-            <div className="flex flex-wrap items-center gap-2">
-              <p className="meta">Available balance</p>
-              <SampleBadge label="Sample + your tips" />
-            </div>
-            <AnimatePresence mode="popLayout" initial={false}>
-              <motion.p
-                key={available.toFixed(2)}
-                initial={{ opacity: 0, y: 12 }}
-                animate={{ opacity: 1, y: 0, transition: { duration: dur.base, ease: ease.out } }}
-                exit={{ opacity: 0, y: -12, transition: { duration: dur.fast, ease: ease.in } }}
-                className="display mt-4 text-[3.5rem] sm:text-[4.5rem] tabular-nums"
-              >
-                {money(available)}
-              </motion.p>
-            </AnimatePresence>
+            <p className="meta">Available balance</p>
+            <p className="display mt-3 text-[3.25rem] sm:text-[4rem] tabular-nums leading-none">{money(wallet.availableBalance)}</p>
             <p className="mt-3 text-sm text-[var(--fg-muted)]">
-              {available >= MIN_PAYOUT
-                ? "Paid automatically every month, or request it now. Bank account •••• 4242."
-                : requested.length
-                  ? "Payout on its way — it usually arrives in 1–2 business days."
-                  : `Payouts unlock at ${money(MIN_PAYOUT)}.`}
+              {wallet.pendingPayout > 0
+                ? `${money(wallet.pendingPayout)} on its way to your bank.`
+                : canWithdraw
+                  ? "Ready to withdraw to your bank account •••• 4242."
+                  : `Withdrawals unlock at ${money(MIN_PAYOUT_USD)}.`}
             </p>
           </div>
-          <div className="flex flex-col sm:flex-row gap-2">
-            <Button variant="accent" size="lg" onClick={() => setPayoutPhase("confirm")} disabled={available < MIN_PAYOUT}>
-              <Banknote className="w-4 h-4" /> Request payout
-            </Button>
-          </div>
+          <Button
+            size="lg"
+            className="bg-indigo-600 text-white hover:bg-indigo-700"
+            onClick={() => setConfirm(true)}
+            disabled={!canWithdraw}
+          >
+            <Banknote className="w-4 h-4" /> Request Payout
+          </Button>
         </div>
       </section>
 
-      <section aria-label="Totals" className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
-        <StatTile label="Lifetime earnings" icon={Wallet} value={money(lifetime)} sub={<span>Since May 2026</span>} sample />
+      <section aria-label="Totals" className="mt-4 grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+        <StatTile label="Total views" icon={Eye} value={numberWithCommas(wallet.totalViews)} sub={<span>Unique, deduped per 24h</span>} />
         <StatTile
-          label="Tips received"
-          icon={Coffee}
-          value={money(tipsTotal)}
-          sub={<span>{myTips.length} tip{myTips.length === 1 ? "" : "s"} from readers in this browser</span>}
+          label="Monetized views"
+          icon={TrendingUp}
+          value={numberWithCommas(wallet.monetizedViews)}
+          sub={
+            <span>
+              {wallet.monetizedViews >= TOP_MONETIZED_VIEWS
+                ? "Top Monetized Writer unlocked"
+                : `${numberWithCommas(TOP_MONETIZED_VIEWS - wallet.monetizedViews)} to Top Monetized Writer`}
+            </span>
+          }
         />
-        <StatTile label="Next payout" icon={CalendarClock} value="Nov 30" sub={<span>Monthly, last business day</span>} />
+        <StatTile label="Total earnings" icon={Wallet} value={money(wallet.totalEarnings)} sub={<span>Lifetime</span>} />
+        <StatTile label="Pending payout" icon={Clock} value={money(wallet.pendingPayout)} sub={<span>Paid out {money(wallet.paidOut)}</span>} />
       </section>
+
+      {DEV_TOOLS && (
+        <section className="mt-4 flex flex-wrap items-center gap-2 rounded-[16px] border border-dashed border-slate-300 bg-white px-4 py-3">
+          <FlaskConical className="w-4 h-4 text-slate-500" />
+          <span className="text-sm text-slate-600 mr-2">Dev: simulate unique readers on your published articles</span>
+          {[100, 500, 1000].map((n) => (
+            <Button key={n} size="sm" variant="secondary" onClick={() => simulate(n)} disabled={!myArticleIds.length}>
+              +{numberWithCommas(n)} views
+            </Button>
+          ))}
+          {!myArticleIds.length && (
+            <span className="text-xs text-slate-500">
+              Publish an article first (<Link href="/editor/new" className="underline">write one</Link>).
+            </span>
+          )}
+        </section>
+      )}
 
       <div className="mt-6 grid lg:grid-cols-5 gap-6">
-        {/* Monthly chart */}
-        <Reveal as="section" className="lg:col-span-2 panel p-5 sm:p-7">
+        {/* Daily earnings chart */}
+        <section className="lg:col-span-3 panel p-5 sm:p-7" aria-labelledby="chart-title">
           <div className="flex items-baseline justify-between gap-2">
-            <h2 className="display text-[1.5rem]">Monthly payouts</h2>
-            <SampleBadge label="Sample" />
+            <h2 id="chart-title" className="display text-[1.5rem]">
+              Daily earnings
+            </h2>
+            <span className="meta">Last 30 days</span>
           </div>
-          <p className="mt-1 text-sm text-[var(--fg-muted)]">Last six months</p>
-          <div
-            role="img"
-            aria-label={`Monthly payouts: ${months.map((m) => `${fmtDate(m.date).split(",")[0]} ${money(m.amount)}`).join(", ")}`}
-            className="mt-8 h-48 flex items-end gap-3"
-          >
-            {months.map((m, i) => (
-              <div key={m.id} className="group flex-1 h-full flex flex-col justify-end items-center gap-2">
-                <span className="meta opacity-0 group-hover:opacity-100 transition-opacity tabular-nums">${Math.round(m.amount)}</span>
-                <motion.div
-                  key={String(mounted)}
-                  className="w-full max-w-10 rounded-t-[4px] bg-[var(--accent)] group-hover:bg-[var(--accent-hover)] origin-bottom transition-colors"
-                  style={{ height: `${(m.amount / maxMonth) * 78}%` }}
-                  initial={mounted ? { scaleY: 0 } : false}
-                  whileInView={{ scaleY: 1 }}
-                  viewport={{ once: true }}
-                  transition={{ duration: dur.slow, ease: ease.out, delay: i * 0.05 }}
-                />
-                <span className="meta">{new Date(m.date + "T12:00:00Z").toLocaleDateString("en-US", { month: "short", timeZone: "UTC" })}</span>
-              </div>
-            ))}
+          <div className="mt-6 flex gap-3">
+            <div className="flex flex-col justify-between h-44 text-[11px] text-[var(--fg-muted)] tabular-nums text-right w-12 shrink-0">
+              <span>{money(maxDay)}</span>
+              <span>$0.00</span>
+            </div>
+            <div
+              role="img"
+              aria-label={`Daily earnings over the last 30 days. Highest day ${money(maxDay)}. Total ${money(days.reduce((a, d) => a + d.earnings, 0))}.`}
+              className="flex-1 h-44 flex items-end gap-[3px] border-b border-l border-[var(--border)] pl-1"
+            >
+              {days.map((d) => (
+                <div key={d.date} className="group relative flex-1 h-full flex items-end">
+                  <div
+                    className={cn("w-full rounded-t-[2px] transition-colors", d.earnings > 0 ? "bg-indigo-500 group-hover:bg-indigo-700" : "bg-slate-100")}
+                    style={{ height: d.earnings > 0 ? `${Math.max(2, (d.earnings / maxDay) * 100)}%` : "2px" }}
+                  />
+                  <span className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-1 hidden group-hover:block whitespace-nowrap rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] shadow-sm z-10">
+                    {fmtShort(d.date)} · {money(d.earnings)} · {d.views} views
+                  </span>
+                </div>
+              ))}
+            </div>
           </div>
-        </Reveal>
+          <div className="mt-2 ml-16 flex justify-between text-[11px] text-[var(--fg-muted)]">
+            <span>{fmtShort(days[0].date)}</span>
+            <span>{fmtShort(days[days.length - 1].date)}</span>
+          </div>
+        </section>
 
-        {/* History */}
-        <Reveal as="section" index={1} className="lg:col-span-3 panel overflow-hidden">
+        {/* Payout history */}
+        <section className="lg:col-span-2 panel overflow-hidden" aria-labelledby="payouts-title">
           <div className="p-5 sm:p-7 pb-4 sm:pb-4 flex items-baseline justify-between">
-            <h2 className="display text-[1.5rem]">Payout history</h2>
-            <span className="meta">{payouts.length} payouts</span>
+            <h2 id="payouts-title" className="display text-[1.5rem]">
+              Payout history
+            </h2>
+            <span className="meta">{myPayouts.length}</span>
           </div>
-          <ul className="divide-y divide-[var(--border)] border-t border-[var(--border)]">
-            <AnimatePresence initial={false}>
-              {payouts.map((p) => (
-                <motion.li
-                  key={p.id}
-                  layout
-                  initial={{ opacity: 0, y: -8 }}
-                  animate={{ opacity: 1, y: 0, transition: { duration: dur.base, ease: ease.out } }}
-                  className="px-5 sm:px-7 py-4 flex items-center justify-between gap-4"
-                >
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="font-semibold tabular-nums">{money(p.amount)}</span>
-                      <span
-                        className={cn(
-                          "inline-flex items-center gap-1 h-6 px-2.5 rounded-full text-xs font-medium",
-                          p.status === "Paid" ? "bg-[var(--accent-subtle)] text-[var(--accent)]" : "bg-[var(--warning-subtle)] text-[var(--warning)]"
-                        )}
-                      >
-                        {p.status === "Paid" ? <CircleCheck className="w-3 h-3" /> : <Loader2 className="w-3 h-3 animate-spin" />}
-                        {p.status}
-                      </span>
-                    </div>
-                    <p className="mt-1 text-xs text-[var(--fg-muted)]">
-                      {fmtDate(p.date)} · {p.readMinutes.toLocaleString("en-US")} member read minutes · {money(p.tips)} tips
+          {myPayouts.length === 0 ? (
+            <p className="px-5 sm:px-7 pb-7 text-sm text-[var(--fg-muted)]">No payouts yet. Requests appear here with their status.</p>
+          ) : (
+            <ul className="divide-y divide-[var(--border)] border-t border-[var(--border)]">
+              {myPayouts.map((p) => (
+                <li key={p.id} className="px-5 sm:px-7 py-3.5 flex items-center justify-between gap-3">
+                  <div>
+                    <p className="font-medium tabular-nums">{money(p.amount)}</p>
+                    <p className="text-xs text-[var(--fg-muted)]">
+                      {p.id} · {formatRelativeDate(p.paidAt ?? p.requestedAt)}
                     </p>
                   </div>
-                  <span className="meta shrink-0">{p.id}</span>
-                </motion.li>
+                  {p.status === "PAID" ? (
+                    <span className="inline-flex items-center gap-1 h-6 px-2.5 rounded-full border border-emerald-200 bg-emerald-50 text-xs font-medium text-emerald-700">
+                      <CircleCheck className="w-3 h-3" /> Paid
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 h-6 px-2.5 rounded-full border border-sky-200 bg-sky-50 text-xs font-medium text-sky-700">
+                      <Loader2 className="w-3 h-3 animate-spin" /> Processing
+                    </span>
+                  )}
+                </li>
               ))}
-            </AnimatePresence>
-          </ul>
-        </Reveal>
+            </ul>
+          )}
+        </section>
       </div>
 
-      {/* Tips */}
-      <Reveal as="section" className="mt-6 panel p-5 sm:p-7">
-        <h2 className="display text-[1.5rem]">Tips from readers</h2>
-        <p className="mt-1 text-sm text-[var(--fg-muted)]">Tips sent from story pages in this browser land here instantly.</p>
-        {myTips.length === 0 ? (
-          <div className="mt-6 flex items-center gap-3 p-4 rounded-[14px] bg-[var(--bg)] border border-dashed border-[var(--border-strong)] text-sm text-[var(--fg-muted)]">
-            <Coffee className="w-4 h-4 shrink-0" />
-            No tips yet. Open one of your stories and use the tip button to try it.
-          </div>
-        ) : (
-          <ul className="mt-6 divide-y divide-[var(--border)]">
-            {[...myTips].reverse().map((t, i) => (
-              <li key={t.at + i} className="py-3 flex items-center justify-between text-sm">
-                <span className="flex items-center gap-2">
-                  <ArrowUpRight className="w-4 h-4 text-[var(--accent)]" /> Tip from a reader
-                </span>
-                <span className="flex items-center gap-4">
-                  <span className="meta">{formatRelativeDate(t.at)}</span>
-                  <span className="font-semibold tabular-nums">{money(t.amount)}</span>
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </Reveal>
-
-      {/* Payout dialog */}
-      <StudioDialog
-        open={payoutPhase !== null}
-        onOpenChange={(o) => !o && setPayoutPhase(null)}
-        dismissable={payoutPhase !== "processing"}
-        title={payoutPhase === "done" ? "Payout on its way" : payoutPhase === "processing" ? "Sending payout…" : "Request a payout"}
-        description={
-          payoutPhase === "done"
-            ? "Simulated in demo mode — in production this would arrive in 1–2 business days."
-            : payoutPhase === "processing"
-              ? "Talking to the bank. This takes a moment."
-              : "Your whole available balance is sent to your connected bank account."
-        }
-      >
-        <AnimatePresence mode="wait" initial={false}>
-          {payoutPhase === "confirm" && (
-            <motion.div key="confirm" exit={{ opacity: 0, transition: { duration: dur.fast } }}>
-              <dl className="mt-6 divide-y divide-[var(--border)] rounded-[14px] border border-[var(--border)] text-sm">
-                <div className="flex justify-between px-4 py-3">
-                  <dt className="text-[var(--fg-muted)]">Amount</dt>
-                  <dd className="font-semibold tabular-nums">{money(available)}</dd>
-                </div>
-                <div className="flex justify-between px-4 py-3">
-                  <dt className="text-[var(--fg-muted)]">To</dt>
-                  <dd className="font-medium">Bank account •••• 4242</dd>
-                </div>
-                <div className="flex justify-between px-4 py-3">
-                  <dt className="text-[var(--fg-muted)]">Fee</dt>
-                  <dd className="font-medium">None</dd>
-                </div>
-              </dl>
-              <DialogActions>
-                <Button variant="secondary" size="lg" onClick={() => setPayoutPhase(null)}>Cancel</Button>
-                <Button variant="accent" size="lg" onClick={startPayout}>
-                  <Banknote className="w-4 h-4" /> Send {money(available)}
-                </Button>
-              </DialogActions>
-            </motion.div>
-          )}
-          {payoutPhase === "processing" && (
-            <motion.div
-              key="processing"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1, transition: { duration: dur.base } }}
-              exit={{ opacity: 0, transition: { duration: dur.fast } }}
-              className="mt-8 mb-2 flex flex-col items-center gap-4"
-              role="status"
-            >
-              <Loader2 className="w-8 h-8 animate-spin text-[var(--accent)]" />
-              <div className="w-full h-1.5 rounded-full bg-[var(--surface)] overflow-hidden">
-                <motion.div
-                  className="h-full w-full bg-[var(--accent)] origin-left rounded-full"
-                  initial={{ scaleX: 0 }}
-                  animate={{ scaleX: 1 }}
-                  transition={{ duration: 1.7, ease: ease.out }}
-                />
-              </div>
-            </motion.div>
-          )}
-          {payoutPhase === "done" && (
-            <motion.div key="done" initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1, transition: { duration: dur.base, ease: ease.out } }}>
-              <div className="mt-6 flex items-center gap-3 p-4 rounded-[14px] bg-[var(--accent-subtle)]">
-                <motion.span
-                  initial={{ scale: 0.6, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1, transition: { type: "spring", stiffness: 420, damping: 22 } }}
-                  className="grid place-items-center w-10 h-10 shrink-0 rounded-full bg-[var(--accent)] text-[var(--on-accent)]"
-                >
-                  <CircleCheck className="w-5 h-5" />
-                </motion.span>
-                <p className="text-sm">
-                  <span className="font-semibold tabular-nums">{money(requested[0]?.amount ?? 0)}</span> is heading to •••• 4242.
-                </p>
-              </div>
-              <DialogActions>
-                <Button variant="primary" size="lg" onClick={() => setPayoutPhase(null)}>Done</Button>
-              </DialogActions>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </StudioDialog>
-
-      {/* Stripe explanation */}
-      <StudioDialog
-        open={stripeOpen}
-        onOpenChange={setStripeOpen}
-        title="Payouts run on Stripe"
-        description="Writers connect a Stripe Express account to receive member revenue and tips directly to their bank."
-      >
-        <div className="mt-6 flex gap-3 p-4 rounded-[14px] bg-[var(--warning-subtle)] text-[var(--warning)] text-sm">
-          <Info className="w-4 h-4 shrink-0 mt-0.5" />
-          <p>
-            This Prism instance is running in <span className="font-semibold">demo mode</span> without Stripe keys, so
-            there&apos;s no account to connect. Balances and payouts here are simulated.
-          </p>
+      {/* Per-article revenue */}
+      <section className="mt-6 panel overflow-hidden" aria-labelledby="articles-title">
+        <div className="p-5 sm:p-7 pb-4 sm:pb-4">
+          <h2 id="articles-title" className="display text-[1.5rem]">
+            Revenue by article
+          </h2>
         </div>
-        <ul className="mt-5 space-y-2 text-sm text-[var(--fg-secondary)]">
-          <li className="flex gap-2"><CircleCheck className="w-4 h-4 mt-0.5 shrink-0 text-[var(--accent)]" /> Monthly automatic payouts, no minimum after $10</li>
-          <li className="flex gap-2"><CircleCheck className="w-4 h-4 mt-0.5 shrink-0 text-[var(--accent)]" /> Tax forms generated by Stripe each year</li>
-          <li className="flex gap-2"><CircleCheck className="w-4 h-4 mt-0.5 shrink-0 text-[var(--accent)]" /> Bank details never touch Prism&apos;s servers</li>
-        </ul>
+        {rows.length === 0 ? (
+          <p className="px-5 sm:px-7 pb-7 text-sm text-[var(--fg-muted)]">
+            No views yet. Views of your published articles show up here as readers arrive.
+          </p>
+        ) : (
+          <div className="overflow-x-auto border-t border-[var(--border)]">
+            <table className="w-full text-sm min-w-[560px]">
+              <thead>
+                <tr className="text-left text-[var(--fg-muted)]">
+                  <th className="px-5 sm:px-7 py-3 font-medium">Article</th>
+                  <th className="px-3 py-3 font-medium text-right">Views</th>
+                  <th className="px-3 py-3 font-medium text-right">Monetized</th>
+                  <th className="px-5 sm:px-7 py-3 font-medium text-right">Earnings</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[var(--border)]">
+                {rows.map((r) => {
+                  const t = titles.get(r.postId)
+                  return (
+                    <tr key={r.postId}>
+                      <td className="px-5 sm:px-7 py-3.5 max-w-[320px]">
+                        {t ? (
+                          <Link href={t.href} className="font-medium hover:underline line-clamp-1">
+                            {t.title}
+                          </Link>
+                        ) : (
+                          <span className="text-[var(--fg-muted)]">{r.postId}</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-3.5 text-right tabular-nums">{numberWithCommas(r.views)}</td>
+                      <td className="px-3 py-3.5 text-right tabular-nums">{numberWithCommas(r.monetizedViews)}</td>
+                      <td className="px-5 sm:px-7 py-3.5 text-right tabular-nums font-medium">{money(r.earnings)}</td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
+      <StudioDialog
+        open={confirm}
+        onOpenChange={(o) => !busy && setConfirm(o)}
+        title={`Withdraw ${money(Math.floor(wallet.availableBalance * 100) / 100)}?`}
+        description={`It's sent to your bank account •••• 4242 and usually arrives in 1–2 business days. (Demo: it shows as paid after ${Math.round(DEMO_PAYOUT_SETTLE_MS / 1000)} seconds.)`}
+      >
         <DialogActions>
-          <Button variant="primary" size="lg" onClick={() => setStripeOpen(false)}>Got it</Button>
+          <Button variant="secondary" size="lg" onClick={() => setConfirm(false)}>
+            Cancel
+          </Button>
+          <Button
+            size="lg"
+            className="bg-indigo-600 text-white hover:bg-indigo-700"
+            disabled={busy}
+            onClick={() => {
+              setBusy(true)
+              const res = requestPayout()
+              setBusy(false)
+              setConfirm(false)
+              if (!res.ok) return toast(res.error, { tone: "error" })
+              toast(`Payout of ${money(res.amount ?? 0)} requested`, { tone: "success" })
+            }}
+          >
+            Request Payout
+          </Button>
         </DialogActions>
       </StudioDialog>
     </>

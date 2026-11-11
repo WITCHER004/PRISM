@@ -7,6 +7,7 @@ import { MOCK_TAGS, type User } from "@/lib/data"
 import type { PaywallChoice } from "@/lib/store"
 import { formatDate, numberWithCommas } from "@/lib/utils"
 import { hasBody, wordCount } from "@/components/studio/studio-ui"
+import { UserBadges } from "@/components/elite/EliteBadges"
 
 export function topicLabel(tag: string) {
   const known = MOCK_TAGS.find((t) => t.slug === tag)
@@ -29,10 +30,12 @@ interface StoryArticleProps {
   date: string
   author: User
   authorName: string
+  /** Extra line under the byline (e.g. rating summary) */
+  meta?: React.ReactNode
 }
 
 // The reader's view of a story written in Prism — same structure and type as the article page.
-export function StoryArticle({ title, subtitle, html, tags, paywall, date, author, authorName }: StoryArticleProps) {
+export function StoryArticle({ title, subtitle, html, tags, paywall, date, author, authorName, meta }: StoryArticleProps) {
   const topic = tags[0]
   const known = topic ? MOCK_TAGS.find((t) => t.slug === topic) : undefined
   const minutes = Math.max(1, Math.ceil(wordCount(html) / 238))
@@ -84,6 +87,7 @@ export function StoryArticle({ title, subtitle, html, tags, paywall, date, autho
                   <BadgeCheck className="w-4 h-4 text-[var(--accent)]" aria-label="Verified writer" />
                 )}
               </Link>
+              <UserBadges username={author.username} compact className="mt-1" />
               <p className="meta mt-0.5">{numberWithCommas(author.followerCount)} readers</p>
             </div>
           </div>
@@ -99,6 +103,7 @@ export function StoryArticle({ title, subtitle, html, tags, paywall, date, autho
               <dd>{minutes} min read</dd>
             </div>
           </dl>
+          {meta}
         </div>
       </header>
 

@@ -9,16 +9,33 @@ import { SiteHeader } from "@/components/layout/SiteHeader"
 import { SiteFooter } from "@/components/layout/SiteFooter"
 import { SignInGate } from "@/components/studio/SignInGate"
 import { useHydrated } from "@/components/studio/useHydrated"
+import { EliteGate } from "@/components/elite/EliteGate"
+import { useSubscription } from "@/components/elite/hooks"
 import { useUIStore } from "@/lib/store"
 import { dur, ease, spring } from "@/lib/motion"
 import { cn } from "@/lib/utils"
 
-const TABS = [
+// Free writers only get Overview; the other tabs are Elite features.
+// `gate` is the upgrade prompt shown if a Free user opens the page by URL
+// (Earnings carries its own EliteGate, so it has none here).
+const TABS: { href: string; label: string; icon: typeof LayoutGrid; elite?: boolean; gate?: { feature: string; description: string } }[] = [
   { href: "/dashboard", label: "Overview", icon: LayoutGrid },
-  { href: "/dashboard/analytics", label: "Analytics", icon: BarChart3 },
-  { href: "/dashboard/earnings", label: "Earnings", icon: Wallet },
-  { href: "/dashboard/newsletter", label: "Newsletter", icon: Mail },
-] as const
+  {
+    href: "/dashboard/analytics",
+    label: "Analytics",
+    icon: BarChart3,
+    elite: true,
+    gate: { feature: "See how readers find your work", description: "Elite writers get daily reads, top stories and traffic sources for everything they publish." },
+  },
+  { href: "/dashboard/earnings", label: "Earnings", icon: Wallet, elite: true },
+  {
+    href: "/dashboard/newsletter",
+    label: "Newsletter",
+    icon: Mail,
+    elite: true,
+    gate: { feature: "Send a newsletter to your readers", description: "Elite writers can collect subscribers and email new issues straight from the Studio." },
+  },
+]
 
 // Shared shell for the four Studio pages. Lives in the dashboard layout, so it stays mounted
 // between them and the active pill glides from tab to tab.
@@ -27,6 +44,9 @@ export function StudioFrame({ children }: { children: React.ReactNode }) {
   const hydrated = useHydrated()
   const currentUser = useUIStore((s) => s.currentUser)
   const signedOut = hydrated && !currentUser
+  const { isElite } = useSubscription()
+  const tabs = TABS.filter((t) => !t.elite || isElite)
+  const gate = TABS.find((t) => t.href !== "/dashboard" && pathname.startsWith(t.href))?.gate
   const firstMount = useRef(true)
   useEffect(() => {
     firstMount.current = false
@@ -40,7 +60,7 @@ export function StudioFrame({ children }: { children: React.ReactNode }) {
           <div className="flex items-center justify-between gap-3">
             <nav aria-label="Studio" className="min-w-0 overflow-x-auto scrollbar-none -mx-1 px-1">
               <ul className="flex items-center gap-1 p-1 rounded-full bg-[var(--panel)] border border-[var(--border)] w-max">
-                {TABS.map((tab) => {
+                {tabs.map((tab) => {
                   const active = tab.href === "/dashboard" ? pathname === "/dashboard" : pathname.startsWith(tab.href)
                   const Icon = tab.icon
                   return (
@@ -88,7 +108,13 @@ export function StudioFrame({ children }: { children: React.ReactNode }) {
               transition={{ duration: dur.base, ease: ease.out }}
               className="mt-8 sm:mt-10"
             >
-              {children}
+              {gate ? (
+                <EliteGate feature={gate.feature} description={gate.description}>
+                  {children}
+                </EliteGate>
+              ) : (
+                children
+              )}
             </motion.div>
           )}
         </div>

@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+vector_index/
+test_vector_index/
+.env
+.env.local

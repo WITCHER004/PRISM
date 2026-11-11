@@ -1,7 +1,16 @@
 // Mock data types for the platform (no backend required for MVP demo)
 
-export type UserRole = "READER" | "WRITER" | "PUBLICATION_EDITOR" | "ADMIN"
-export type PostStatus = "DRAFT" | "PUBLISHED" | "SCHEDULED" | "ARCHIVED"
+export type UserRole = "READER" | "WRITER" | "PUBLICATION_EDITOR" | "EMPLOYEE" | "REVIEWER" | "PEER_REVIEWER" | "ADMIN"
+export type PostStatus =
+  | "DRAFT"
+  | "PHASE_1_FAILED"
+  | "PENDING_EMPLOYEE_REVIEW"
+  | "PENDING_PEER_PANEL"
+  | "COUNTER_SUBMITTED"
+  | "PUBLISHED"
+  | "REJECTED"
+  | "SCHEDULED"
+  | "ARCHIVED"
 export type PaywallTier = "FREE" | "METERED" | "SUBSCRIBER" | "PAID"
 
 export interface User {
@@ -14,6 +23,8 @@ export interface User {
   websiteUrl?: string
   twitterHandle?: string
   githubHandle?: string
+  linkedinHandle?: string
+  instagramHandle?: string
   role: UserRole
   isVerifiedHuman: boolean
   followerCount: number
@@ -69,6 +80,8 @@ export const MOCK_USERS: User[] = [
     displayName: "Alex Chen",
     bio: "Has spent a decade building software, the last five years on payment systems for banks you haven’t heard of. Writes about infrastructure and the people who keep it running.",
     avatarUrl: "https://api.dicebear.com/7.x/avataaars/svg?seed=alexchen&backgroundColor=b6e3f4",
+    linkedinHandle: "alexchen-payments",
+    githubHandle: "alexchen",
     role: "WRITER",
     isVerifiedHuman: true,
     followerCount: 2840,
@@ -82,6 +95,8 @@ export const MOCK_USERS: User[] = [
     displayName: "Priya Rao",
     bio: "Type designer and teacher in Bengaluru. Writes about naming, colour, and the slow work of keeping design systems honest.",
     avatarUrl: "https://api.dicebear.com/7.x/avataaars/svg?seed=priyarao&backgroundColor=d1d4f9",
+    instagramHandle: "priya.letterforms",
+    twitterHandle: "priyarao_type",
     role: "WRITER",
     isVerifiedHuman: true,
     followerCount: 1520,
@@ -95,6 +110,8 @@ export const MOCK_USERS: User[] = [
     displayName: "Marcus Williams",
     bio: "Reporter covering technology policy and lobbying in Brussels and Washington. Spent six years on the statehouse beat at a regional paper in Ohio.",
     avatarUrl: "https://api.dicebear.com/7.x/avataaars/svg?seed=marcuswilliams&backgroundColor=c0aede",
+    linkedinHandle: "marcus-williams-policy",
+    twitterHandle: "marcuswrites",
     role: "WRITER",
     isVerifiedHuman: true,
     followerCount: 5210,
@@ -108,6 +125,7 @@ export const MOCK_USERS: User[] = [
     displayName: "Sarah Kim",
     bio: "Glaciologist. Spends part of each year on the ice and the rest of it explaining what the ice records, and what it doesn’t.",
     avatarUrl: "https://api.dicebear.com/7.x/avataaars/svg?seed=sarahkim&backgroundColor=ffd5dc",
+    instagramHandle: "sarahkim.onice",
     role: "WRITER",
     isVerifiedHuman: true,
     followerCount: 3480,
@@ -115,7 +133,63 @@ export const MOCK_USERS: User[] = [
     postCount: 62,
     createdAt: "2023-02-10",
   },
+  {
+    // Prism staff: works the Phase 2 review queue (sign in as noor@… in demo mode)
+    id: "u5",
+    username: "noorhaddad",
+    displayName: "Noor Haddad",
+    bio: "Standards editor at Prism. Reads every story in the review queue before it goes live.",
+    avatarUrl: "https://api.dicebear.com/7.x/avataaars/svg?seed=noorhaddad&backgroundColor=c7e8d6",
+    linkedinHandle: "noor-haddad-editor",
+    role: "EMPLOYEE",
+    isVerifiedHuman: true,
+    followerCount: 410,
+    followingCount: 120,
+    postCount: 0,
+    createdAt: "2022-06-01",
+  },
 ]
+
+/** Sample writers (excludes Prism staff accounts) */
+export const SAMPLE_WRITERS = MOCK_USERS.filter((u) => u.role === "WRITER")
+
+// ─── Peer panel ───────────────────────────────────────────────────────────────
+// Ten outside specialists who vote PASS / FAIL on Elite peer-panel submissions.
+// Kept out of MOCK_USERS so they don't appear in writer lists, the sitemap or the feed.
+
+const peer = (n: number, username: string, displayName: string, field: string, bg: string): User => ({
+  id: `pr${n}`,
+  username,
+  displayName,
+  bio: `Peer panel reviewer · ${field}.`,
+  avatarUrl: `https://api.dicebear.com/7.x/avataaars/svg?seed=${username}&backgroundColor=${bg}`,
+  role: "PEER_REVIEWER",
+  isVerifiedHuman: true,
+  followerCount: 0,
+  followingCount: 0,
+  postCount: 0,
+  createdAt: "2024-01-10",
+})
+
+export const PEER_REVIEWERS: User[] = [
+  peer(1, "drlenaholt", "Dr. Lena Holt", "distributed systems", "dbeafe"),
+  peer(2, "ravimenon", "Ravi Menon", "applied statistics", "e0e7ff"),
+  peer(3, "ameliaduarte", "Amelia Duarte", "climate science", "d1fae5"),
+  peer(4, "kofimensah", "Kofi Mensah", "public policy", "e2e8f0"),
+  peer(5, "yukisato", "Yuki Sato", "human–computer interaction", "ede9fe"),
+  peer(6, "jonasweber", "Jonas Weber", "security engineering", "dbeafe"),
+  peer(7, "fatimazahra", "Fatima Zahra", "linguistics", "e0e7ff"),
+  peer(8, "danielokafor", "Daniel Okafor", "economics", "d1fae5"),
+  peer(9, "sofiarossi", "Sofia Rossi", "design research", "ede9fe"),
+  peer(10, "marktran", "Mark Tran", "data journalism", "e2e8f0"),
+]
+
+/** Every account in the demo: writers, staff and the peer panel */
+export const ALL_ACCOUNTS: User[] = [...MOCK_USERS, ...PEER_REVIEWERS]
+
+export function findAccount(username: string | null | undefined): User | undefined {
+  return username ? ALL_ACCOUNTS.find((u) => u.username === username) : undefined
+}
 
 // ─── Mock Tags ────────────────────────────────────────────────────────────────
 

@@ -8,6 +8,8 @@ import { type Post } from "@/lib/data"
 import { useUIStore, toast } from "@/lib/store"
 import { dur, ease } from "@/lib/motion"
 import { Avatar } from "@/components/ui/Avatar"
+import { UserAvatar } from "@/components/profile/identity"
+import { RatingChip } from "@/components/reviews/ArticleReviews"
 import { hueStyle } from "@/lib/topics"
 import { formatRelativeDate, numberWithCommas, cn } from "@/lib/utils"
 import { Bookmark, BookmarkCheck, Lock, BadgeCheck, ArrowUpRight, HandHeart } from "lucide-react"
@@ -158,6 +160,7 @@ export function PostCard({ post, variant = "default", showAuthor = true, index, 
           <div className="flex items-center justify-between gap-2">
             <TopicChip post={post} />
             <PaywallPill tier={post.paywallTier} />
+            <RatingChip postId={post.id} className="ml-auto text-xs" />
           </div>
           <Link href={href} className={cn("mt-3", overlayLink)}>
             <h3 className={cn("display text-[var(--fg)]", washed ? "text-[1.75rem]" : "text-[1.375rem] leading-[1.08]")}>
@@ -197,6 +200,7 @@ export function PostCard({ post, variant = "default", showAuthor = true, index, 
         <div className="flex items-center gap-2">
           <TopicChip post={post} />
           <PaywallPill tier={post.paywallTier} />
+          <RatingChip postId={post.id} className="ml-auto text-xs" />
         </div>
         <Link href={href} className={cn("mt-2.5", overlayLink)}>
           <h2 className="display text-[1.3125rem] sm:text-[1.5rem] leading-[1.08] text-[var(--fg)] line-clamp-3">
@@ -265,7 +269,7 @@ function PaywallPill({ tier, onDark }: { tier: Post["paywallTier"]; onDark?: boo
 function Byline({ post, short }: { post: Post; short?: boolean }) {
   return (
     <div className="relative z-10 flex items-center gap-2 min-w-0">
-      <Avatar src={post.author.avatarUrl} alt={post.author.displayName} size="xs" />
+      <UserAvatar username={post.author.username} fallbackSrc={post.author.avatarUrl} alt={post.author.displayName} size="xs" />
       <div className="min-w-0 leading-tight">
         <Link href={`/${post.author.username}`} className="flex items-center gap-1 text-[0.8125rem] font-medium text-[var(--fg-secondary)] hover:text-[var(--fg)]">
           <span className="truncate">{post.author.displayName}</span>

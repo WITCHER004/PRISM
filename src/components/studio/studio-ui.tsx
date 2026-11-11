@@ -1,6 +1,6 @@
 "use client"
 
-import { MOCK_POSTS, MOCK_USERS, type Post } from "@/lib/data"
+import { findAccount, MOCK_POSTS, MOCK_USERS, type Post } from "@/lib/data"
 import { useUIStore } from "@/lib/store"
 import { cn } from "@/lib/utils"
 
@@ -8,7 +8,10 @@ import { cn } from "@/lib/utils"
 export function useWriter() {
   const currentUser = useUIStore((s) => s.currentUser)
   const displayName = useUIStore((s) => s.profile.displayName)
-  const user = MOCK_USERS.find((u) => u.username === currentUser) ?? MOCK_USERS[0]
+  const avatarUrl = useUIStore((s) => s.profile.avatarUrl)
+  const base = findAccount(currentUser) ?? MOCK_USERS[0]
+  // An uploaded profile photo replaces the sample avatar everywhere the writer appears
+  const user = avatarUrl ? { ...base, avatarUrl } : base
   return { user, displayName: displayName || user.displayName }
 }
 

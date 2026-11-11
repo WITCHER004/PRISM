@@ -139,6 +139,13 @@ export function MembershipClient({ requestedPlan }: { requestedPlan: Plan | null
               Reading on Prism is free. A membership unlocks every member story, and your fee is shared out between the
               writers you actually spend time with.
             </p>
+            <p className="mt-3 text-sm text-[var(--fg-muted)]">
+              Writing on Prism?{" "}
+              <Link href="/elite" className="font-medium text-indigo-700 underline underline-offset-2 hover:text-indigo-800">
+                Elite for writers
+              </Link>{" "}
+              adds per-view earnings, the peer panel and badges.
+            </p>
           </div>
 
           <CurrentPlanBar

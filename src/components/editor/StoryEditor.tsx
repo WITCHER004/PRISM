@@ -7,7 +7,8 @@ import { AnimatePresence, motion } from "motion/react"
 import type { Editor } from "@tiptap/react"
 import {
   ArrowLeft, Check, CircleCheck, Eye, FilePlus2, Gem, Globe, Loader2, Lock, Minus,
-  PenLine, Plus, Save, Send, Settings2, X, ExternalLink, LayoutGrid,
+  PenLine, Plus, Save, Send, Settings2, X, LayoutGrid, ShieldCheck, Undo2, CircleAlert, ScanSearch,
+  Users, Scale, ArrowRight,
 } from "lucide-react"
 import { useUIStore, toast, type Draft, type PaywallChoice } from "@/lib/store"
 import { MOCK_TAGS } from "@/lib/data"
@@ -21,6 +22,15 @@ import { hasBody, useWriter } from "@/components/studio/studio-ui"
 import { hueStyle } from "@/lib/topics"
 import { dur, ease } from "@/lib/motion"
 import { cn, formatRelativeDate } from "@/lib/utils"
+import { findAccount } from "@/lib/data"
+import type { ArticleStatus, Phase1Report } from "@/lib/moderation/types"
+import { AI_MAX_PERCENT, canSubmit, isUnderReview, MIN_WORDS_FOR_SUBMISSION } from "@/lib/moderation/workflow"
+import { PANEL_PASS_THRESHOLD, PANEL_SIZE } from "@/lib/elite/config"
+import { tallyPanel } from "@/lib/elite/panel"
+import { useSubscription } from "@/components/elite/hooks"
+import { EliteTag } from "@/components/elite/EliteBadges"
+import { requestPhase1 } from "@/lib/moderation/client"
+import { AIHumanGauge, Phase1Breakdown, StatusPill } from "@/components/moderation/Phase1Report"
 
 const RichEditor = dynamic(() => import("@/components/editor/RichEditor"), {
   ssr: false,
@@ -63,26 +73,38 @@ export function StoryEditor({ draftId }: { draftId?: string }) {
 
 function EditorWorkspace({ initial }: { initial?: Draft }) {
   const saveDraft = useUIStore((s) => s.saveDraft)
-  const publishDraft = useUIStore((s) => s.publishDraft)
-  const status = useUIStore((s) => (initial ? s.drafts[initial.id]?.status : undefined))
+  const recordPhase1 = useUIStore((s) => s.recordPhase1)
+  const withdrawSubmission = useUIStore((s) => s.withdrawSubmission)
   const { user, displayName } = useWriter()
 
   const [id] = useState(() => initial?.id ?? newId())
+  const stored = useUIStore((s) => s.drafts[id])
   const [title, setTitle] = useState(initial?.title ?? "")
   const [subtitle, setSubtitle] = useState(initial?.subtitle ?? "")
   const [html, setHtml] = useState(initial?.contentHtml ?? "")
   const [words, setWords] = useState(0)
   const [tags, setTags] = useState<string[]>(initial?.tags ?? [])
   const [paywall, setPaywall] = useState<PaywallChoice>(initial?.paywall ?? "FREE")
-  const [publishedStatus, setPublishedStatus] = useState<Draft["status"]>(initial?.status ?? "draft")
-  const isPublished = (status ?? publishedStatus) === "published"
+  const status: ArticleStatus = stored?.status ?? "DRAFT"
+  const live = stored?.live
+  const isLive = !!live
+  const inReview = isUnderReview(status)
+  const { isElite } = useSubscription()
+  const panelTally = stored?.panel ? tallyPanel(stored.panel) : null
+  // Edits to a live story wait for review; readers keep seeing the approved version
+  const hasUnsubmittedEdits =
+    !!live &&
+    (live.title !== title || live.subtitle !== subtitle || live.contentHtml !== html || live.paywall !== paywall || live.tags.join() !== tags.join())
 
   const [saveState, setSaveState] = useState<SaveState>(initial ? "saved" : "idle")
   const [savedAt, setSavedAt] = useState<string | null>(initial?.updatedAt ?? null)
   const [version, setVersion] = useState(0) // bumps on every edit; drives autosave
   const [preview, setPreview] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
-  const [publishPhase, setPublishPhase] = useState<null | "confirm" | "done">(null)
+  const [publishPhase, setPublishPhase] = useState<null | "confirm" | "checking" | "failed" | "queued">(null)
+  const [report, setReport] = useState<Phase1Report | null>(null)
+  // While a submission is in review the editor shows the submitted version, read-only
+  const showPreview = preview || inReview
   const [, tick] = useState(0)
 
   const persisted = useRef(!!initial)
@@ -241,8 +263,9 @@ function EditorWorkspace({ initial }: { initial?: Draft }) {
   }
 
   const startPublish = () => {
+    if (inReview) return
     if (!title.trim()) {
-      toast("Add a title before publishing", { tone: "error" })
+      toast("Add a title before submitting", { tone: "error" })
       setPreview(false)
       requestAnimationFrame(() => titleRef.current?.focus())
       return
@@ -253,31 +276,69 @@ function EditorWorkspace({ initial }: { initial?: Draft }) {
       requestAnimationFrame(() => editorRef.current?.commands.focus("end"))
       return
     }
-    if (isPublished) {
-      save({ quiet: true })
-      toast("Story updated", { tone: "success", action: { label: "View", href: `/story/${id}` } })
+    if (words < MIN_WORDS_FOR_SUBMISSION) {
+      toast(`Articles need at least ${MIN_WORDS_FOR_SUBMISSION} words — you have ${words}`, { tone: "error" })
+      return
+    }
+    if (isLive && !hasUnsubmittedEdits) {
+      toast("No changes since the published version")
       return
     }
     setPublishPhase("confirm")
   }
 
-  const confirmPublish = () => {
-    save({ quiet: true })
-    const published = publishDraft(id)
-    if (!published) {
-      toast("Couldn't publish — add a title first", { tone: "error" })
+  // Phase 1: save, run the AI-content check, then queue for employee review (or bounce back)
+  const confirmPublish = async () => {
+    const saved = save({ quiet: true })
+    if (!saved || !canSubmit(saved.status)) {
       setPublishPhase(null)
       return
     }
-    setPublishedStatus("published")
-    setSavedAt(published.updatedAt)
-    setPublishPhase("done")
+    setPublishPhase("checking")
+    const result = await requestPhase1({ title: saved.title, contentHtml: saved.contentHtml })
+    if ("error" in result) {
+      toast(result.error, { tone: "error" })
+      setPublishPhase("confirm")
+      return
+    }
+    const updated = recordPhase1(id, result.report)
+    if (!updated) {
+      toast(
+        result.report.wordCount < MIN_WORDS_FOR_SUBMISSION
+          ? `Articles need at least ${MIN_WORDS_FOR_SUBMISSION} words`
+          : "This story can't be submitted right now",
+        { tone: "error" }
+      )
+      setPublishPhase(null)
+      return
+    }
+    setReport(result.report)
     setSettingsOpen(false)
-    toast("Your story is live", { tone: "success", action: { label: "View", href: `/story/${id}` } })
+    setPublishPhase(result.report.passed ? "queued" : "failed")
   }
 
+  const openLastReport = () => {
+    if (!stored?.phase1) return
+    setReport(stored.phase1)
+    setPublishPhase(stored.phase1.passed ? "queued" : "failed")
+  }
+
+  const withdraw = () => {
+    withdrawSubmission(id)
+    setPreview(false)
+    toast("Withdrawn from review — you can edit again")
+  }
+
+  const submitLabel = inReview
+    ? "In review"
+    : status === "PHASE_1_FAILED" || status === "REJECTED"
+      ? "Resubmit"
+      : isLive
+        ? "Submit update"
+        : "Submit for review"
+
   const minutes = Math.max(1, Math.ceil(words / 238))
-  const slug = isPublished
+  const slug = isLive
     ? useUIStore.getState().drafts[id]?.slug ?? `${slugify(title) || "untitled"}-${id.slice(-4)}`
     : `${slugify(title) || "untitled"}-${id.slice(-4)}`
   const statusLabel =
@@ -309,12 +370,7 @@ function EditorWorkspace({ initial }: { initial?: Draft }) {
             </Link>
             <span className="hidden md:inline-flex"><Wordmark size="sm" /></span>
             <span aria-hidden className="hidden md:block h-5 w-px bg-[var(--border)]" />
-            {isPublished && (
-              <span className="hidden sm:inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full bg-[var(--accent-subtle)] text-[var(--accent)] text-xs font-medium">
-                <span aria-hidden className="w-1.5 h-1.5 rounded-full bg-[var(--accent)]" />
-                Published
-              </span>
-            )}
+            {stored && <StatusPill status={status} className="hidden sm:inline-flex" />}
             <div className="relative h-5 min-w-0 overflow-hidden" aria-live="polite">
               <AnimatePresence mode="popLayout" initial={false}>
                 <motion.span
@@ -368,8 +424,10 @@ function EditorWorkspace({ initial }: { initial?: Draft }) {
             >
               <Settings2 className="w-4 h-4" />
             </button>
-            <Button variant="accent" className="h-10 px-4 sm:px-5" onClick={startPublish}>
-              {isPublished ? "Update" : "Publish"}
+            <Button variant="accent" className="h-10 px-4 sm:px-5" onClick={startPublish} disabled={inReview}>
+              {inReview ? <ShieldCheck className="w-4 h-4" /> : <Send className="w-4 h-4" />}
+              <span className="sm:hidden">{inReview ? "In review" : "Submit"}</span>
+              <span className="hidden sm:inline">{submitLabel}</span>
             </Button>
           </div>
         </div>
@@ -383,7 +441,16 @@ function EditorWorkspace({ initial }: { initial?: Draft }) {
           )}
         >
           {/* Editing surface stays mounted under preview so undo history and caret survive */}
-          <div hidden={preview} className="fade-up max-w-3xl mx-auto px-4 sm:px-6 pt-10 sm:pt-14 pb-32">
+          <div hidden={showPreview} className="fade-up max-w-3xl mx-auto px-4 sm:px-6 pt-10 sm:pt-14 pb-32">
+            <ModerationBanner
+              draftId={id}
+              panelRejected={!!stored?.panel}
+              status={status}
+              aiPercent={stored?.phase1?.aiPercent}
+              review={stored?.review}
+              liveWithEdits={hasUnsubmittedEdits}
+              onOpenReport={openLastReport}
+            />
             {tags[0] && (
               <span className="inline-flex items-center gap-1.5 h-8 px-3 mb-5 rounded-full hue-wash hue-ink text-sm font-medium capitalize">
                 <span className="w-2 h-2 rounded-full hue-dot" />
@@ -435,9 +502,10 @@ function EditorWorkspace({ initial }: { initial?: Draft }) {
             />
             <div aria-hidden className="w-16 h-1 rounded-full spectrum-bg mt-8 mb-8" />
             <RichEditor initialContent={initial?.contentHtml} onChange={onEditorChange} onReady={onEditorReady} />
+            <WordGoal words={words} />
           </div>
 
-          {preview && (
+          {showPreview && (
               <motion.div
                 key="preview"
                 initial={{ opacity: 0, y: 10 }}
@@ -446,16 +514,64 @@ function EditorWorkspace({ initial }: { initial?: Draft }) {
               >
                 <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-[520px] hue-glow" />
                 <div className="relative max-w-3xl mx-auto px-4 sm:px-6 pt-10 sm:pt-14 pb-32">
-                  <div className="mb-8 flex items-center justify-between gap-3 h-11 pl-4 pr-1.5 rounded-full bg-[var(--panel)] border border-[var(--border)]">
-                    <span className="meta">Preview — how readers will see it</span>
-                    <button
-                      type="button"
-                      onClick={() => setPreview(false)}
-                      className="inline-flex items-center gap-1.5 h-8 px-3 rounded-full text-sm font-medium bg-[var(--fg)] text-[var(--bg)] hover:bg-[var(--fg-secondary)] transition-colors"
-                    >
-                      <PenLine className="w-3.5 h-3.5" /> Keep editing
-                    </button>
-                  </div>
+                  {inReview ? (
+                    <div role="status" className="mb-8 flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-[16px] bg-[var(--panel)] border border-[var(--accent)]/30">
+                      <div className="flex items-start gap-3">
+                        <ShieldCheck className="w-5 h-5 mt-0.5 shrink-0 text-[var(--accent)]" />
+                        <div>
+                          <p className="text-sm font-semibold">
+                            {status === "PENDING_PEER_PANEL"
+                              ? `With the peer panel · ${panelTally ? panelTally.total - panelTally.pending : 0}/${PANEL_SIZE} votes`
+                              : status === "COUNTER_SUBMITTED"
+                                ? "Counter-reason under reconsideration"
+                                : "In employee review"}
+                          </p>
+                          <p className="text-sm text-[var(--fg-muted)] leading-relaxed">
+                            {status === "COUNTER_SUBMITTED"
+                              ? "Reviewers are reading your defense. You'll be notified when they decide."
+                              : `Passed the AI check${stored?.phase1 ? ` (${Math.round(stored.phase1.humanPercent)}% human)` : ""}. ${
+                                  status === "PENDING_PEER_PANEL"
+                                    ? `It publishes when ${PANEL_PASS_THRESHOLD} of ${PANEL_SIZE} panel members vote PASS.`
+                                    : stored?.track === "PEER_PANEL"
+                                      ? `A Prism reviewer reads it first; once approved it goes to the ${PANEL_SIZE}-member peer panel.`
+                                      : "A Prism reviewer will approve it or send notes."
+                                }`}
+                            {isLive && " Readers still see the published version."}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex flex-col sm:flex-row gap-2 shrink-0">
+                        {status !== "PENDING_EMPLOYEE_REVIEW" && (
+                          <Link
+                            href={`/submissions/${id}`}
+                            className="inline-flex items-center justify-center gap-1.5 h-10 px-4 rounded-full text-sm font-medium bg-[var(--fg)] text-[var(--bg)] hover:bg-[var(--fg-secondary)] transition-colors"
+                          >
+                            <Scale className="w-4 h-4" /> Scorecard
+                          </Link>
+                        )}
+                        {status !== "COUNTER_SUBMITTED" && (
+                          <button
+                            type="button"
+                            onClick={withdraw}
+                            className="inline-flex items-center justify-center gap-1.5 h-10 px-4 rounded-full text-sm font-medium border border-[var(--border-strong)] hover:border-[var(--fg)] transition-colors"
+                          >
+                            <Undo2 className="w-4 h-4" /> Withdraw to edit
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="mb-8 flex items-center justify-between gap-3 h-11 pl-4 pr-1.5 rounded-full bg-[var(--panel)] border border-[var(--border)]">
+                      <span className="meta">Preview — how readers will see it</span>
+                      <button
+                        type="button"
+                        onClick={() => setPreview(false)}
+                        className="inline-flex items-center gap-1.5 h-8 px-3 rounded-full text-sm font-medium bg-[var(--fg)] text-[var(--bg)] hover:bg-[var(--fg-secondary)] transition-colors"
+                      >
+                        <PenLine className="w-3.5 h-3.5" /> Keep editing
+                      </button>
+                    </div>
+                  )}
                   <StoryArticle
                     title={title}
                     subtitle={subtitle}
@@ -515,7 +631,7 @@ function EditorWorkspace({ initial }: { initial?: Draft }) {
                 <span className="text-[var(--fg-muted)]">prism.pub/{user.username}/</span>
                 <span className="font-mono text-xs text-[var(--fg)]">{slug}</span>
               </p>
-              {isPublished && <p className="mt-2 text-xs text-[var(--fg-muted)]">The address stays fixed once a story is published.</p>}
+              {isLive && <p className="mt-2 text-xs text-[var(--fg-muted)]">The address stays fixed once a story is published.</p>}
             </section>
 
             <TopicsField tags={tags} onAdd={addTag} onRemove={removeTag} />
@@ -579,53 +695,97 @@ function EditorWorkspace({ initial }: { initial?: Draft }) {
             <Button variant="secondary" size="lg" className="flex-1" onClick={() => saveRef.current({ manual: true })}>
               <Save className="w-4 h-4" /> Save
             </Button>
-            <Button variant="accent" size="lg" className="flex-1" onClick={startPublish}>
-              {isPublished ? "Update story" : "Publish"}
+            <Button variant="accent" size="lg" className="flex-1" onClick={startPublish} disabled={inReview}>
+              {submitLabel}
             </Button>
           </div>
         </aside>
       </div>
 
-      {/* Publish: confirm → live */}
+      {/* Submit: confirm → Phase 1 check → failed (edit & resubmit) | queued for employee review */}
       <StudioDialog
         open={publishPhase !== null}
-        onOpenChange={(o) => !o && setPublishPhase(null)}
-        title={publishPhase === "done" ? "Your story is live" : "Publish this story?"}
+        onOpenChange={(o) => !o && publishPhase !== "checking" && setPublishPhase(null)}
+        dismissable={publishPhase !== "checking"}
+        className={publishPhase === "failed" ? "max-w-xl" : undefined}
+        title={
+          publishPhase === "checking"
+            ? "Checking your story…"
+            : publishPhase === "failed"
+              ? "Too much reads as AI-generated"
+              : publishPhase === "queued"
+                ? "Sent to employee review"
+                : isLive
+                  ? "Submit this update for review?"
+                  : "Submit for review?"
+        }
         description={
-          publishPhase === "done"
-            ? "It's published on Prism. Share the link, or keep refining — edits go live when you hit Update."
-            : "Readers will be able to find it right away. You can keep editing afterwards."
+          publishPhase === "checking"
+            ? "Phase 1: measuring sentence rhythm, predictability, repetition and phrasing."
+            : publishPhase === "failed"
+              ? `Prism publishes stories that are at least ${100 - AI_MAX_PERCENT}% human-written. Revise the flagged passages, then resubmit.`
+              : publishPhase === "queued"
+                ? stored?.track === "PEER_PANEL"
+                  ? `Phase 1 passed. A Prism reviewer reads it next; once they approve, ${PANEL_SIZE} peer reviewers vote and it publishes when ${PANEL_PASS_THRESHOLD} vote PASS.`
+                  : "Phase 1 passed. A Prism reviewer will read it next, and you'll get a notification when they decide."
+                : isElite
+                  ? `As an Elite writer your story goes through three checks: an automated AI-content check (at most ${AI_MAX_PERCENT}% AI), a review by a Prism employee, then a vote by a ${PANEL_SIZE}-member peer panel.`
+                  : `Every story goes through two checks before it's published: an automated AI-content check (at most ${AI_MAX_PERCENT}% AI), then a review by a Prism employee.`
         }
       >
         <AnimatePresence mode="wait" initial={false}>
-          {publishPhase === "done" ? (
+          {publishPhase === "checking" ? (
+            <motion.div key="checking" className="mt-8 mb-2 flex flex-col items-center gap-4 text-center" aria-busy="true">
+              <span className="grid place-items-center w-14 h-14 rounded-full bg-[var(--surface)]">
+                <ScanSearch className="w-6 h-6 text-[var(--fg-muted)] animate-pulse" />
+              </span>
+              <p className="text-sm text-[var(--fg-muted)]">This usually takes a second or two.</p>
+            </motion.div>
+          ) : publishPhase === "failed" && report ? (
             <motion.div
-              key="done"
+              key="failed"
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0, transition: { duration: dur.base, ease: ease.out } }}
+              className="mt-6"
+            >
+              <Phase1Breakdown report={report} />
+              <DialogActions>
+                <Button variant="accent" size="lg" onClick={() => { setPublishPhase(null); setPreview(false) }}>
+                  <PenLine className="w-4 h-4" /> Revise story
+                </Button>
+              </DialogActions>
+            </motion.div>
+          ) : publishPhase === "queued" && report ? (
+            <motion.div
+              key="queued"
               initial={{ opacity: 0, scale: 0.98 }}
               animate={{ opacity: 1, scale: 1, transition: { duration: dur.base, ease: ease.out } }}
             >
-              <div className="mt-6 flex items-center gap-3 p-4 rounded-[14px] bg-[var(--accent-subtle)]">
-                <motion.span
-                  initial={{ scale: 0.6, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1, transition: { type: "spring", stiffness: 420, damping: 22, delay: 0.05 } }}
-                  className="grid place-items-center w-10 h-10 shrink-0 rounded-full bg-[var(--accent)] text-[var(--on-accent)]"
-                >
-                  <CircleCheck className="w-5 h-5" />
-                </motion.span>
-                <p className="font-semibold leading-snug line-clamp-2">{title}</p>
+              <div className="mt-6 p-4 rounded-[14px] border border-[var(--border)]">
+                <AIHumanGauge aiPercent={report.aiPercent} threshold={report.threshold} />
               </div>
+              <ol className="mt-4 space-y-2 text-sm">
+                <li className="flex items-center gap-2.5">
+                  <CircleCheck className="w-4 h-4 text-[var(--accent)]" /> Phase 1 · AI-content check passed
+                </li>
+                <li className="flex items-center gap-2.5 text-[var(--fg-muted)]">
+                  <ShieldCheck className="w-4 h-4" /> Phase 2 · Waiting for an employee review
+                </li>
+                {stored?.track === "PEER_PANEL" && (
+                  <li className="flex items-center gap-2.5 text-[var(--fg-muted)]">
+                    <Users className="w-4 h-4" /> Phase 3 · {PANEL_SIZE}-member peer panel ({PANEL_PASS_THRESHOLD} PASS votes publish)
+                  </li>
+                )}
+              </ol>
               <DialogActions>
+                <Button variant="secondary" size="lg" onClick={() => setPublishPhase(null)}>
+                  Close
+                </Button>
                 <Link
-                  href="/dashboard"
-                  className="inline-flex items-center justify-center gap-2 h-11 px-6 rounded-full text-sm font-medium border border-[var(--border)] bg-[var(--panel)] hover:border-[var(--border-strong)] transition-colors"
-                >
-                  <LayoutGrid className="w-4 h-4" /> Back to Studio
-                </Link>
-                <Link
-                  href={`/story/${id}`}
+                  href="/profile#tracker"
                   className="inline-flex items-center justify-center gap-2 h-11 px-6 rounded-full text-sm font-medium bg-[var(--fg)] text-[var(--bg)] hover:bg-[var(--fg-secondary)] transition-colors"
                 >
-                  <ExternalLink className="w-4 h-4" /> View story
+                  <LayoutGrid className="w-4 h-4" /> Track submissions
                 </Link>
               </DialogActions>
             </motion.div>
@@ -649,6 +809,45 @@ function EditorWorkspace({ initial }: { initial?: Draft }) {
                   <dd className="font-medium tabular-nums">{words} words · {minutes} min read</dd>
                 </div>
               </dl>
+              <ol className="mt-4 rounded-[14px] border border-[var(--border)] divide-y divide-[var(--border)] text-sm" aria-label="Review steps">
+                <li className="flex items-start gap-3 px-4 py-3">
+                  <ScanSearch className="w-4 h-4 mt-0.5 shrink-0 text-[var(--fg-muted)]" />
+                  <span>
+                    <span className="font-medium">1 · AI-content check</span>
+                    <span className="block text-xs text-[var(--fg-muted)]">At most {AI_MAX_PERCENT}% AI, checked instantly.</span>
+                  </span>
+                </li>
+                <li className="flex items-start gap-3 px-4 py-3">
+                  <ShieldCheck className="w-4 h-4 mt-0.5 shrink-0 text-[var(--fg-muted)]" />
+                  <span>
+                    <span className="font-medium">2 · Employee review</span>
+                    <span className="block text-xs text-[var(--fg-muted)]">A Prism editor approves it or sends notes.</span>
+                  </span>
+                </li>
+                {isElite ? (
+                  <li className="flex items-start gap-3 px-4 py-3">
+                    <Users className="w-4 h-4 mt-0.5 shrink-0 text-[var(--fg-muted)]" />
+                    <span>
+                      <span className="flex items-center gap-2 font-medium">
+                        3 · {PANEL_SIZE}-member peer panel <EliteTag />
+                      </span>
+                      <span className="block text-xs text-[var(--fg-muted)]">
+                        Specialists vote PASS/FAIL; {PANEL_PASS_THRESHOLD} PASS votes publish it. Earns Peer-Reviewed Scholar.
+                      </span>
+                    </span>
+                  </li>
+                ) : (
+                  <li className="px-4 py-3 text-xs text-[var(--fg-muted)]">
+                    Elite writers also get a {PANEL_SIZE}-member peer panel review.{" "}
+                    <Link href="/elite" className="inline-flex items-center gap-1 font-medium text-indigo-700 hover:underline">
+                      See Elite <ArrowRight className="w-3 h-3" />
+                    </Link>
+                  </li>
+                )}
+              </ol>
+              {isLive && (
+                <p className="mt-3 text-xs text-[var(--fg-muted)]">Readers keep seeing the published version until this update is approved.</p>
+              )}
               {tags.length === 0 && (
                 <p className="mt-3 text-xs text-[var(--fg-muted)]">
                   Tip: adding a topic in{" "}
@@ -663,13 +862,139 @@ function EditorWorkspace({ initial }: { initial?: Draft }) {
                   Not yet
                 </Button>
                 <Button variant="accent" size="lg" onClick={confirmPublish}>
-                  <Send className="w-4 h-4" /> Publish now
+                  <Send className="w-4 h-4" /> Run check &amp; submit
                 </Button>
               </DialogActions>
             </motion.div>
           )}
         </AnimatePresence>
       </StudioDialog>
+    </div>
+  )
+}
+
+/* ── Moderation status banner ──────────────────────────────────────────────── */
+
+function ModerationBanner({
+  draftId,
+  status,
+  aiPercent,
+  review,
+  panelRejected,
+  liveWithEdits,
+  onOpenReport,
+}: {
+  draftId: string
+  status: ArticleStatus
+  aiPercent?: number
+  review?: Draft["review"]
+  panelRejected: boolean
+  liveWithEdits: boolean
+  onOpenReport: () => void
+}) {
+  if (status === "REJECTED" && panelRejected) {
+    return (
+      <div role="note" className="mb-8 flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-[16px] border border-[var(--border-strong)] bg-[var(--panel)]">
+        <div className="flex items-start gap-3">
+          <Users className="w-5 h-5 mt-0.5 shrink-0 text-[var(--fg-muted)]" />
+          <div>
+            <p className="text-sm font-semibold">The peer panel didn&apos;t reach consensus</p>
+            <p className="text-sm text-[var(--fg-muted)] leading-relaxed">
+              Read each FAIL reason on your scorecard. You can appeal a vote with a counter-reason, or revise and resubmit.
+            </p>
+          </div>
+        </div>
+        <Link
+          href={`/submissions/${draftId}`}
+          className="shrink-0 inline-flex items-center justify-center gap-1.5 h-10 px-4 rounded-full text-sm font-medium bg-[var(--fg)] text-[var(--bg)] hover:bg-[var(--fg-secondary)] transition-colors"
+        >
+          <Scale className="w-4 h-4" /> Open scorecard
+        </Link>
+      </div>
+    )
+  }
+  if (status === "PHASE_1_FAILED") {
+    return (
+      <div role="note" className="mb-8 flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-[16px] border border-[var(--error)]/30 bg-[var(--panel)]">
+        <div className="flex items-start gap-3">
+          <CircleAlert className="w-5 h-5 mt-0.5 shrink-0 text-[var(--error)]" />
+          <div>
+            <p className="text-sm font-semibold">Phase 1 check failed{aiPercent !== undefined ? ` · ${Math.round(aiPercent)}% AI` : ""}</p>
+            <p className="text-sm text-[var(--fg-muted)] leading-relaxed">
+              Stories may be at most {AI_MAX_PERCENT}% AI-generated. Rewrite the flagged passages in your own voice, then resubmit.
+            </p>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={onOpenReport}
+          className="shrink-0 inline-flex items-center justify-center gap-1.5 h-10 px-4 rounded-full text-sm font-medium border border-[var(--border-strong)] hover:border-[var(--fg)] transition-colors"
+        >
+          <ScanSearch className="w-4 h-4" /> See report
+        </button>
+      </div>
+    )
+  }
+  if (status === "REJECTED" && review) {
+    const reviewer = findAccount(review.reviewer)
+    return (
+      <div role="note" className="mb-8 p-4 rounded-[16px] border border-[var(--border-strong)] bg-[var(--panel)]">
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-sm font-semibold">Needs revision</p>
+          <StatusPill status="REJECTED" />
+        </div>
+        <blockquote className="mt-2 pl-3 border-l-2 border-[var(--border-strong)] text-sm text-[var(--fg-secondary)] leading-relaxed whitespace-pre-line">
+          {review.notes}
+        </blockquote>
+        <p className="mt-2 text-xs text-[var(--fg-muted)]">
+          {reviewer?.displayName ?? "A Prism reviewer"} · {formatRelativeDate(review.at)}. Make the changes and resubmit, or{" "}
+          <Link href={`/submissions/${draftId}`} className="underline underline-offset-2 hover:text-[var(--fg)]">
+            submit a counter-reason
+          </Link>{" "}
+          if you think the decision is wrong.
+        </p>
+      </div>
+    )
+  }
+  if (status === "PUBLISHED" && liveWithEdits) {
+    return (
+      <div role="note" className="mb-8 flex items-start gap-3 p-4 rounded-[16px] border border-[var(--border)] bg-[var(--panel)]">
+        <ShieldCheck className="w-5 h-5 mt-0.5 shrink-0 text-[var(--fg-muted)]" />
+        <p className="text-sm text-[var(--fg-muted)] leading-relaxed">
+          <span className="font-semibold text-[var(--fg)]">Unsubmitted changes.</span> Readers see the approved version. Submit this
+          update to send your edits through review.
+        </p>
+      </div>
+    )
+  }
+  return null
+}
+
+/** Live progress toward the 150-word minimum */
+function WordGoal({ words }: { words: number }) {
+  const met = words >= MIN_WORDS_FOR_SUBMISSION
+  const pct = Math.min(100, (words / MIN_WORDS_FOR_SUBMISSION) * 100)
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      className="fixed z-40 bottom-4 left-4 flex items-center gap-3 h-10 pl-3.5 pr-4 rounded-full border border-[var(--border)] bg-[var(--panel)] shadow-[var(--shadow)] text-sm"
+    >
+      <span className="relative w-16 h-1.5 rounded-full bg-[var(--surface)] overflow-hidden" aria-hidden>
+        <span
+          className={cn("absolute inset-y-0 left-0 rounded-full transition-[width] duration-300", met ? "bg-emerald-500" : "bg-[var(--fg-subtle)]")}
+          style={{ width: `${pct}%` }}
+        />
+      </span>
+      <span className="tabular-nums">
+        <span className={cn("font-semibold", met ? "text-emerald-700" : "text-[var(--fg)]")}>{words}</span>
+        <span className="text-[var(--fg-muted)]"> / {MIN_WORDS_FOR_SUBMISSION} words</span>
+      </span>
+      {met ? (
+        <Check className="w-3.5 h-3.5 text-emerald-600" aria-label="Minimum reached" />
+      ) : (
+        <span className="text-xs text-[var(--fg-muted)]">{MIN_WORDS_FOR_SUBMISSION - words} to go</span>
+      )}
     </div>
   )
 }

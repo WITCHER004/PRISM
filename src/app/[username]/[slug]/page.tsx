@@ -3,7 +3,6 @@ import { getPostBySlug } from "@/actions/posts"
 import { notFound } from "next/navigation"
 import { SiteHeader } from "@/components/layout/SiteHeader"
 import { SiteFooter } from "@/components/layout/SiteFooter"
-import { Avatar } from "@/components/ui/Avatar"
 import { CommentSection } from "@/components/posts/CommentSection"
 import { PaywallGate } from "@/components/posts/PaywallGate"
 import { PaywalledBody, UnlockedOnly, LockedOnly } from "@/components/posts/PaywallContent"
@@ -26,6 +25,11 @@ import { formatDate, generateSlug, numberWithCommas } from "@/lib/utils"
 import { BadgeCheck, Lock, ArrowLeft } from "lucide-react"
 import type { Metadata } from "next"
 import { JsonLd } from "@/components/seo/JsonLd"
+import { UserAvatar } from "@/components/profile/identity"
+import { UserBadges } from "@/components/elite/EliteBadges"
+import { ViewTracker } from "@/components/elite/ViewTracker"
+import { AuthorShareBar } from "@/components/share/ShareArticle"
+import { RatingChip, ReviewsSection } from "@/components/reviews/ArticleReviews"
 import { absoluteUrl, SITE_URL, socialImageUrl, truncateDescription } from "@/lib/seo"
 
 interface PostPageProps {
@@ -168,6 +172,7 @@ export default async function PostPage({ params }: PostPageProps) {
       />
       <ReadingProgress />
       <ReadTimeTracker postId={post.id} />
+      <ViewTracker postId={post.id} author={post.author.username} />
 
       {/* Topic-tinted glow behind the header */}
       <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-[640px] hue-glow" />
@@ -217,7 +222,7 @@ export default async function PostPage({ params }: PostPageProps) {
               {/* Byline */}
               <div className="mt-8 flex flex-wrap items-center gap-x-6 gap-y-4">
                 <div className="flex items-center gap-3">
-                  <Avatar src={post.author.avatarUrl} alt={post.author.displayName} size="md" />
+                  <UserAvatar username={post.author.username} fallbackSrc={post.author.avatarUrl} alt={post.author.displayName} size="md" />
                   <div>
                     <Link href={`/${post.author.username}`} className="flex items-center gap-1 font-semibold hover:underline">
                       {post.author.displayName}
@@ -225,6 +230,7 @@ export default async function PostPage({ params }: PostPageProps) {
                         <BadgeCheck className="w-4 h-4 text-[var(--accent)]" aria-label="Verified writer" />
                       )}
                     </Link>
+                    <UserBadges username={post.author.username} compact className="mt-1" />
                     <p className="meta mt-0.5">{numberWithCommas(post.author.followerCount)} readers</p>
                   </div>
                   <FollowButton
@@ -244,6 +250,7 @@ export default async function PostPage({ params }: PostPageProps) {
                     <dd>{post.readingTimeMin} min read</dd>
                   </div>
                 </dl>
+                <RatingChip postId={post.id} href="#reviews" />
                 <UnlockedOnly postId={post.id} paywalled={isPaywalled}>
                   <ListenMode
                     title={post.title}
@@ -322,7 +329,7 @@ export default async function PostPage({ params }: PostPageProps) {
                   <section className="mt-10 panel p-6 sm:p-8 shadow-[var(--shadow)] relative overflow-hidden">
                     <div aria-hidden className="absolute inset-0 hue-glow opacity-60" />
                     <div className="relative flex flex-col sm:flex-row gap-5">
-                      <Avatar src={post.author.avatarUrl} alt={post.author.displayName} size="xl" />
+                      <UserAvatar username={post.author.username} fallbackSrc={post.author.avatarUrl} alt={post.author.displayName} size="xl" />
                       <div className="flex-1 min-w-0">
                         <p className="meta">Written by</p>
                         <Link href={`/${post.author.username}`} className="display mt-1.5 text-3xl inline-flex items-center gap-2 hover:underline">
@@ -349,6 +356,15 @@ export default async function PostPage({ params }: PostPageProps) {
                       </div>
                     </div>
                   </section>
+
+                  <AuthorShareBar
+                    title={post.title}
+                    url={`/${post.author.username}/${post.slug}`}
+                    authorUsername={post.author.username}
+                    className="mt-10"
+                  />
+
+                  <ReviewsSection postId={post.id} postAuthor={post.author.username} className="mt-16" />
 
                   <CommentSection postId={post.id} comments={MOCK_COMMENTS} postTitle={post.title} />
                 </>

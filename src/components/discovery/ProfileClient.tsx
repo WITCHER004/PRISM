@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react"
 import Link from "next/link"
 import { AnimatePresence, motion } from "motion/react"
-import { AtSign, BadgeCheck, BookOpen, CalendarDays, Code, Feather, Globe, PenLine, Settings, UserRound } from "lucide-react"
+import { BadgeCheck, BookOpen, CalendarDays, Feather, PenLine, Settings, UserRound } from "lucide-react"
 import type { Post, Tag, User } from "@/lib/data"
 import { useUIStore, type Draft } from "@/lib/store"
 import { Avatar } from "@/components/ui/Avatar"
@@ -15,6 +15,8 @@ import { useStoreHydrated } from "./hooks"
 import { hueStyle } from "@/lib/topics"
 import { dur, ease, stagger } from "@/lib/motion"
 import { cn, formatDate, numberWithCommas } from "@/lib/utils"
+import { useIdentity } from "@/components/profile/identity"
+import { profileLinks } from "@/components/profile/SocialLinks"
 
 type Tab = "stories" | "about"
 
@@ -35,29 +37,26 @@ export function ProfileClient({ user, posts, topics }: ProfileClientProps) {
   const isMe = currentUser === user.username
 
   // The signed-in writer sees their settings edits reflected here
-  const name = isMe && profile.displayName.trim() ? profile.displayName : user.displayName
+  const identity = useIdentity(user.username)
+  const name = (hydrated && identity?.displayName) || user.displayName
   const bio = isMe && profile.bio.trim() ? profile.bio : user.bio
-  const website = isMe ? profile.websiteUrl.trim() : user.websiteUrl
-  const twitter = (isMe ? profile.twitterHandle.trim() : user.twitterHandle)?.replace(/^@/, "")
+  const avatarUrl = (hydrated && identity?.avatarUrl) || user.avatarUrl
 
+  // Stories written in this browser that passed review (readers see the approved version)
   const localStories = useMemo(
     () =>
-      hydrated && isMe
+      hydrated
         ? Object.values(drafts)
-            .filter((d) => d.status === "published")
+            .filter((d) => d.live && d.authorUsername === user.username)
             .sort((a, b) => +new Date(b.publishedAt ?? b.updatedAt) - +new Date(a.publishedAt ?? a.updatedAt))
         : [],
-    [drafts, hydrated, isMe]
+    [drafts, hydrated, user.username]
   )
   const storyCount = posts.length + localStories.length
   // Following adds you to the count, so the number reacts to the button
   const followers = user.followerCount + (followed && !isMe ? 1 : 0)
 
-  const links = [
-    website && { href: /^https?:\/\//.test(website) ? website : `https://${website}`, label: website.replace(/^https?:\/\//, "").replace(/\/$/, ""), icon: Globe },
-    twitter && { href: `https://x.com/${twitter}`, label: `@${twitter}`, icon: AtSign },
-    user.githubHandle && { href: `https://github.com/${user.githubHandle}`, label: `github/${user.githubHandle}`, icon: Code },
-  ].filter(Boolean) as { href: string; label: string; icon: React.ComponentType<{ className?: string }> }[]
+  const links = profileLinks(identity?.handles ?? user).map(({ href, label, icon }) => ({ href, label, icon }))
 
   return (
     <>
@@ -65,7 +64,7 @@ export function ProfileClient({ user, posts, topics }: ProfileClientProps) {
       <section className="relative max-w-5xl mx-auto px-4 sm:px-6">
         <div className="-mt-14 sm:-mt-16 flex flex-col sm:flex-row sm:items-end justify-between gap-5">
           <Avatar
-            src={user.avatarUrl}
+            src={avatarUrl}
             alt={name}
             size="xl"
             className="w-28 h-28 sm:w-32 sm:h-32 ring-4 ring-[var(--bg)] shadow-[var(--shadow-lift)]"
@@ -200,9 +199,10 @@ function Stat({ label, value }: { label: string; value: string }) {
 
 // A story the signed-in writer published in this browser (lives in the store, read at /story/[id])
 function LocalStoryCard({ draft }: { draft: Draft }) {
-  const tag = draft.tags[0]
+  const story = draft.live ?? draft
+  const tag = story.tags[0]
   const slug = tag?.toLowerCase().trim().replace(/[^\w\s-]/g, "").replace(/[\s_]+/g, "-")
-  const plain = draft.subtitle || draft.contentHtml.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 180)
+  const plain = story.subtitle || story.contentHtml.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 180)
   return (
     <article
       style={hueStyle(slug)}
@@ -221,7 +221,7 @@ function LocalStoryCard({ draft }: { draft: Draft }) {
       </div>
       <Link href={`/story/${draft.id}`} className="mt-2.5 block after:absolute after:inset-0">
         <h2 className="display text-[1.3125rem] sm:text-[1.5rem] leading-[1.08] text-[var(--fg)] line-clamp-3 group-hover:underline decoration-2 underline-offset-4 hue-decoration">
-          {draft.title || "Untitled story"}
+          {story.title || "Untitled story"}
         </h2>
       </Link>
       {plain && <p className="mt-2 text-sm leading-relaxed text-[var(--fg-muted)] line-clamp-2">{plain}</p>}

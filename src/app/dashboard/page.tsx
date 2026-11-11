@@ -21,15 +21,19 @@ import {
 import { hueStyle } from "@/lib/topics"
 import { dur, ease, spring } from "@/lib/motion"
 import { cn, formatRelativeDate, numberWithCommas } from "@/lib/utils"
+import type { ArticleStatus } from "@/lib/moderation/types"
+import { StatusPill } from "@/components/moderation/Phase1Report"
 
-type Tab = "all" | "drafts" | "published"
+type Tab = "all" | "drafts" | "review" | "published"
 
 interface Row {
   key: string
   kind: "local" | "sample"
   title: string
   excerpt: string
-  status: "draft" | "published"
+  status: ArticleStatus
+  /** A version is live for readers (may differ from the working draft) */
+  live: boolean
   date: string
   minutes: number
   topic?: string
@@ -42,8 +46,13 @@ interface Row {
 const TABS: { value: Tab; label: string }[] = [
   { value: "all", label: "All" },
   { value: "drafts", label: "Drafts" },
+  { value: "review", label: "In review" },
   { value: "published", label: "Published" },
 ]
+
+const inTab = (r: Row, tab: Tab) =>
+  tab === "all" ||
+  (tab === "published" ? r.live : tab === "review" ? r.status === "PENDING_EMPLOYEE_REVIEW" : !r.live && r.status !== "PENDING_EMPLOYEE_REVIEW")
 
 export default function StudioOverviewPage() {
   const hydrated = useHydrated()
@@ -57,8 +66,11 @@ export default function StudioOverviewPage() {
 
   const samples = useMemo(() => samplePostsFor(user.username), [user.username])
   const localDrafts = useMemo(
-    () => Object.values(drafts).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
-    [drafts]
+    () =>
+      Object.values(drafts)
+        .filter((d) => d.authorUsername === user.username)
+        .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
+    [drafts, user.username]
   )
 
   const rows: Row[] = useMemo(() => {
@@ -68,6 +80,7 @@ export default function StudioOverviewPage() {
       title: d.title.trim() || "Untitled story",
       excerpt: d.subtitle || htmlToText(d.contentHtml).slice(0, 140),
       status: d.status,
+      live: !!d.live,
       date: d.updatedAt,
       minutes: Math.max(1, Math.ceil(wordCount(d.contentHtml) / 238)),
       topic: d.tags[0],
@@ -79,7 +92,8 @@ export default function StudioOverviewPage() {
       kind: "sample",
       title: p.title,
       excerpt: p.subtitle ?? p.excerpt,
-      status: "published",
+      status: "PUBLISHED",
+      live: true,
       date: p.publishedAt,
       minutes: p.readingTimeMin,
       topic: p.tags[0]?.slug,
@@ -92,12 +106,14 @@ export default function StudioOverviewPage() {
 
   const counts = {
     all: rows.length,
-    drafts: rows.filter((r) => r.status === "draft").length,
-    published: rows.filter((r) => r.status === "published").length,
+    drafts: rows.filter((r) => inTab(r, "drafts")).length,
+    review: rows.filter((r) => inTab(r, "review")).length,
+    published: rows.filter((r) => inTab(r, "published")).length,
   }
-  const visible = rows.filter((r) => tab === "all" || (tab === "drafts" ? r.status === "draft" : r.status === "published"))
+  const visible = rows.filter((r) => inTab(r, tab))
 
-  const localPublished = localDrafts.filter((d) => d.status === "published").length
+  const localPublished = localDrafts.filter((d) => d.live).length
+  const localInReview = localDrafts.filter((d) => d.status === "PENDING_EMPLOYEE_REVIEW").length
   const localDraftCount = localDrafts.length - localPublished
   const sampleViews = samples.reduce((a, p) => a + p.viewCount, 0)
   const sampleClaps = samples.reduce((a, p) => a + p.clapCount, 0)
@@ -131,7 +147,7 @@ export default function StudioOverviewPage() {
       {/* Stats */}
       <section aria-label="Overview" className="mt-10 grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         <StatTile label="Stories" icon={FileText} value={samples.length + localPublished}
-          sub={hydrated ? <span>{localDraftCount} draft{localDraftCount === 1 ? "" : "s"} · {localPublished} published here</span> : <span>Loading your drafts…</span>} />
+          sub={hydrated ? <span>{localDraftCount} draft{localDraftCount === 1 ? "" : "s"} · {localInReview} in review · {localPublished} published here</span> : <span>Loading your drafts…</span>} />
         <StatTile label="Total views" icon={Eye} value={numberWithCommas(sampleViews)} sub={<span>+12% this month</span>} sample />
         <StatTile label="Followers" icon={Users} value={numberWithCommas(user.followerCount)} sub={<span>+340 this month</span>} sample />
         <StatTile label="Claps" icon={Hand} value={numberWithCommas(sampleClaps)} sub={<span>+8% this month</span>} sample />
@@ -143,7 +159,7 @@ export default function StudioOverviewPage() {
           <div>
             <h2 className="display text-[1.75rem]">Your stories</h2>
             <p className="mt-1 text-sm text-[var(--fg-muted)]">
-              Drafts autosave in this browser. Sample stories link to their live pages.
+              Drafts autosave in this browser. Submitting runs an AI-content check, then a Prism employee reviews it.
             </p>
           </div>
           <div ref={tablistRef} role="tablist" aria-label="Filter stories" className="flex items-center gap-1 border-b border-[var(--border)]">
@@ -219,7 +235,7 @@ export default function StudioOverviewPage() {
         description={
           <>
             “{pendingDelete?.title.trim() || "Untitled story"}” will be removed from this browser
-            {pendingDelete?.status === "published" ? " and its story page will stop working" : ""}. This can&apos;t be undone.
+            {pendingDelete?.live ? " and its story page will stop working" : ""}. This can&apos;t be undone.
           </>
         }
       >
@@ -244,17 +260,8 @@ function StoryRow({ row, onDelete }: { row: Row; onDelete: () => void }) {
     <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-6 p-4 sm:p-5" style={hueStyle(row.topic)}>
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
-          {row.status === "published" ? (
-            <span className="inline-flex items-center gap-1.5 h-6 px-2.5 rounded-full bg-[var(--accent-subtle)] text-[var(--accent)] text-xs font-medium">
-              <span aria-hidden className="w-1.5 h-1.5 rounded-full bg-[var(--accent)]" />
-              Published
-            </span>
-          ) : (
-            <span className="inline-flex items-center gap-1.5 h-6 px-2.5 rounded-full bg-[var(--warning-subtle)] text-[var(--warning)] text-xs font-medium">
-              <Pencil className="w-3 h-3" aria-hidden />
-              Draft
-            </span>
-          )}
+          {row.live && row.status !== "PUBLISHED" && <StatusPill status="PUBLISHED" />}
+          <StatusPill status={row.status} />
           {row.kind === "sample" && <SampleBadge label="Sample" />}
           {row.topic && (
             <span className="inline-flex items-center gap-1.5 h-6 px-2.5 rounded-full hue-wash hue-ink text-xs font-medium capitalize">
@@ -286,7 +293,7 @@ function StoryRow({ row, onDelete }: { row: Row; onDelete: () => void }) {
             </Link>
             <Link href={row.viewHref} className={action}>
               <Eye className="w-4 h-4" />
-              {row.status === "published" ? "View" : "Preview"}
+              {row.live ? "View" : "Preview"}
             </Link>
             <button
               type="button"
@@ -312,8 +319,10 @@ function EmptyState({ tab }: { tab: Tab }) {
   const copy =
     tab === "drafts"
       ? { title: "No drafts in progress", body: "Start something new — it autosaves as you type." }
-      : tab === "published"
-        ? { title: "Nothing published yet", body: "Finish a draft and hit Publish to see it here." }
+      : tab === "review"
+        ? { title: "Nothing waiting for review", body: "Submit a draft — it's checked for AI content, then read by a Prism reviewer." }
+        : tab === "published"
+        ? { title: "Nothing published yet", body: "Stories appear here once a reviewer approves them." }
         : { title: "Your desk is clear", body: "Every great story starts with a blank page." }
   return (
     <div className="px-6 py-14 text-center">

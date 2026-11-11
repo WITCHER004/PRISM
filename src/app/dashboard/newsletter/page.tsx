@@ -64,8 +64,8 @@ export default function NewsletterPage() {
 
   const stories = useMemo(() => {
     const local = Object.values(drafts)
-      .filter((d) => d.status === "published")
-      .map((d) => ({ key: `local:${d.id}`, title: d.title }))
+      .filter((d) => d.live && d.authorUsername === user.username)
+      .map((d) => ({ key: `local:${d.id}`, title: d.live!.title }))
     const sample = samplePostsFor(user.username).map((p) => ({ key: `sample:${p.id}`, title: p.title }))
     return [...local, ...sample]
   }, [drafts, user.username])

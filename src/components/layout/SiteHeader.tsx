@@ -9,7 +9,10 @@ import { useUIStore, toast } from "@/lib/store"
 import { NotificationsMenu } from "@/components/layout/NotificationsMenu"
 import { Avatar } from "@/components/ui/Avatar"
 import { Wordmark } from "@/components/ui/Wordmark"
-import { MOCK_USERS } from "@/lib/data"
+import { findAccount } from "@/lib/data"
+import { useSubscription } from "@/components/elite/hooks"
+import { EliteTag } from "@/components/elite/EliteBadges"
+import { canOpenReviewDashboard } from "@/lib/moderation/workflow"
 import {
   Search,
   PenLine,
@@ -24,6 +27,9 @@ import {
   LogOut,
   LayoutDashboard,
   Compass,
+  ShieldCheck,
+  Wallet,
+  Sparkles,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -43,7 +49,10 @@ export function SiteHeader() {
   const [mobileOpen, setMobileOpen] = useState(false)
   const [userMenuOpen, setUserMenuOpen] = useState(false)
 
-  const user = MOCK_USERS.find((u) => u.username === currentUser)
+  const baseUser = findAccount(currentUser)
+  const { isElite } = useSubscription()
+  const user = baseUser && profile.avatarUrl ? { ...baseUser, avatarUrl: profile.avatarUrl } : baseUser
+  const isReviewer = canOpenReviewDashboard(user?.role)
   const isEditor = pathname?.startsWith("/editor")
 
   // ⌘K / Ctrl+K jumps to search
@@ -190,13 +199,19 @@ export function SiteHeader() {
                             <Avatar src={user.avatarUrl} alt={user.displayName} size="md" />
                             <div className="min-w-0">
                               <p className="font-semibold text-sm truncate">{profile.displayName || user.displayName}</p>
-                              <p className="meta normal-case tracking-normal">@{user.username}</p>
+                              <p className="meta normal-case tracking-normal flex items-center gap-1.5">
+                                @{user.username} {isElite && <EliteTag />}
+                              </p>
                             </div>
                           </div>
                           {[
-                            { href: `/${user.username}`, icon: User, label: "Profile" },
+                            { href: "/profile", icon: User, label: "Profile" },
                             { href: "/bookmarks", icon: Bookmark, label: "Library" },
                             { href: "/dashboard", icon: LayoutDashboard, label: "Studio" },
+                            ...(isReviewer ? [{ href: "/review-dashboard", icon: ShieldCheck, label: "Review dashboard" }] : []),
+                            isElite
+                              ? { href: "/dashboard/earnings", icon: Wallet, label: "Earnings" }
+                              : { href: "/elite", icon: Sparkles, label: "Upgrade to Elite" },
                             { href: "/settings", icon: Settings, label: "Settings" },
                           ].map(({ href, icon: Icon, label }) => (
                             <Link

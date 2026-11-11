@@ -6,7 +6,7 @@ import { Reveal } from "@/components/motion/Reveal"
 import { RevealText } from "@/components/motion/RevealText"
 import { Avatar } from "@/components/ui/Avatar"
 import { FollowButton } from "@/components/ui/FollowButton"
-import { MOCK_TAGS, MOCK_USERS } from "@/lib/data"
+import { MOCK_TAGS, MOCK_USERS, SAMPLE_WRITERS } from "@/lib/data"
 import { getFeedPosts } from "@/actions/posts"
 import { hueStyle } from "@/lib/topics"
 import { numberWithCommas } from "@/lib/utils"
@@ -170,7 +170,7 @@ export default async function HomePage() {
           </div>
           <div className="max-w-7xl mx-auto px-4 sm:px-6">
             <div className="flex gap-4 overflow-x-auto scrollbar-none snap-x pb-2 -mx-4 px-4 sm:mx-0 sm:px-0">
-              {MOCK_USERS.map((user, i) => (
+              {SAMPLE_WRITERS.map((user, i) => (
                 <Reveal key={user.id} index={i} className="snap-start shrink-0 w-[280px]">
                   <WriterCard user={user} />
                 </Reveal>

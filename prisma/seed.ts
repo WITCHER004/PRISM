@@ -1,5 +1,6 @@
 import { PrismaClient } from "@prisma/client"
-import { MOCK_USERS, MOCK_TAGS, MOCK_POSTS } from "../src/lib/data"
+import { ALL_ACCOUNTS, MOCK_TAGS, MOCK_POSTS } from "../src/lib/data"
+import { SEED_BADGES, SEED_SUBSCRIPTIONS } from "../src/lib/elite/demo"
 
 const prisma = new PrismaClient()
 
@@ -19,8 +20,8 @@ async function main() {
     })
   }
 
-  // 2. Seed Users
-  for (const user of MOCK_USERS) {
+  // 2. Seed Users (writers, staff and the 10-member peer panel)
+  for (const user of ALL_ACCOUNTS) {
     await prisma.user.upsert({
       where: { username: user.username },
       update: {
@@ -30,6 +31,8 @@ async function main() {
         headerImageUrl: user.headerImageUrl,
         twitterHandle: user.twitterHandle,
         githubHandle: user.githubHandle,
+        linkedinHandle: user.linkedinHandle,
+        instagramHandle: user.instagramHandle,
         role: user.role,
         isVerifiedHuman: user.isVerifiedHuman,
       },
@@ -43,6 +46,8 @@ async function main() {
         headerImageUrl: user.headerImageUrl,
         twitterHandle: user.twitterHandle,
         githubHandle: user.githubHandle,
+        linkedinHandle: user.linkedinHandle,
+        instagramHandle: user.instagramHandle,
         role: user.role,
         isVerifiedHuman: user.isVerifiedHuman,
       },
@@ -110,6 +115,24 @@ async function main() {
         },
       })
     }
+  }
+
+  // 4. Elite tier: seeded subscriptions + badges (e.g. priyarao starts on Elite)
+  for (const [username, sub] of Object.entries(SEED_SUBSCRIPTIONS)) {
+    const user = await prisma.user.update({
+      where: { username },
+      data: {
+        tier: sub.tier,
+        subscriptionStatus: sub.subscriptionStatus,
+        subscribedAt: sub.subscribedAt ? new Date(sub.subscribedAt) : null,
+        expiresAt: sub.expiresAt ? new Date(sub.expiresAt) : null,
+        subscriptionProvider: sub.provider,
+        subscriptionRef: sub.reference,
+      },
+    })
+    const badges = ["ELITE_AUTHOR" as const, ...(SEED_BADGES[username] ?? [])]
+    await prisma.userBadge.createMany({ data: badges.map((badge) => ({ userId: user.id, badge })), skipDuplicates: true })
+    await prisma.writerWallet.upsert({ where: { userId: user.id }, update: {}, create: { userId: user.id } })
   }
 
   console.log("✅ Seed completed successfully!")

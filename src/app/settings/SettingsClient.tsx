@@ -31,6 +31,9 @@ import { MOCK_USERS } from "@/lib/data"
 import { dur, ease, spring } from "@/lib/motion"
 import { cn } from "@/lib/utils"
 import { Dialog } from "@/app/membership/_components/Dialog"
+import { AvatarUploader } from "@/components/profile/AvatarUploader"
+import { cleanProfileFields, profileFieldErrors } from "@/components/profile/EditProfileDialog"
+import { SOCIALS } from "@/lib/social"
 
 /* ── Helpers ──────────────────────────────────────────────────────────── */
 
@@ -305,33 +308,13 @@ function useSession() {
 
 /* ── Profile ──────────────────────────────────────────────────────────── */
 
-type ProfileFields = Pick<Profile, "displayName" | "bio" | "websiteUrl" | "twitterHandle">
+type ProfileFields = Pick<
+  Profile,
+  "displayName" | "bio" | "websiteUrl" | "twitterHandle" | "linkedinHandle" | "instagramHandle" | "githubHandle" | "avatarUrl"
+>
 const BIO_MAX = 200 // fits every sample bio (longest is 175), still short enough to read as a bio
 
-function normalizeUrl(v: string) {
-  const t = v.trim()
-  if (!t) return ""
-  return /^https?:\/\//i.test(t) ? t : `https://${t}`
-}
-
-function profileErrors(d: ProfileFields): Partial<Record<keyof ProfileFields, string>> {
-  const e: Partial<Record<keyof ProfileFields, string>> = {}
-  const name = d.displayName.trim()
-  if (!name) e.displayName = "Your name can't be empty."
-  else if (name.length > 50) e.displayName = "Keep it under 50 characters."
-  if (d.bio.length > BIO_MAX) e.bio = `Bios are capped at ${BIO_MAX} characters.`
-  if (d.websiteUrl.trim()) {
-    try {
-      const u = new URL(normalizeUrl(d.websiteUrl))
-      if (!u.hostname.includes(".")) e.websiteUrl = "Include a domain, like example.com."
-    } catch {
-      e.websiteUrl = "That doesn't look like a web address."
-    }
-  }
-  if (d.twitterHandle.trim() && !/^@?[A-Za-z0-9_]{1,15}$/.test(d.twitterHandle.trim()))
-    e.twitterHandle = "Letters, numbers and underscores, up to 15."
-  return e
-}
+const profileErrors = (d: ProfileFields): Partial<Record<keyof ProfileFields, string>> => profileFieldErrors(d)
 
 function ProfilePanel() {
   const { hydrated, currentUser, signedOut } = useSession()
@@ -350,6 +333,10 @@ function ProfileForm({ username }: { username: string | null }) {
     bio: profile.bio,
     websiteUrl: profile.websiteUrl,
     twitterHandle: profile.twitterHandle,
+    linkedinHandle: profile.linkedinHandle,
+    instagramHandle: profile.instagramHandle,
+    githubHandle: profile.githubHandle,
+    avatarUrl: profile.avatarUrl,
   }
   const [draft, setDraft] = useState<ProfileFields>(saved)
   const [status, setStatus] = useState<"idle" | "saving" | "saved">("idle")
@@ -374,17 +361,12 @@ function ProfileForm({ username }: { username: string | null }) {
     if (!dirty || hasErrors || status === "saving") return
     setStatus("saving")
     await wait(700)
-    const clean: ProfileFields = {
-      displayName: draft.displayName.trim(),
-      bio: draft.bio.trim(),
-      websiteUrl: normalizeUrl(draft.websiteUrl),
-      twitterHandle: draft.twitterHandle.trim().replace(/^@/, ""),
-    }
+    const clean: ProfileFields = cleanProfileFields(draft)
     updateProfile(clean)
     setDraft(clean)
     setStatus("saved")
     setAttempted(false)
-    toast("Profile saved", { tone: "success", action: username ? { label: "View", href: `/${username}` } : undefined })
+    toast("Profile saved", { tone: "success", action: username ? { label: "View", href: "/profile" } : undefined })
     clearTimeout(savedTimer.current)
     savedTimer.current = setTimeout(() => setStatus("idle"), 2200)
   }
@@ -397,6 +379,15 @@ function ProfileForm({ username }: { username: string | null }) {
       <Section title="Public profile" description="This is how you appear on your stories, responses and profile page.">
         <div className="grid lg:grid-cols-[minmax(0,1fr)_240px] gap-8">
           <div className="space-y-5">
+            <AvatarUploader
+              value={draft.avatarUrl}
+              fallbackSrc={MOCK_USERS.find((u) => u.username === username)?.avatarUrl}
+              name={draft.displayName || "You"}
+              onChange={(url) => {
+                setDraft((d) => ({ ...d, avatarUrl: url }))
+                if (status === "saved") setStatus("idle")
+              }}
+            />
             <TextField
               label="Display name"
               value={draft.displayName}
@@ -424,23 +415,27 @@ function ProfileForm({ username }: { username: string | null }) {
                 autoComplete="url"
                 hint="Optional"
               />
-              <TextField
-                label="X / Twitter"
-                value={draft.twitterHandle}
-                onChange={set("twitterHandle")}
-                error={shown("twitterHandle")}
-                placeholder="handle"
-                prefix="@"
-                hint="Optional"
-              />
+              {(["linkedinHandle", "instagramHandle", "twitterHandle", "githubHandle"] as const).map((k) => (
+                <TextField
+                  key={k}
+                  label={SOCIALS[k].label}
+                  value={draft[k]}
+                  onChange={set(k)}
+                  error={shown(k)}
+                  placeholder={SOCIALS[k].placeholder}
+                  prefix={SOCIALS[k].prefix}
+                  hint="Optional"
+                />
+              ))}
             </div>
+            <p className="text-xs text-[var(--fg-muted)]">Your handles are added to the share text when you share your articles.</p>
           </div>
 
           {/* Live preview */}
           <div>
             <p className="meta mb-2">Preview</p>
             <div className="rounded-[16px] bg-[var(--bg)] border border-[var(--border)] p-5">
-              <Avatar src={user?.avatarUrl} alt={name} size="lg" />
+              <Avatar src={draft.avatarUrl || user?.avatarUrl} alt={name} size="lg" />
               <p className="mt-4 font-display text-lg font-semibold tracking-tight leading-tight break-words">{name}</p>
               {username && <p className="text-sm text-[var(--fg-muted)]">@{username}</p>}
               <p className="mt-3 text-sm text-[var(--fg-secondary)] leading-relaxed break-words">
@@ -455,7 +450,7 @@ function ProfileForm({ username }: { username: string | null }) {
             </div>
             {username && (
               <Link
-                href={`/${username}`}
+                href="/profile"
                 className="mt-2 inline-flex items-center gap-1 h-10 px-3 -ml-3 rounded-full text-sm text-[var(--fg-muted)] hover:text-[var(--fg)] hover:bg-[var(--surface)] transition-colors"
               >
                 View your profile <ArrowRight className="w-3.5 h-3.5" />
@@ -598,6 +593,8 @@ function TextField({
           aria-invalid={!!error || undefined}
           aria-describedby={error ? `${id}-err` : undefined}
           className={cn(inputClass(error), prefix && "pl-8")}
+          // Longer prefixes ("github.com/") need more room than "@"
+          style={prefix && prefix.length > 1 ? { paddingLeft: `calc(1rem + ${prefix.length}ch)` } : undefined}
           {...rest}
         />
       </div>

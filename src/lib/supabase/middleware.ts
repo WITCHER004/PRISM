@@ -41,7 +41,9 @@ export async function updateSession(request: NextRequest) {
   // Protect editor and dashboard if user is not authenticated and real keys are set
   const isProtected =
     request.nextUrl.pathname.startsWith("/editor") ||
-    request.nextUrl.pathname.startsWith("/dashboard")
+    request.nextUrl.pathname.startsWith("/dashboard") ||
+    request.nextUrl.pathname.startsWith("/review-dashboard") ||
+    request.nextUrl.pathname === "/profile"
 
   if (isProtected && !user && process.env.NODE_ENV === "production") {
     const url = request.nextUrl.clone()
