@@ -5,7 +5,7 @@ import { AnimatePresence, motion, useMotionValueEvent, useScroll } from "motion/
 import { useUIStore, toast } from "@/lib/store"
 import { TipModal } from "@/components/payments/TipModal"
 import { numberWithCommas, cn } from "@/lib/utils"
-import { Bookmark, BookmarkCheck, MessageCircle, Link2, Check, HandCoins, HandHeart } from "lucide-react"
+import { Bookmark, BookmarkCheck, MessageCircle, Link2, Check, HandCoins, HandHeart, ShieldCheck } from "lucide-react"
 import { dur, ease } from "@/lib/motion"
 import { copyText } from "@/components/posts/copyText"
 
@@ -19,7 +19,8 @@ interface ArticleDockProps {
 }
 
 export function ArticleDock({ postId, clapCount, commentCount, author, layout }: ArticleDockProps) {
-  const { clappedPosts, clapPost, bookmarkedPosts, toggleBookmark } = useUIStore()
+  const { clappedPosts, clapPost, bookmarkedPosts, toggleBookmark, peerReviews } = useUIStore()
+  const postReviews = peerReviews[postId] ?? []
   const userClaps = clappedPosts[postId] ?? 0
   const saved = bookmarkedPosts.has(postId)
   const [bursts, setBursts] = useState<number[]>([])
@@ -101,6 +102,13 @@ export function ArticleDock({ postId, clapCount, commentCount, author, layout }:
           <MessageCircle className="w-[18px] h-[18px]" />
         </a>
         <span className={count}>{commentCount}</span>
+      </div>
+
+      <div className={cn("flex items-center", rail ? "flex-col gap-1" : "gap-1")}>
+        <a href="#peer-reviews" className={btn} aria-label="Jump to peer reviews" title="Peer Reviews">
+          <ShieldCheck className="w-[18px] h-[18px]" />
+        </a>
+        <span className={count}>{postReviews.length}</span>
       </div>
 
       {rail && <div className="w-6 h-px bg-[var(--border)] my-1" />}

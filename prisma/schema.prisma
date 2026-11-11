@@ -136,6 +136,7 @@ model User {
   claps             Clap[]
   bookmarks         Bookmark[]
   comments          Comment[]
+  peerReviews       PeerReview[]
   readSessions      ReadSession[]
   articleReviews    ArticleReview[]
   reviewedPosts     Post[]       @relation("PostReviewer")
@@ -218,6 +219,7 @@ model Post {
   claps           Clap[]
   bookmarks       Bookmark[]
   comments        Comment[]
+  peerReviews     PeerReview[]
   readSessions    ReadSession[]
 
   @@index([authorId, status])
@@ -311,7 +313,6 @@ model Follow {
   @@id([followerId, followingId])
 }
 
-
 // Reader star rating + written review. One per reader per article.
 model ArticleReview {
   id        String   @id @default(cuid())
@@ -328,7 +329,6 @@ model ArticleReview {
   @@unique([userId, postId])
   @@index([postId])
 }
-
 
 // One vote of the 10-member peer panel, plus the writer's counter-reason and its reconsideration.
 model PeerPanelReview {
@@ -413,4 +413,38 @@ model UserBadge {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, badge])
+}
+
+enum PeerReviewDecision {
+  ENDORSED
+  ACCEPTED
+  REVISIONS_REQUESTED
+  DISPUTED
+}
+
+model PeerReview {
+  id                 String             @id @default(cuid())
+  postId             String
+  authorId           String
+  affiliation        String?
+  decision           PeerReviewDecision @default(ACCEPTED)
+  methodologyScore   Int                @default(5)
+  clarityScore       Int                @default(5)
+  rigorScore         Int                @default(5)
+  citationsScore     Int                @default(5)
+  overallScore       Float              @default(5.0)
+  summary            String
+  strengths          String[]
+  critique           String
+  competingInterests String?
+  upvotes            Int                @default(0)
+  isVerifiedPeer     Boolean            @default(true)
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  post               Post               @relation(fields: [postId], references: [id], onDelete: Cascade)
+  author             User               @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([postId])
+  @@index([authorId])
 }
