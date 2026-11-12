@@ -126,6 +126,7 @@ export interface Profile {
   githubHandle: string
   /** Data URI or storage URL from /api/profile/avatar; empty = default avatar */
   avatarUrl: string
+  email?: string
   emailDigest: boolean
   emailReplies: boolean
 }
@@ -151,7 +152,7 @@ interface UIState {
   setInterestedTopics: (topics: string[]) => void
   toggleInterestedTopic: (topic: string) => void
 
-  // session (Firebase Auth + Demo)
+  // session (Firebase Auth & demo fallback)
   currentUser: string | null // username or handle of the signed-in user
   authEmail: string | null
   authUid: string | null
@@ -162,12 +163,6 @@ interface UIState {
   ) => void
   signIn: (email: string, name?: string) => string
   signOut: () => void
-
-  // peer reviews of papers and articles
-  peerReviews: Record<string, PeerReview[]>
-  upvotedReviews: Set<string>
-  addPeerReview: (review: Omit<PeerReview, "id" | "createdAt" | "upvotes">) => PeerReview
-  toggleUpvotePeerReview: (reviewId: string) => void
 
   // reader interactions
   clappedPosts: Record<string, number>
@@ -231,6 +226,12 @@ interface UIState {
   reviews: Record<string, ArticleReview | null>
   saveReview: (postId: string, postAuthor: string, input: ReviewInput) => Result
   deleteReview: (postId: string) => void
+
+  // peer reviews of papers and articles
+  peerReviews: Record<string, PeerReview[]>
+  upvotedReviews: Set<string>
+  addPeerReview: (review: Omit<PeerReview, "id" | "createdAt" | "upvotes">) => PeerReview
+  toggleUpvotePeerReview: (reviewId: string) => void
 
   // membership / money (simulated)
   plan: Plan | null
@@ -375,20 +376,33 @@ export const useUIStore = create<UIState>()(
             : [...s.interestedTopics, topic],
         })),
 
-      currentUser: me.username, // demo: start signed in as the sample writer
+      currentUser: null, // Start with NO user signed in by default (Real Auth)
       authEmail: null,
       authUid: null,
-      authLoading: false,
+      authLoading: true,
       setCurrentUser: (currentUser) => set((s) => switchAccount(s, currentUser)),
       setFirebaseUser: (fbUser) => {
         if (!fbUser) {
-          set((s) => ({
+          set({
             currentUser: null,
             authEmail: null,
             authUid: null,
             authLoading: false,
-            savedProfiles: s.currentUser ? { ...s.savedProfiles, [s.currentUser]: s.profile } : s.savedProfiles,
-          }))
+            profile: {
+              ...defaultProfile(""),
+              displayName: "",
+              bio: "",
+              avatarUrl: "",
+              email: undefined,
+              websiteUrl: "",
+              twitterHandle: "",
+              linkedinHandle: "",
+              instagramHandle: "",
+              githubHandle: "",
+              emailDigest: true,
+              emailReplies: true,
+            },
+          })
           return
         }
 
@@ -405,30 +419,46 @@ export const useUIStore = create<UIState>()(
           `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(baseHandle)}&backgroundColor=b6e3f4`
 
         set((s) => {
-          const switched = switchAccount(s, baseHandle)
-          const profile = switched.profile ?? s.profile
+          const username = s.currentUser && s.currentUser !== "alexchen" ? s.currentUser : baseHandle
+          const switched = switchAccount(s, username)
+          const baseProfile = switched.profile ?? s.profile
           return {
             ...switched,
+            currentUser: username,
             authEmail: email,
             authUid: fbUser.uid,
             authLoading: false,
             profile: {
-              ...profile,
-              displayName: profile.displayName || displayName,
-              avatarUrl: profile.avatarUrl || avatarUrl,
+              ...baseProfile,
+              displayName:
+                baseProfile.displayName && baseProfile.displayName !== "Alex Chen"
+                  ? baseProfile.displayName
+                  : displayName,
+              avatarUrl,
+              email,
             },
           }
         })
       },
       signIn: (email, name) => {
-        // Demo auth: a known sample user's email maps to them; anyone else signs in as the sample writer
-        const local = email.split("@")[0].toLowerCase().replace(/[^a-z0-9]/g, "")
+        const local = email.split("@")[0].toLowerCase().replace(/[^a-z0-9_]/g, "") || "member"
         const match = findAccount(local)
-        const username = match ? match.username : me.username
+        const username = match ? match.username : local
+        const displayName = name?.trim() || (match ? match.displayName : local.charAt(0).toUpperCase() + local.slice(1))
         set((s) => {
           const switched = switchAccount(s, username)
           const profile = switched.profile ?? s.profile
-          return { ...switched, profile: name ? { ...profile, displayName: name } : profile }
+          return {
+            ...switched,
+            currentUser: username,
+            authEmail: email,
+            authLoading: false,
+            profile: {
+              ...profile,
+              displayName: name || profile.displayName || displayName,
+              email,
+            },
+          }
         })
         return username
       },
@@ -438,58 +468,22 @@ export const useUIStore = create<UIState>()(
           authEmail: null,
           authUid: null,
           authLoading: false,
+          profile: {
+            ...defaultProfile(""),
+            displayName: "",
+            bio: "",
+            avatarUrl: "",
+            email: undefined,
+            websiteUrl: "",
+            twitterHandle: "",
+            linkedinHandle: "",
+            instagramHandle: "",
+            githubHandle: "",
+            emailDigest: true,
+            emailReplies: true,
+          },
           savedProfiles: s.currentUser ? { ...s.savedProfiles, [s.currentUser]: s.profile } : s.savedProfiles,
         })),
-
-      peerReviews: MOCK_PEER_REVIEWS,
-      upvotedReviews: new Set<string>(),
-      addPeerReview: (reviewData) => {
-        const id = "pr_" + uid()
-        const newReview: PeerReview = {
-          ...reviewData,
-          id,
-          createdAt: now(),
-          upvotes: 0,
-        }
-        set((s) => {
-          const postList = s.peerReviews[reviewData.postId] || []
-          return {
-            peerReviews: {
-              ...s.peerReviews,
-              [reviewData.postId]: [newReview, ...postList],
-            },
-            notifications: [
-              {
-                id: "notif_" + uid(),
-                kind: "system",
-                text: `New peer review submitted with verdict: ${reviewData.decision}.`,
-                href: `#peer-reviews`,
-                createdAt: now(),
-                read: false,
-              },
-              ...s.notifications,
-            ],
-          }
-        })
-        return newReview
-      },
-      toggleUpvotePeerReview: (reviewId) =>
-        set((s) => {
-          const upvoted = new Set(s.upvotedReviews)
-          const isUpvoted = upvoted.has(reviewId)
-          if (isUpvoted) {
-            upvoted.delete(reviewId)
-          } else {
-            upvoted.add(reviewId)
-          }
-          const nextReviews: Record<string, PeerReview[]> = {}
-          for (const [postId, list] of Object.entries(s.peerReviews)) {
-            nextReviews[postId] = list.map((r) =>
-              r.id === reviewId ? { ...r, upvotes: Math.max(0, r.upvotes + (isUpvoted ? -1 : 1)) } : r
-            )
-          }
-          return { upvotedReviews: upvoted, peerReviews: nextReviews }
-        }),
 
       clappedPosts: {},
       bookmarkedPosts: new Set<string>(),
@@ -880,6 +874,56 @@ export const useUIStore = create<UIState>()(
         if (!author) return
         set((s) => ({ reviews: { ...s.reviews, [reviewKey(postId, author)]: null } }))
       },
+
+      peerReviews: MOCK_PEER_REVIEWS,
+      upvotedReviews: new Set<string>(),
+      addPeerReview: (reviewData) => {
+        const id = "pr_" + uid()
+        const newReview: PeerReview = {
+          ...reviewData,
+          id,
+          createdAt: now(),
+          upvotes: 0,
+        }
+        set((s) => {
+          const postList = s.peerReviews[reviewData.postId] || []
+          return {
+            peerReviews: {
+              ...s.peerReviews,
+              [reviewData.postId]: [newReview, ...postList],
+            },
+            notifications: [
+              {
+                id: "notif_" + uid(),
+                kind: "system",
+                text: `New peer review submitted with verdict: ${reviewData.decision}.`,
+                href: `#peer-reviews`,
+                createdAt: now(),
+                read: false,
+              },
+              ...(s.notifications || []),
+            ],
+          }
+        })
+        return newReview
+      },
+      toggleUpvotePeerReview: (reviewId) =>
+        set((s) => {
+          const upvoted = new Set(s.upvotedReviews)
+          const isUpvoted = upvoted.has(reviewId)
+          if (isUpvoted) {
+            upvoted.delete(reviewId)
+          } else {
+            upvoted.add(reviewId)
+          }
+          const nextReviews: Record<string, PeerReview[]> = {}
+          for (const [postId, list] of Object.entries(s.peerReviews)) {
+            nextReviews[postId] = list.map((r) =>
+              r.id === reviewId ? { ...r, upvotes: Math.max(0, r.upvotes + (isUpvoted ? -1 : 1)) } : r
+            )
+          }
+          return { upvotedReviews: upvoted, peerReviews: nextReviews }
+        }),
       deleteDraft: (id) =>
         set((s) => {
           const next = { ...s.drafts }
