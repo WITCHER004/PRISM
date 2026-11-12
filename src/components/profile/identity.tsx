@@ -31,7 +31,7 @@ export function useIdentity(username: string | null | undefined): Identity | nul
     useShallow((s) => ({
       currentUser: s.currentUser,
       profile: s.profile,
-      saved: username ? s.savedProfiles[username] : undefined,
+      saved: username ? ((s as unknown as { savedProfiles?: Record<string, unknown> }).savedProfiles?.[username] as typeof s.profile | undefined) : undefined,
     }))
   )
   if (!username) return null
@@ -40,16 +40,16 @@ export function useIdentity(username: string | null | undefined): Identity | nul
   const p = username === currentUser ? profile : saved
   return {
     username,
-    displayName: p?.displayName.trim() || base?.displayName || reader?.displayName || username,
+    displayName: p?.displayName?.trim() || base?.displayName || reader?.displayName || username,
     bio: p ? p.bio : (base?.bio ?? ""),
     avatarUrl: p?.avatarUrl || base?.avatarUrl || reader?.avatarUrl || FALLBACK_AVATAR(username),
     role: base?.role ?? "READER",
     handles: p
       ? {
-          linkedinHandle: p.linkedinHandle,
-          instagramHandle: p.instagramHandle,
+          linkedinHandle: (p as { linkedinHandle?: string }).linkedinHandle,
+          instagramHandle: (p as { instagramHandle?: string }).instagramHandle,
           twitterHandle: p.twitterHandle,
-          githubHandle: p.githubHandle,
+          githubHandle: (p as { githubHandle?: string }).githubHandle,
           websiteUrl: p.websiteUrl,
         }
       : {
