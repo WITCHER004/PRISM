@@ -32,6 +32,9 @@ import { EliteTag } from "@/components/elite/EliteBadges"
 import { requestPhase1 } from "@/lib/moderation/client"
 import { AIHumanGauge, Phase1Breakdown, StatusPill } from "@/components/moderation/Phase1Report"
 import { PaperSettings } from "@/components/papers/PaperSettings"
+import { useCraftTracker } from "@/components/craft/useCraftTracker"
+import { certificateFrom } from "@/lib/craft"
+import { mirrorRecord } from "@/lib/records"
 import { depthLabel, paperIsComplete, type AdvancedPaper } from "@/lib/papers"
 import { clearPromotedIdeaSeed, clearQuoteSeed, readPromotedIdeaSeed, readQuoteSeed } from "@/lib/ideas"
 
@@ -109,6 +112,10 @@ function EditorWorkspace({ initial }: { initial?: Draft }) {
   const [tags, setTags] = useState<string[]>(initial?.tags ?? [])
   const [paywall, setPaywall] = useState<PaywallChoice>(initial?.paywall ?? "FREE")
   const [paper, setPaper] = useState<AdvancedPaper | undefined>(initial?.paper)
+  // Proof-of-craft telemetry: counts and timings only
+  const craft = useCraftTracker(initial?.craft)
+  const detachCraft = useRef<(() => void) | null>(null)
+  useEffect(() => () => detachCraft.current?.(), [])
   const status: ArticleStatus = stored?.status ?? "DRAFT"
   const live = stored?.live
   const isLive = !!live
@@ -143,7 +150,8 @@ function EditorWorkspace({ initial }: { initial?: Draft }) {
     dirty.current = true
     setSaveState("dirty")
     setVersion((v) => v + 1)
-  }, [])
+    craft.noteActivity()
+  }, [craft])
 
   // Latest values for the save function (used from timers, key handlers and unmount)
   const latest = useRef({ title, subtitle, html, tags, paywall, paper })
@@ -167,6 +175,7 @@ function EditorWorkspace({ initial }: { initial?: Draft }) {
         tags: v.tags,
         paywall: v.paywall,
         paper: v.paper,
+        craft: craft.snapshot(),
         originIdeaId: originIdeaMetadata?.originIdeaId,
         originIdeaText: originIdeaMetadata?.originIdeaText,
         voterIds: originIdeaMetadata?.voterIds,
@@ -267,13 +276,17 @@ function EditorWorkspace({ initial }: { initial?: Draft }) {
   const onEditorChange = useCallback(
     (nextHtml: string, text: string) => {
       setHtml(nextHtml)
-      setWords(text.trim() ? text.trim().split(/\s+/).length : 0)
+      const n = text.trim() ? text.trim().split(/\s+/).length : 0
+      setWords(n)
       touch()
+      craft.noteWords(n)
     },
-    [touch]
+    [touch, craft]
   )
   const onEditorReady = useCallback((editor: Editor) => {
     editorRef.current = editor
+    detachCraft.current?.()
+    detachCraft.current = craft.attach(editor)
     const text = editor.getText().trim()
     setWords(text ? text.split(/\s+/).length : 0)
   }, [])
@@ -343,6 +356,15 @@ function EditorWorkspace({ initial }: { initial?: Draft }) {
       return
     }
     const updated = recordPhase1(id, result.report)
+    // Mirror the craft certificate as submitted (best effort; the draft keeps the source copy)
+    if (updated?.craft) {
+      mirrorRecord("craft_certificates", id, {
+        articleId: id,
+        author: updated.authorUsername,
+        ...certificateFrom(updated.craft, result.report.wordCount, result.report.aiPercent),
+        telemetry: updated.craft,
+      })
+    }
     if (!updated) {
       toast(
         result.report.wordCount < MIN_WORDS_FOR_SUBMISSION

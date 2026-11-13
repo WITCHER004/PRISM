@@ -1,5 +1,9 @@
 import { MOCK_POSTS, MOCK_COMMENTS, MOCK_PEER_REVIEWS } from "@/lib/data"
 import { deepReadMinutes, PAPER_MASK, PAPER_PREVIEW_FRACTION } from "@/lib/papers"
+import { seededCertificate } from "@/lib/craft"
+import { SEED_DOSSIERS } from "@/lib/dossier"
+import { CraftBadge } from "@/components/craft/CraftBadge"
+import { PeerDossierCard } from "@/components/dossier/PeerDossierCard"
 import { ElitePaperBadge, MaybePaperScope, PaperAbstract, PaperGate, PaperRibbon } from "@/components/papers/ElitePaper"
 import { getPostBySlug } from "@/actions/posts"
 import { notFound } from "next/navigation"
@@ -261,6 +265,7 @@ export default async function PostPage({ params }: PostPageProps) {
                   </div>
                 </dl>
                 <RatingChip postId={post.id} href="#reviews" />
+                <CraftBadge certificate={seededCertificate(post.id, post.wordCount)} authorName={post.author.displayName} />
                 <UnlockedOnly postId={post.id} paywalled={isPaywalled}>
                   <ListenMode
                     title={post.title}
@@ -271,6 +276,17 @@ export default async function PostPage({ params }: PostPageProps) {
               </div>
             </Reveal>
           </header>
+
+          {/* Elite / peer-reviewed: the panel's verdict, open to every reader */}
+          {SEED_DOSSIERS[post.id] && (
+            <div className="max-w-4xl mx-auto px-4 sm:px-6 mt-8">
+              <PeerDossierCard
+                dossier={SEED_DOSSIERS[post.id]}
+                authorName={post.author.displayName}
+                authorAvatar={post.author.avatarUrl}
+              />
+            </div>
+          )}
 
           {post.coverImageUrl && (
             <Reveal index={1} className="max-w-6xl mx-auto px-4 sm:px-6 mt-10">

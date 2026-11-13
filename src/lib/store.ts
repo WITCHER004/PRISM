@@ -8,6 +8,7 @@ import { canReview, canTransition, isPeerReviewer, MIN_WORDS_FOR_SUBMISSION, pha
 import { reviewKey, REVIEW_BODY_MAX, type ArticleReview } from "@/lib/reviews"
 import { logOutFirebase } from "@/lib/firebase"
 import type { AdvancedPaper } from "@/lib/papers"
+import type { CraftTelemetry } from "@/lib/craft"
 import {
   CLOSING_NOTE_MIN,
   COUNTER_REASON_MIN,
@@ -77,6 +78,8 @@ export interface Draft {
   paywall: PaywallChoice
   /** Present when the story is an Advanced Paper (Elite only) */
   paper?: AdvancedPaper
+  /** Writing telemetry for the Verified Human Craft certificate (counts and timings only) */
+  craft?: CraftTelemetry
   /** Origin Instant Idea ID if promoted from an idea */
   originIdeaId?: string
   /** Origin Instant Idea text snapshot */
@@ -200,7 +203,7 @@ interface UIState {
   // writing
   drafts: Record<string, Draft>
   saveDraft: (
-    d: Pick<Draft, "id" | "title" | "subtitle" | "contentHtml" | "tags" | "paywall" | "paper"> & {
+    d: Pick<Draft, "id" | "title" | "subtitle" | "contentHtml" | "tags" | "paywall" | "paper" | "craft"> & {
       originIdeaId?: string
       originIdeaText?: string
       voterIds?: string[]

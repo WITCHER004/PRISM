@@ -55,10 +55,12 @@ interface StoryArticleProps {
   postId?: string
   /** Verification shown on the paper gate */
   paperReview?: string
+  /** Rendered between the header and the body (e.g. the peer review dossier) */
+  afterHeader?: React.ReactNode
 }
 
 // The reader's view of a story written in Prism — same structure and type as the article page.
-export function StoryArticle({ title, subtitle, html, tags, paywall, date, author, authorName, meta, paper, postId, paperReview = "Editor-reviewed" }: StoryArticleProps) {
+export function StoryArticle({ title, subtitle, html, tags, paywall, date, author, authorName, meta, paper, postId, paperReview = "Editor-reviewed", afterHeader }: StoryArticleProps) {
   const topic = tags[0]
   const known = topic ? MOCK_TAGS.find((t) => t.slug === topic) : undefined
   const minutes = Math.max(1, Math.ceil(wordCount(html) / 238))
@@ -223,6 +225,8 @@ export function StoryArticle({ title, subtitle, html, tags, paywall, date, autho
           {meta}
         </div>
       </header>
+
+      {afterHeader && <div className="mt-8">{afterHeader}</div>}
 
       <div className="mt-12">
         {paper && (

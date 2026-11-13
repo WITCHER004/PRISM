@@ -71,6 +71,10 @@
   --elite-line:        rgb(245 158 11 / 0.32);
   --elite-glow:        rgb(245 158 11 / 0.14);
   --coral:             #d9472b;
+  /* Verified Human Craft */
+  --craft-ink:         #23634a;
+  --craft-wash:        rgb(35 99 74 / 0.08);
+  --craft-line:        rgb(35 99 74 / 0.28);
 
   --radius-card: 20px;
   --radius-ctl:  12px;
@@ -133,6 +137,9 @@
   --elite-line:        rgb(245 158 11 / 0.3);
   --elite-glow:        rgb(245 158 11 / 0.1);
   --coral:             #ff7a63;
+  --craft-ink:         #7fd6a8;
+  --craft-wash:        rgb(127 214 168 / 0.1);
+  --craft-line:        rgb(127 214 168 / 0.3);
 
   --hue-wash-l: 0.27;  --hue-wash-c: 0.05;
   --hue-ink-l:  0.82;  --hue-ink-c:  0.12;
@@ -186,6 +193,9 @@
   --elite-line:        rgb(180 83 9 / 0.3);
   --elite-glow:        rgb(180 83 9 / 0.1);
   --coral:             #b83b22;
+  --craft-ink:         #2f5e3c;
+  --craft-wash:        rgb(47 94 60 / 0.08);
+  --craft-line:        rgb(47 94 60 / 0.28);
 
   --hue-wash-l: 0.93;  --hue-wash-c: 0.04;
   --hue-ink-l:  0.45;  --hue-ink-c:  0.14;

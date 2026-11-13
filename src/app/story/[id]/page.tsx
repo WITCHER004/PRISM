@@ -16,6 +16,13 @@ import { MOCK_USERS } from "@/lib/data"
 import { STATUS_META } from "@/lib/moderation/workflow"
 import { useUIStore } from "@/lib/store"
 import { hueStyle } from "@/lib/topics"
+import { useEffect, useMemo } from "react"
+import { CraftBadge } from "@/components/craft/CraftBadge"
+import { PeerDossierCard } from "@/components/dossier/PeerDossierCard"
+import { wordCount } from "@/components/studio/studio-ui"
+import { certificateFrom } from "@/lib/craft"
+import { dossierFromPanel } from "@/lib/dossier"
+import { mirrorRecord } from "@/lib/records"
 
 const pill = "inline-flex items-center gap-1.5 h-10 px-4 rounded-full text-sm font-medium transition-colors"
 
@@ -30,6 +37,23 @@ export default function LocalStoryPage() {
 
   const isAuthor = !!draft && draft.authorUsername === currentUser
   const live = draft?.live
+
+  // Proof of craft for the published version, and the panel's dossier once it has decided
+  const certificate = useMemo(
+    () => (draft?.craft && live ? certificateFrom(draft.craft, wordCount(live.contentHtml), draft.liveAiPercent ?? draft.phase1?.aiPercent) : null),
+    [draft?.craft, draft?.liveAiPercent, draft?.phase1?.aiPercent, live]
+  )
+  const dossier = useMemo(
+    () => (draft && live && draft.track === "PEER_PANEL" ? dossierFromPanel(draft.id, draft.panel, draft.publishedAt) : null),
+    [draft, live]
+  )
+
+  // The author's browser holds the source copy; mirror it to Firestore (best effort, never blocks)
+  useEffect(() => {
+    if (!isAuthor || !draft) return
+    if (certificate) mirrorRecord("craft_certificates", draft.id, { articleId: draft.id, author: draft.authorUsername, ...certificate })
+    if (dossier) mirrorRecord("peer_dossiers", draft.id, dossier)
+  }, [isAuthor, draft, certificate, dossier])
   // The author previews the working copy until something is live; everyone else only sees live versions
   const view = live ?? (isAuthor ? draft : undefined)
 
@@ -100,7 +124,17 @@ export default function LocalStoryPage() {
               date={draft.publishedAt ?? draft.updatedAt}
               author={{ ...(author.base ?? MOCK_USERS[0]), username: author.username, avatarUrl: author.avatarUrl }}
               authorName={author.displayName}
-              meta={live ? <RatingChip postId={draft.id} href="#reviews" /> : undefined}
+              meta={
+                live ? (
+                  <>
+                    <RatingChip postId={draft.id} href="#reviews" />
+                    {certificate && <CraftBadge certificate={certificate} authorName={author.displayName} />}
+                  </>
+                ) : undefined
+              }
+              afterHeader={
+                dossier ? <PeerDossierCard dossier={dossier} authorName={author.displayName} authorAvatar={author.avatarUrl} /> : undefined
+              }
             />
 
             {live && (
