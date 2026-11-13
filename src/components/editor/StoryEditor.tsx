@@ -31,6 +31,9 @@ import { useSubscription } from "@/components/elite/hooks"
 import { EliteTag } from "@/components/elite/EliteBadges"
 import { requestPhase1 } from "@/lib/moderation/client"
 import { AIHumanGauge, Phase1Breakdown, StatusPill } from "@/components/moderation/Phase1Report"
+import { PaperSettings } from "@/components/papers/PaperSettings"
+import { depthLabel, paperIsComplete, type AdvancedPaper } from "@/lib/papers"
+import { clearPromotedIdeaSeed, clearQuoteSeed, readPromotedIdeaSeed, readQuoteSeed } from "@/lib/ideas"
 
 const RichEditor = dynamic(() => import("@/components/editor/RichEditor"), {
   ssr: false,
@@ -79,12 +82,33 @@ function EditorWorkspace({ initial }: { initial?: Draft }) {
 
   const [id] = useState(() => initial?.id ?? newId())
   const stored = useUIStore((s) => s.drafts[id])
-  const [title, setTitle] = useState(initial?.title ?? "")
+  // A new story opened from "✦ Turn into Article" starts with pre-filled title & draft content
+  const [promotedSeed] = useState(() => (initial ? undefined : readPromotedIdeaSeed()))
+  const [title, setTitle] = useState(
+    initial?.title ??
+      (promotedSeed ? (promotedSeed.text.split("\n")[0].slice(0, 60).replace(/[#*`_]/g, "").trim() || "Promoted Idea") : "")
+  )
   const [subtitle, setSubtitle] = useState(initial?.subtitle ?? "")
-  const [html, setHtml] = useState(initial?.contentHtml ?? "")
+  // A new story opened from "Quote in Article" starts with the idea quoted
+  const [seedHtml] = useState(() =>
+    initial
+      ? undefined
+      : promotedSeed
+        ? `<p>${promotedSeed.text.split("\n").join("</p><p>")}</p><p></p>`
+        : readQuoteSeed()
+  )
+  const [originIdeaMetadata] = useState(() =>
+    initial
+      ? { originIdeaId: initial.originIdeaId, originIdeaText: initial.originIdeaText, voterIds: initial.voterIds }
+      : promotedSeed
+        ? { originIdeaId: promotedSeed.ideaId, originIdeaText: promotedSeed.text, voterIds: promotedSeed.voterIds }
+        : undefined
+  )
+  const [html, setHtml] = useState(initial?.contentHtml ?? seedHtml ?? "")
   const [words, setWords] = useState(0)
   const [tags, setTags] = useState<string[]>(initial?.tags ?? [])
   const [paywall, setPaywall] = useState<PaywallChoice>(initial?.paywall ?? "FREE")
+  const [paper, setPaper] = useState<AdvancedPaper | undefined>(initial?.paper)
   const status: ArticleStatus = stored?.status ?? "DRAFT"
   const live = stored?.live
   const isLive = !!live
@@ -94,7 +118,7 @@ function EditorWorkspace({ initial }: { initial?: Draft }) {
   // Edits to a live story wait for review; readers keep seeing the approved version
   const hasUnsubmittedEdits =
     !!live &&
-    (live.title !== title || live.subtitle !== subtitle || live.contentHtml !== html || live.paywall !== paywall || live.tags.join() !== tags.join())
+    (live.title !== title || live.subtitle !== subtitle || live.contentHtml !== html || live.paywall !== paywall || live.tags.join() !== tags.join() || JSON.stringify(live.paper) !== JSON.stringify(paper))
 
   const [saveState, setSaveState] = useState<SaveState>(initial ? "saved" : "idle")
   const [savedAt, setSavedAt] = useState<string | null>(initial?.updatedAt ?? null)
@@ -122,8 +146,8 @@ function EditorWorkspace({ initial }: { initial?: Draft }) {
   }, [])
 
   // Latest values for the save function (used from timers, key handlers and unmount)
-  const latest = useRef({ title, subtitle, html, tags, paywall })
-  latest.current = { title, subtitle, html, tags, paywall }
+  const latest = useRef({ title, subtitle, html, tags, paywall, paper })
+  latest.current = { title, subtitle, html, tags, paywall, paper }
 
   const save = useCallback(
     (opts: { quiet?: boolean; manual?: boolean } = {}) => {
@@ -142,6 +166,10 @@ function EditorWorkspace({ initial }: { initial?: Draft }) {
         contentHtml: v.html,
         tags: v.tags,
         paywall: v.paywall,
+        paper: v.paper,
+        originIdeaId: originIdeaMetadata?.originIdeaId,
+        originIdeaText: originIdeaMetadata?.originIdeaText,
+        voterIds: originIdeaMetadata?.voterIds,
       })
       if (!persisted.current) {
         persisted.current = true
@@ -163,6 +191,14 @@ function EditorWorkspace({ initial }: { initial?: Draft }) {
   )
   const saveRef = useRef(save)
   saveRef.current = save
+
+  // The quote or promoted idea is in the editor now; clear the session seed
+  useEffect(() => {
+    if (seedHtml) {
+      clearQuoteSeed()
+      clearPromotedIdeaSeed()
+    }
+  }, [seedHtml])
 
   // Autosave ~1s after the last edit
   useEffect(() => {
@@ -274,6 +310,11 @@ function EditorWorkspace({ initial }: { initial?: Draft }) {
       toast("Write a little of your story first", { tone: "error" })
       setPreview(false)
       requestAnimationFrame(() => editorRef.current?.commands.focus("end"))
+      return
+    }
+    if (!paperIsComplete(paper)) {
+      toast("Write all three key takeaways for your Advanced Paper", { tone: "error" })
+      setSettingsOpen(true)
       return
     }
     if (words < MIN_WORDS_FOR_SUBMISSION) {
@@ -501,7 +542,7 @@ function EditorWorkspace({ initial }: { initial?: Draft }) {
               className="block w-full mt-4 text-xl sm:text-2xl leading-snug text-[var(--fg-muted)] bg-transparent border-none outline-none resize-none placeholder:text-[var(--fg-subtle)] overflow-hidden"
             />
             <div aria-hidden className="w-16 h-1 rounded-full spectrum-bg mt-8 mb-8" />
-            <RichEditor initialContent={initial?.contentHtml} onChange={onEditorChange} onReady={onEditorReady} />
+            <RichEditor initialContent={initial?.contentHtml ?? seedHtml} onChange={onEditorChange} onReady={onEditorReady} />
             <WordGoal words={words} />
           </div>
 
@@ -578,6 +619,8 @@ function EditorWorkspace({ initial }: { initial?: Draft }) {
                     html={html}
                     tags={tags}
                     paywall={paywall}
+                    paper={paper}
+                    postId={id}
                     date={latestDate(savedAt)}
                     author={user}
                     authorName={displayName}
@@ -678,6 +721,14 @@ function EditorWorkspace({ initial }: { initial?: Draft }) {
                 })}
               </div>
             </fieldset>
+
+            <PaperSettings
+              paper={paper}
+              onChange={(next) => {
+                setPaper(next)
+                touch()
+              }}
+            />
 
             <section className="grid grid-cols-2 gap-2">
               <div className="p-3.5 rounded-[14px] bg-[var(--bg)] border border-[var(--border)]">
@@ -798,7 +849,9 @@ function EditorWorkspace({ initial }: { initial?: Draft }) {
                 </div>
                 <div className="flex justify-between gap-4 px-4 py-3">
                   <dt className="text-[var(--fg-muted)]">Access</dt>
-                  <dd className="font-medium">{PAYWALL_OPTIONS.find((o) => o.value === paywall)?.label}</dd>
+                  <dd className="font-medium text-right">
+                    {paper ? `Advanced Paper · Elite · ${depthLabel(paper.depth)}` : PAYWALL_OPTIONS.find((o) => o.value === paywall)?.label}
+                  </dd>
                 </div>
                 <div className="flex justify-between gap-4 px-4 py-3">
                   <dt className="text-[var(--fg-muted)]">Topics</dt>

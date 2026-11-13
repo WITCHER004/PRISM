@@ -11,6 +11,8 @@ export type PostStatus =
   | "REJECTED"
   | "SCHEDULED"
   | "ARCHIVED"
+import type { AdvancedPaper } from "@/lib/papers"
+
 export type PaywallTier = "FREE" | "METERED" | "SUBSCRIBER" | "PAID"
 
 export interface User {
@@ -46,6 +48,8 @@ export interface Post {
   status: PostStatus
   paywallTier: PaywallTier
   paywallPrice?: number
+  /** Set on Advanced Papers: Elite members read in full, everyone else gets the abstract + opening */
+  paper?: AdvancedPaper
   publishedAt: string
   tags: Tag[]
   author: User
@@ -245,6 +249,16 @@ export const MOCK_POSTS: Post[] = [
     wordCount: 3340,
     status: "PUBLISHED",
     paywallTier: "FREE",
+    paper: {
+      isAdvancedPaper: true,
+      requiredTier: "elite",
+      depth: "deep-dive",
+      takeaways: [
+        "Two-phase commit trades availability for atomicity; under a partitioned coordinator it blocks rather than fails.",
+        "Sagas with explicit compensations kept ledgers reconcilable at 10k concurrent payments where 2PC stalled.",
+        "Most 'consistency bugs' were product decisions nobody wrote down: decide what a brief disagreement may cost.",
+      ],
+    },
     publishedAt: "2024-11-01T08:00:00Z",
     tags: [MOCK_TAGS[0], MOCK_TAGS[8]],
     author: MOCK_USERS[0],
@@ -343,6 +357,16 @@ export const MOCK_POSTS: Post[] = [
     wordCount: 4050,
     status: "PUBLISHED",
     paywallTier: "FREE",
+    paper: {
+      isAdvancedPaper: true,
+      requiredTier: "elite",
+      depth: "synthesis",
+      takeaways: [
+        "Dome C cores give a continuous 800,000-year record of CO₂ and methane, read from air sealed in the ice.",
+        "Today's CO₂ level sits roughly 40% above anything in that record, reached in about a century rather than millennia.",
+        "The cores constrain climate sensitivity well but say little about regional timing; models carry that uncertainty.",
+      ],
+    },
     publishedAt: "2024-10-22T11:00:00Z",
     tags: [MOCK_TAGS[3], MOCK_TAGS[6]],
     author: MOCK_USERS[3],

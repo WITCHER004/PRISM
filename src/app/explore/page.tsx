@@ -29,7 +29,12 @@ export const metadata: Metadata = {
   },
 }
 
-export default async function ExplorePage() {
+export default async function ExplorePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>
+}) {
+  const { filter } = await searchParams
   const posts = await getFeedPosts(30)
   const topics = [...MOCK_TAGS].sort((a, b) => (b.postCount ?? 0) - (a.postCount ?? 0))
 
@@ -79,7 +84,7 @@ export default async function ExplorePage() {
         {/* Stories */}
         <section aria-labelledby="stories-title" className="max-w-7xl mx-auto px-4 sm:px-6 pb-20">
           <SectionTitle id="stories-title" title="Stories worth your time" />
-          <ExploreFeed posts={posts} topics={MOCK_TAGS} />
+          <ExploreFeed posts={posts} topics={MOCK_TAGS} initialFilter={typeof filter === "string" ? filter : undefined} />
         </section>
       </main>
       <SiteFooter />

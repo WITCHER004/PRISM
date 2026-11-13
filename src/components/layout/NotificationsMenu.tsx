@@ -27,14 +27,14 @@ export function NotificationsMenu({ buttonClassName }: { buttonClassName: string
         aria-label={unread ? `Notifications, ${unread} unread` : "Notifications"}
         className={cn(buttonClassName, "relative")}
       >
-        <Bell className="w-[18px] h-[18px]" />
+        <Bell className="w-[15px] h-[15px]" strokeWidth={1.75} />
         <AnimatePresence>
           {unread > 0 && (
             <motion.span
               initial={{ scale: 0 }}
               animate={{ scale: 1 }}
               exit={{ scale: 0 }}
-              className="absolute top-2 right-2.5 w-2 h-2 rounded-full spectrum-bg ring-2 ring-[var(--panel)]"
+              className="absolute top-[7px] right-[7px] w-1.5 h-1.5 rounded-full bg-[var(--nav-dot)] ring-2 ring-[var(--bg)]"
             />
           )}
         </AnimatePresence>

@@ -5,13 +5,19 @@ import { AnimatePresence, motion } from "motion/react"
 import { useUIStore } from "@/lib/store"
 import { dur, ease } from "@/lib/motion"
 import { cn } from "@/lib/utils"
+import { usePaperAccess } from "@/components/papers/ElitePaper"
 
 // Demo paywall: the full story HTML is always sent and only hidden on screen. Real gating needs
 // the server to withhold the locked part until the reader is entitled to it.
 
-/** True when the reader may see the whole story (free post, unlocked here, or any membership). */
+/**
+ * True when the reader may see the whole story (free post, unlocked here, or any membership).
+ * Inside a <PaperScope> (Advanced Papers) only Elite, the author or the dev demo view unlock it.
+ */
 export function usePostUnlocked(postId: string, paywalled: boolean) {
-  return useUIStore((s) => !paywalled || s.plan !== null || s.unlockedPosts.has(postId))
+  const paper = usePaperAccess()
+  const open = useUIStore((s) => !paywalled || s.plan !== null || s.unlockedPosts.has(postId))
+  return paper.scoped ? paper.canRead : open
 }
 
 /**
@@ -69,13 +75,15 @@ interface PaywalledBodyProps {
   html: string
   /** Share of the story's blocks shown as the preview while locked (0–1) */
   previewFraction?: number
+  /** Fade over the locked preview (CSS mask-image) */
+  mask?: string
 }
 
 type Phase = "locked" | "measure" | "revealing" | "open"
 
 // Story body. Locked: only the preview blocks show, fading out at the bottom. Unlocking shows the
 // rest, releases the height from the preview's to the full story's and slides the fade off the end.
-export function PaywalledBody({ postId, paywalled, html, previewFraction = 0.4 }: PaywalledBodyProps) {
+export function PaywalledBody({ postId, paywalled, html, previewFraction = 0.4, mask = MASK }: PaywalledBodyProps) {
   const unlocked = usePostUnlocked(postId, paywalled)
   const animate = useAnimateChanges()
   const ref = useRef<HTMLDivElement>(null)
@@ -119,8 +127,8 @@ export function PaywalledBody({ postId, paywalled, html, previewFraction = 0.4 }
       : {
           overflow: phase === "locked" ? undefined : "hidden",
           maxHeight: phase === "measure" ? heights.from : phase === "revealing" ? heights.to : undefined,
-          maskImage: MASK,
-          WebkitMaskImage: MASK,
+          maskImage: mask,
+          WebkitMaskImage: mask,
           maskRepeat: "no-repeat",
           WebkitMaskRepeat: "no-repeat",
           maskSize: phase === "revealing" ? "100% 400%" : "100% 100%",

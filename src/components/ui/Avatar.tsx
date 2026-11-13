@@ -1,3 +1,6 @@
+"use client"
+
+import { useState } from "react"
 import { cn } from "@/lib/utils"
 import Image from "next/image"
 
@@ -26,6 +29,8 @@ const pixelMap = {
 }
 
 export function Avatar({ src, alt, size = "md", className, priority = false }: AvatarProps) {
+  // Remember which src failed so a new src gets a fresh try
+  const [failedSrc, setFailedSrc] = useState<string>()
   const initials = alt
     .split(" ")
     .map((n) => n[0])
@@ -41,7 +46,7 @@ export function Avatar({ src, alt, size = "md", className, priority = false }: A
         className
       )}
     >
-      {src ? (
+      {src && src !== failedSrc ? (
         <Image
           src={src}
           alt={alt}
@@ -50,6 +55,8 @@ export function Avatar({ src, alt, size = "md", className, priority = false }: A
           className="object-cover w-full h-full"
           loading={priority ? "eager" : "lazy"}
           fetchPriority={priority ? "high" : "auto"}
+          referrerPolicy="no-referrer"
+          onError={() => setFailedSrc(src)}
           unoptimized
         />
       ) : (

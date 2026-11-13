@@ -94,6 +94,9 @@ export default function LocalStoryPage() {
               html={view.contentHtml}
               tags={view.tags}
               paywall={view.paywall}
+              paper={view.paper}
+              postId={draft.id}
+              paperReview={draft.track === "PEER_PANEL" ? "Peer-panel verified" : "Editor-reviewed"}
               date={draft.publishedAt ?? draft.updatedAt}
               author={{ ...(author.base ?? MOCK_USERS[0]), username: author.username, avatarUrl: author.avatarUrl }}
               authorName={author.displayName}

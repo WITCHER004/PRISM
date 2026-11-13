@@ -314,6 +314,8 @@ function ReviewPanel({ draft, reviewer }: { draft: Draft; reviewer: string }) {
             html={draft.contentHtml}
             tags={draft.tags}
             paywall={draft.paywall}
+            // No postId: reviewers always read the whole paper
+            paper={draft.paper}
             date={draft.submittedAt ?? draft.updatedAt}
             author={{ ...(author.base ?? MOCK_USERS[0]), username: author.username, avatarUrl: author.avatarUrl }}
             authorName={author.displayName}

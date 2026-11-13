@@ -1,4 +1,6 @@
-import { MOCK_POSTS, MOCK_COMMENTS } from "@/lib/data"
+import { MOCK_POSTS, MOCK_COMMENTS, MOCK_PEER_REVIEWS } from "@/lib/data"
+import { deepReadMinutes, PAPER_MASK, PAPER_PREVIEW_FRACTION } from "@/lib/papers"
+import { ElitePaperBadge, MaybePaperScope, PaperAbstract, PaperGate, PaperRibbon } from "@/components/papers/ElitePaper"
 import { getPostBySlug } from "@/actions/posts"
 import { notFound } from "next/navigation"
 import { SiteHeader } from "@/components/layout/SiteHeader"
@@ -31,6 +33,7 @@ import { ViewTracker } from "@/components/elite/ViewTracker"
 import { AuthorShareBar } from "@/components/share/ShareArticle"
 import { RatingChip, ReviewsSection } from "@/components/reviews/ArticleReviews"
 import { absoluteUrl, SITE_URL, socialImageUrl, truncateDescription } from "@/lib/seo"
+import { ArticleInteractiveWrapper } from "@/components/reader/ArticleInteractiveWrapper"
 
 interface PostPageProps {
   params: Promise<{ username: string; slug: string }>
@@ -124,9 +127,13 @@ export default async function PostPage({ params }: PostPageProps) {
 
   // Locked stories show a clipped preview; PaywalledBody releases it once the reader unlocks
   // (demo only: the full HTML is still sent — real gating must withhold it on the server)
-  const isPaywalled = post.paywallTier !== "FREE"
-  // Metered stories preview half the story; member-only and paid ones a third
-  const previewFraction = post.paywallTier === "METERED" ? 0.5 : 0.33
+  // Advanced Papers gate on Elite (see PaperScope) whatever their paywall tier says
+  const paper = post.paper
+  const isPaywalled = post.paywallTier !== "FREE" || !!paper
+  // Papers preview a quarter; metered stories half; member-only and paid ones a third
+  const previewFraction = paper ? PAPER_PREVIEW_FRACTION : post.paywallTier === "METERED" ? 0.5 : 0.33
+  const paperReview =
+    (MOCK_PEER_REVIEWS[post.id]?.length ?? 0) > 0 || paper?.depth === "monograph" ? "Peer-reviewed" : "Editor-reviewed"
   // The interactive demo blocks belong to the distributed-transactions story only
   const showDemoBlocks = post.slug === "hidden-cost-distributed-transactions"
 
@@ -155,7 +162,7 @@ export default async function PostPage({ params }: PostPageProps) {
           description: truncateDescription(post.excerpt),
           datePublished: post.publishedAt,
           inLanguage: "en",
-          isAccessibleForFree: post.paywallTier === "FREE",
+          isAccessibleForFree: !isPaywalled,
           mainEntityOfPage: absoluteUrl(`/${post.author.username}/${post.slug}`),
           image: post.coverImageUrl ?? socialImageUrl(post.title, truncateDescription(post.excerpt)),
           author: {
@@ -179,6 +186,7 @@ export default async function PostPage({ params }: PostPageProps) {
 
       <SiteHeader />
 
+      <MaybePaperScope paper={paper} author={post.author.username}>
       <main className="relative flex-1">
         <article>
           {/* Header */}
@@ -200,7 +208,9 @@ export default async function PostPage({ params }: PostPageProps) {
                     {topic.name}
                   </Link>
                 )}
-                {isPaywalled && (
+                {paper ? (
+                  <ElitePaperBadge className="h-8 px-3 text-[0.8125rem]" />
+                ) : isPaywalled && (
                   <span className="inline-flex items-center gap-1 h-8 px-3 rounded-full bg-[var(--panel)] border border-[var(--border)] text-sm text-[var(--fg-muted)]">
                     <Lock className="w-3.5 h-3.5" />
                     {post.paywallTier === "METERED" ? "Member preview" : "Members only"}
@@ -282,11 +292,30 @@ export default async function PostPage({ params }: PostPageProps) {
             </aside>
 
             <div className="min-w-0">
+              <ArticleInteractiveWrapper
+                articleId={post.id}
+                articleTitle={post.title}
+                authorName={post.author.displayName}
+                authorHandle={post.author.username}
+              >
               <div id="article-body" className="relative">
-                <PaywalledBody postId={post.id} paywalled={isPaywalled} html={html} previewFraction={previewFraction} />
+                {paper && (
+                  <>
+                    <PaperAbstract paper={paper} className="mb-8" />
+                    <PaperRibbon paper={paper} className="mb-10" />
+                  </>
+                )}
+                <PaywalledBody
+                  postId={post.id}
+                  paywalled={isPaywalled}
+                  html={html}
+                  previewFraction={previewFraction}
+                  mask={paper ? PAPER_MASK : undefined}
+                />
 
                 {/* Interactive storytelling blocks (demo story) */}
-                {showDemoBlocks && !isPaywalled && (
+                {showDemoBlocks && (!isPaywalled || paper) && (
+                  <UnlockedOnly postId={post.id} paywalled={isPaywalled}>
                   <div className="mt-12 space-y-8">
                     <CodeSandboxBlock
                       title="Interactive Saga Compensating Transaction Simulation"
@@ -298,14 +327,20 @@ export default async function PostPage({ params }: PostPageProps) {
                     />
                     <PollBlock question="Which distributed transaction architecture does your team currently run in production?" />
                   </div>
+                  </UnlockedOnly>
                 )}
 
                 {isPaywalled && (
                   <LockedOnly postId={post.id} paywalled={isPaywalled}>
-                    <PaywallGate post={post} />
+                    {paper ? (
+                      <PaperGate wordCount={post.wordCount} deepReadMin={deepReadMinutes(post.wordCount)} review={paperReview} />
+                    ) : (
+                      <PaywallGate post={post} />
+                    )}
                   </LockedOnly>
                 )}
               </div>
+              </ArticleInteractiveWrapper>
 
               <UnlockedOnly postId={post.id} paywalled={isPaywalled} delay={0.25}>
                 <>
@@ -401,6 +436,7 @@ export default async function PostPage({ params }: PostPageProps) {
           </section>
         )}
       </main>
+      </MaybePaperScope>
 
       <SiteFooter />
     </div>

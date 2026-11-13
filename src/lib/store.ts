@@ -6,6 +6,8 @@ import { MOCK_USERS, PEER_REVIEWERS, findAccount, type PeerReview, MOCK_PEER_REV
 import type { ArticleStatus, Phase1Report, ReviewTrack } from "@/lib/moderation/types"
 import { canReview, canTransition, isPeerReviewer, MIN_WORDS_FOR_SUBMISSION, phase1Outcome, trackFor } from "@/lib/moderation/workflow"
 import { reviewKey, REVIEW_BODY_MAX, type ArticleReview } from "@/lib/reviews"
+import { logOutFirebase } from "@/lib/firebase"
+import type { AdvancedPaper } from "@/lib/papers"
 import {
   CLOSING_NOTE_MIN,
   COUNTER_REASON_MIN,
@@ -53,6 +55,8 @@ export interface LiveVersion {
   contentHtml: string
   tags: string[]
   paywall: PaywallChoice
+  /** Present when the story is an Advanced Paper (Elite only) */
+  paper?: AdvancedPaper
 }
 
 export interface ReviewOutcome {
@@ -71,6 +75,14 @@ export interface Draft {
   contentHtml: string
   tags: string[]
   paywall: PaywallChoice
+  /** Present when the story is an Advanced Paper (Elite only) */
+  paper?: AdvancedPaper
+  /** Origin Instant Idea ID if promoted from an idea */
+  originIdeaId?: string
+  /** Origin Instant Idea text snapshot */
+  originIdeaText?: string
+  /** Voter usernames who sparked this idea and should be notified when published */
+  voterIds?: string[]
   /** Status of the latest submission — see src/lib/moderation/workflow.ts */
   status: ArticleStatus
   slug: string
@@ -163,6 +175,9 @@ interface UIState {
   ) => void
   signIn: (email: string, name?: string) => string
   signOut: () => void
+  /** Dev builds only: read Advanced Papers as if the viewer were Elite */
+  demoEliteView: boolean
+  setDemoEliteView: (on: boolean) => void
 
   // reader interactions
   clappedPosts: Record<string, number>
@@ -184,7 +199,13 @@ interface UIState {
 
   // writing
   drafts: Record<string, Draft>
-  saveDraft: (d: Pick<Draft, "id" | "title" | "subtitle" | "contentHtml" | "tags" | "paywall">) => Draft
+  saveDraft: (
+    d: Pick<Draft, "id" | "title" | "subtitle" | "contentHtml" | "tags" | "paywall" | "paper"> & {
+      originIdeaId?: string
+      originIdeaText?: string
+      voterIds?: string[]
+    }
+  ) => Draft
   deleteDraft: (id: string) => void
   /** Phase 1 result → PHASE_1_FAILED or PENDING_EMPLOYEE_REVIEW. Elite articles go on to the panel after that. */
   recordPhase1: (id: string, report: Phase1Report) => Draft | null
@@ -274,10 +295,21 @@ const CANNED_FAIL_REASONS = [
   "Methodology is unclear: readers can't tell how the examples were chosen or whether they are representative.",
 ]
 
-/** The reviewed version of a draft becomes the live one */
-function publishDraft(d: Draft, at: string): Draft {
-  const v = d.submitted ?? { title: d.title, subtitle: d.subtitle, contentHtml: d.contentHtml, tags: d.tags, paywall: d.paywall }
-  return { ...d, status: "PUBLISHED", live: v, publishedAt: d.publishedAt ?? at, celebrated: false, liveAiPercent: d.phase1?.aiPercent }
+/** The reviewed version of a draft becomes the live one, and produces notifications for any voters */
+function publishDraft(d: Draft, at: string): { draft: Draft; voterNotes: AppNotification[] } {
+  const v = d.submitted ?? { title: d.title, subtitle: d.subtitle, contentHtml: d.contentHtml, tags: d.tags, paywall: d.paywall, paper: d.paper }
+  const draft: Draft = { ...d, status: "PUBLISHED", live: v, publishedAt: d.publishedAt ?? at, celebrated: false, liveAiPercent: d.phase1?.aiPercent }
+  const title = titleOf(d)
+  const voterNotes: AppNotification[] = (d.voterIds ?? []).map((voter) => ({
+    id: "n_" + uid(),
+    kind: "system",
+    to: voter,
+    text: `An idea you sparked was just published as a full article: “${title}”`,
+    href: `/story/${d.id}`,
+    createdAt: at,
+    read: false,
+  }))
+  return { draft, voterNotes }
 }
 
 const titleOf = (d: Draft) => (d.submitted?.title ?? d.title).trim() || "Untitled story"
@@ -346,7 +378,9 @@ function applyPanel(s: UIState, d: Draft, at: string): Partial<UIState> {
   const notify = (text: string, href: string) =>
     notes.push({ id: "n_" + uid(), kind: "review", to: d.authorUsername, text, href, createdAt: at, read: false })
   if (next === "PUBLISHED" && before !== "PUBLISHED") {
-    updated = { ...publishDraft(updated, at), panelPassed: true }
+    const pub = publishDraft(updated, at)
+    updated = { ...pub.draft, panelPassed: true }
+    notes.push(...pub.voterNotes)
     notify(`“${title}” passed the peer panel and is now live`, `/story/${d.id}`)
   } else if (next === "REJECTED" && before === "PENDING_PEER_PANEL") {
     notify(`The peer panel didn't reach consensus on “${title}”. You can submit counter-reasons.`, `/submissions/${d.id}`)
@@ -383,6 +417,11 @@ export const useUIStore = create<UIState>()(
       setCurrentUser: (currentUser) => set((s) => switchAccount(s, currentUser)),
       setFirebaseUser: (fbUser) => {
         if (!fbUser) {
+          // Only end a session Firebase owned; dev-switcher personas have no Firebase user
+          if (!get().authUid) {
+            set({ authLoading: false })
+            return
+          }
           set({
             currentUser: null,
             authEmail: null,
@@ -462,7 +501,8 @@ export const useUIStore = create<UIState>()(
         })
         return username
       },
-      signOut: () =>
+      signOut: () => {
+        logOutFirebase().catch((err) => console.warn("[auth] Firebase sign-out failed:", err))
         set((s) => ({
           currentUser: null,
           authEmail: null,
@@ -483,7 +523,11 @@ export const useUIStore = create<UIState>()(
             emailReplies: true,
           },
           savedProfiles: s.currentUser ? { ...s.savedProfiles, [s.currentUser]: s.profile } : s.savedProfiles,
-        })),
+        }))
+      },
+
+      demoEliteView: false,
+      setDemoEliteView: (demoEliteView) => set({ demoEliteView }),
 
       clappedPosts: {},
       bookmarkedPosts: new Set<string>(),
@@ -562,7 +606,7 @@ export const useUIStore = create<UIState>()(
           track,
           panel: undefined,
           panelPassed: undefined,
-          submitted: { title: d.title, subtitle: d.subtitle, contentHtml: d.contentHtml, tags: d.tags, paywall: d.paywall },
+          submitted: { title: d.title, subtitle: d.subtitle, contentHtml: d.contentHtml, tags: d.tags, paywall: d.paywall, paper: d.paper },
         }
         set((s) => ({ drafts: { ...s.drafts, [id]: updated } }))
         return updated
@@ -591,6 +635,7 @@ export const useUIStore = create<UIState>()(
         const toPanel = decision === "APPROVED" && d.track === "PEER_PANEL"
         let updated: Draft
         let panelNotes: AppNotification[] = []
+        let voterNotes: AppNotification[] = []
         if (toPanel) {
           try {
             const sent = sendToPanel({ ...d, review }, at)
@@ -600,7 +645,13 @@ export const useUIStore = create<UIState>()(
             return { ok: false, error: "Not enough peer reviewers to form a panel." }
           }
         } else {
-          updated = decision === "APPROVED" ? { ...publishDraft(d, at), review } : { ...d, status: "REJECTED", review }
+          if (decision === "APPROVED") {
+            const pub = publishDraft(d, at)
+            updated = { ...pub.draft, review }
+            voterNotes = pub.voterNotes
+          } else {
+            updated = { ...d, status: "REJECTED", review }
+          }
         }
         const note: AppNotification = {
           id: "n_" + uid(),
@@ -615,7 +666,7 @@ export const useUIStore = create<UIState>()(
           createdAt: at,
           read: false,
         }
-        set((s) => ({ drafts: { ...s.drafts, [id]: updated }, notifications: [note, ...panelNotes, ...s.notifications] }))
+        set((s) => ({ drafts: { ...s.drafts, [id]: updated }, notifications: [note, ...panelNotes, ...voterNotes, ...s.notifications] }))
         return { ok: true }
       },
       markCelebrated: (id) =>
@@ -732,6 +783,7 @@ export const useUIStore = create<UIState>()(
           const toPanel = verdict === "ACCEPT" && d.track === "PEER_PANEL"
           let updated: Draft
           let panelNotes: AppNotification[] = []
+          let voterNotes: AppNotification[] = []
           if (toPanel) {
             try {
               const sent = sendToPanel(approved, at)
@@ -741,7 +793,13 @@ export const useUIStore = create<UIState>()(
               return { ok: false, error: "Not enough peer reviewers to form a panel." }
             }
           } else {
-            updated = verdict === "ACCEPT" ? publishDraft(approved, at) : { ...d, status: "REJECTED", appeal }
+            if (verdict === "ACCEPT") {
+              const pub = publishDraft(approved, at)
+              updated = pub.draft
+              voterNotes = pub.voterNotes
+            } else {
+              updated = { ...d, status: "REJECTED", appeal }
+            }
           }
           const n: AppNotification = {
             id: "n_" + uid(),
@@ -756,7 +814,7 @@ export const useUIStore = create<UIState>()(
             createdAt: at,
             read: false,
           }
-          set((s) => ({ drafts: { ...s.drafts, [id]: updated }, notifications: [n, ...panelNotes, ...s.notifications] }))
+          set((s) => ({ drafts: { ...s.drafts, [id]: updated }, notifications: [n, ...panelNotes, ...voterNotes, ...s.notifications] }))
           return { ok: true }
         }
 
@@ -974,7 +1032,7 @@ export const useUIStore = create<UIState>()(
             d.status = wasPublished ? "PUBLISHED" : "DRAFT"
             // Stories published before review existed stay live as they were
             if (wasPublished)
-              d.live = { title: d.title, subtitle: d.subtitle, contentHtml: d.contentHtml, tags: d.tags, paywall: d.paywall }
+              d.live = { title: d.title, subtitle: d.subtitle, contentHtml: d.contentHtml, tags: d.tags, paywall: d.paywall, paper: d.paper }
             d.celebrated = true
           }
           state.profile = { ...defaultProfile(me.username), ...((state.profile as object | undefined) ?? {}) }
@@ -990,7 +1048,7 @@ export const useUIStore = create<UIState>()(
             ? new Set((v as { __set: string[] }).__set)
             : v,
       }),
-      partialize: ({ toasts: _t, toast: _a, dismissToast: _d, ...rest }) => rest,
+      partialize: ({ toasts: _t, toast: _a, dismissToast: _d, authLoading: _l, ...rest }) => rest,
     }
   )
 )

@@ -11,14 +11,14 @@
 /* ── Design Tokens ─────────────────────────────────────────────────────────── */
 :root {
   /* Light — tinted canvas, white panels */
-  --bg:           #f4f3ef;
-  --bg-secondary: #ecebe6;
+  --bg:           #faf8f5;
+  --bg-secondary: #f3f0ea;
   --panel:        #ffffff;
-  --surface:      #ebe9e3;
-  --surface-hover:#e2e0d9;
-  --border:       #e0ded7;
-  --border-strong:#cfccc3;
-  --fg:           #111113;
+  --surface:      #efebe5;
+  --surface-hover:#e7e2da;
+  --border:       #e7e4de;
+  --border-strong:#d6d1c9;
+  --fg:           #141413;
   --fg-secondary: #34343a;
   --fg-muted:     #62626b;
   --fg-subtle:    #9a9aa1;
@@ -41,6 +41,37 @@
     oklch(0.68 0.19 25), oklch(0.78 0.16 75), oklch(0.74 0.17 150),
     oklch(0.70 0.14 215), oklch(0.58 0.22 285), oklch(0.65 0.22 340));
 
+  /* Masthead: glass bar, controls and CTA (scoped so each theme can retune them) */
+  --nav-bg:            rgb(250 248 245 / 0.85);
+  --nav-border:        rgb(231 229 228 / 0.8);
+  --nav-divider:       rgb(214 211 209 / 0.8);
+  --nav-link:          #57534e;
+  --nav-control:       rgb(231 229 228 / 0.55);
+  --nav-control-hover: rgb(231 229 228 / 0.8);
+  --nav-control-border:rgb(214 211 209 / 0.6);
+  --nav-control-focus: #ffffff;
+  --nav-ring:          rgb(28 25 23 / 0.1);
+  --nav-placeholder:   #78716c;
+  --nav-kbd:           rgb(255 255 255 / 0.9);
+  --nav-kbd-border:    rgb(214 211 209 / 0.7);
+  --nav-pill:          rgb(255 255 255 / 0.8);
+  --nav-pill-hover:    #ffffff;
+  --nav-pill-border:   rgb(231 229 228 / 0.9);
+  --nav-pill-border-hover: #d6d3d1;
+  --nav-cta:           #141413;
+  --nav-cta-hover:     #292524;
+  --nav-cta-fg:        #faf8f5;
+  --nav-dot:           #d97706;
+  --gold:              #c27c0e;
+  --danger-ink:        #b42318;
+  --danger-wash:       #fdf0ee;
+  /* Elite: warm gold on paper */
+  --elite-ink:         #92400e;
+  --elite-wash:        rgb(245 158 11 / 0.1);
+  --elite-line:        rgb(245 158 11 / 0.32);
+  --elite-glow:        rgb(245 158 11 / 0.14);
+  --coral:             #d9472b;
+
   --radius-card: 20px;
   --radius-ctl:  12px;
 
@@ -53,13 +84,13 @@
 }
 
 [data-theme="dark"] {
-  --bg:           #0b0b0d;
-  --bg-secondary: #111114;
-  --panel:        #151519;
-  --surface:      #1d1d22;
-  --surface-hover:#26262c;
-  --border:       #26262c;
-  --border-strong:#36363e;
+  --bg:           #0f0f10;
+  --bg-secondary: #141416;
+  --panel:        #18181b;
+  --surface:      #1f1f23;
+  --surface-hover:#27272a;
+  --border:       #27272a;
+  --border-strong:#3f3f46;
   --fg:           #f1f0ec;
   --fg-secondary: #cfcfd4;
   --fg-muted:     #9a9aa4;
@@ -74,19 +105,48 @@
   --shadow:       0 1px 2px rgba(0,0,0,0.4), 0 8px 24px -12px rgba(0,0,0,0.6);
   --shadow-lift:  0 2px 4px rgba(0,0,0,0.4), 0 24px 48px -16px rgba(0,0,0,0.75);
 
+  --nav-bg:            rgb(15 15 16 / 0.85);
+  --nav-border:        rgb(39 39 42 / 0.8);
+  --nav-divider:       rgb(63 63 70 / 0.8);
+  --nav-link:          #a1a1aa;
+  --nav-control:       rgb(39 39 42 / 0.6);
+  --nav-control-hover: rgb(39 39 42 / 0.95);
+  --nav-control-border:rgb(63 63 70 / 0.5);
+  --nav-control-focus: #18181b;
+  --nav-ring:          rgb(250 250 250 / 0.1);
+  --nav-placeholder:   #8b8b94;
+  --nav-kbd:           rgb(24 24 27 / 0.9);
+  --nav-kbd-border:    rgb(63 63 70 / 0.8);
+  --nav-pill:          rgb(24 24 27 / 0.8);
+  --nav-pill-hover:    #1f1f23;
+  --nav-pill-border:   #27272a;
+  --nav-pill-border-hover: #3f3f46;
+  --nav-cta:           #f4f1ea;
+  --nav-cta-hover:     #e4dfd5;
+  --nav-cta-fg:        #0f0f10;
+  --nav-dot:           #f59e0b;
+  --gold:              #e0a53a;
+  --danger-ink:        #f97066;
+  --danger-wash:       #2a1614;
+  --elite-ink:         #fcd34d;
+  --elite-wash:        rgb(245 158 11 / 0.12);
+  --elite-line:        rgb(245 158 11 / 0.3);
+  --elite-glow:        rgb(245 158 11 / 0.1);
+  --coral:             #ff7a63;
+
   --hue-wash-l: 0.27;  --hue-wash-c: 0.05;
   --hue-ink-l:  0.82;  --hue-ink-c:  0.12;
   --hue-dot-l:  0.74;  --hue-dot-c:  0.16;
 }
 
 [data-theme="sepia"] {
-  --bg:           #f1e9da;
-  --bg-secondary: #e9dfcc;
-  --panel:        #faf5ea;
-  --surface:      #e6dbc6;
-  --surface-hover:#ddd0b8;
-  --border:       #ddd1bb;
-  --border-strong:#cbbc9f;
+  --bg:           #f4efe6;
+  --bg-secondary: #ede6d9;
+  --panel:        #fbf8f2;
+  --surface:      #e9e1d2;
+  --surface-hover:#e0d6c4;
+  --border:       #e2d8c6;
+  --border-strong:#cfc2ab;
   --fg:           #2b2016;
   --fg-secondary: #4a3a2b;
   --fg-muted:     #75624f;
@@ -97,6 +157,35 @@
   --on-accent:    #ffffff;
   --warning:      #8a5a12;
   --warning-subtle:#efe0c2;
+
+  --nav-bg:            rgb(244 239 230 / 0.9);
+  --nav-border:        rgb(214 204 186 / 0.6);
+  --nav-divider:       rgb(207 194 171 / 0.8);
+  --nav-link:          #5e4c3b;
+  --nav-control:       rgb(226 216 198 / 0.55);
+  --nav-control-hover: rgb(226 216 198 / 0.85);
+  --nav-control-border:rgb(207 194 171 / 0.6);
+  --nav-control-focus: #fbf8f2;
+  --nav-ring:          rgb(43 32 22 / 0.12);
+  --nav-placeholder:   #7a6652;
+  --nav-kbd:           rgb(251 248 242 / 0.9);
+  --nav-kbd-border:    rgb(207 194 171 / 0.8);
+  --nav-pill:          rgb(251 248 242 / 0.8);
+  --nav-pill-hover:    #fbf8f2;
+  --nav-pill-border:   rgb(214 204 186 / 0.9);
+  --nav-pill-border-hover: #cfc2ab;
+  --nav-cta:           #2b2016;
+  --nav-cta-hover:     #3d2f22;
+  --nav-cta-fg:        #f4efe6;
+  --nav-dot:           #b45309;
+  --gold:              #a8660b;
+  --danger-ink:        #a8321f;
+  --danger-wash:       #f6e4dc;
+  --elite-ink:         #7a4204;
+  --elite-wash:        rgb(180 83 9 / 0.1);
+  --elite-line:        rgb(180 83 9 / 0.3);
+  --elite-glow:        rgb(180 83 9 / 0.1);
+  --coral:             #b83b22;
 
   --hue-wash-l: 0.93;  --hue-wash-c: 0.04;
   --hue-ink-l:  0.45;  --hue-ink-c:  0.14;

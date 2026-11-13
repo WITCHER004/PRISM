@@ -4,6 +4,9 @@ import {
   GoogleAuthProvider,
   GithubAuthProvider,
   signInWithPopup,
+  signInWithRedirect,
+  setPersistence,
+  browserLocalPersistence,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   sendPasswordResetEmail,
@@ -25,11 +28,23 @@ export const firebaseConfig = {
   measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID || "G-9TGPS0XGJN",
 }
 
+if (!firebaseConfig.projectId) {
+  console.warn("[firebase] projectId is missing. Set NEXT_PUBLIC_FIREBASE_PROJECT_ID in .env.local.")
+}
+
 // Initialize Firebase (singleton pattern for Next.js SSR and hot reloading)
 export const app: FirebaseApp = getApps().length ? getApp() : initializeApp(firebaseConfig)
 
 // Initialize Firebase Authentication
 export const auth: Auth = getAuth(app)
+
+// Keep the session across reloads and tabs. Browser-only; resolves immediately on the server.
+export const authPersistenceReady: Promise<void> =
+  typeof window === "undefined"
+    ? Promise.resolve()
+    : setPersistence(auth, browserLocalPersistence).catch((err) => {
+        console.warn("[auth] Could not enable local persistence:", err)
+      })
 
 // Auth Providers
 export const googleProvider = new GoogleAuthProvider()
@@ -55,8 +70,22 @@ export const getClientAnalytics = async (): Promise<Analytics | null> => {
 }
 
 // Authentication Helpers
+// Popup first: redirects break on localhost and in browsers that block third-party cookies.
+// Fall back to a redirect only when the popup itself can't open; onAuthStateChanged picks up the result.
+const POPUP_UNAVAILABLE = new Set(["auth/popup-blocked", "auth/operation-not-supported-in-this-environment"])
+
 export async function signInWithGoogle() {
-  return signInWithPopup(auth, googleProvider)
+  await authPersistenceReady
+  try {
+    return await signInWithPopup(auth, googleProvider)
+  } catch (err) {
+    const code = (err as { code?: string })?.code
+    if (code && POPUP_UNAVAILABLE.has(code)) {
+      await signInWithRedirect(auth, googleProvider)
+      return null
+    }
+    throw err
+  }
 }
 
 export async function signInWithGithub() {

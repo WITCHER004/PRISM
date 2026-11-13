@@ -10,6 +10,7 @@ import { dur, ease } from "@/lib/motion"
 import { Avatar } from "@/components/ui/Avatar"
 import { UserAvatar } from "@/components/profile/identity"
 import { RatingChip } from "@/components/reviews/ArticleReviews"
+import { ElitePaperBadge } from "@/components/papers/ElitePaper"
 import { hueStyle } from "@/lib/topics"
 import { formatRelativeDate, numberWithCommas, cn } from "@/lib/utils"
 import { Bookmark, BookmarkCheck, Lock, BadgeCheck, ArrowUpRight, HandHeart } from "lucide-react"
@@ -108,7 +109,7 @@ export function PostCard({ post, variant = "default", showAuthor = true, index, 
               <span className="w-2 h-2 rounded-full hue-dot" />
               {topic?.name ?? "Story"}
             </span>
-            <PaywallPill tier={post.paywallTier} onDark />
+            <PaywallPill tier={post.paywallTier} paper={!!post.paper} onDark />
           </div>
           <Link href={href} className={cn("mt-4", overlayLink)}>
             <h2 className="display text-[1.875rem] sm:text-[2.5rem] lg:text-[2.75rem] max-w-2xl">{post.title}</h2>
@@ -157,10 +158,10 @@ export function PostCard({ post, variant = "default", showAuthor = true, index, 
         )}
         <Spotlight under />
         <div className="flex flex-col flex-1 p-5">
-          <div className="flex items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <TopicChip post={post} />
-            <PaywallPill tier={post.paywallTier} />
-            <RatingChip postId={post.id} className="ml-auto text-xs" />
+            <PaywallPill tier={post.paywallTier} paper={!!post.paper} />
+            <RatingChip postId={post.id} className="ml-auto text-xs whitespace-nowrap" />
           </div>
           <Link href={href} className={cn("mt-3", overlayLink)}>
             <h3 className={cn("display text-[var(--fg)]", washed ? "text-[1.75rem]" : "text-[1.375rem] leading-[1.08]")}>
@@ -197,10 +198,10 @@ export function PostCard({ post, variant = "default", showAuthor = true, index, 
     >
       <Spotlight under />
       <div className="min-w-0 flex flex-col">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <TopicChip post={post} />
-          <PaywallPill tier={post.paywallTier} />
-          <RatingChip postId={post.id} className="ml-auto text-xs" />
+          <PaywallPill tier={post.paywallTier} paper={!!post.paper} />
+          <RatingChip postId={post.id} className="ml-auto text-xs whitespace-nowrap" />
         </div>
         <Link href={href} className={cn("mt-2.5", overlayLink)}>
           <h2 className="display text-[1.3125rem] sm:text-[1.5rem] leading-[1.08] text-[var(--fg)] line-clamp-3">
@@ -250,7 +251,8 @@ function TopicChip({ post, subtle }: { post: Post; subtle?: boolean }) {
   )
 }
 
-function PaywallPill({ tier, onDark }: { tier: Post["paywallTier"]; onDark?: boolean }) {
+function PaywallPill({ tier, onDark, paper }: { tier: Post["paywallTier"]; onDark?: boolean; paper?: boolean }) {
+  if (paper) return <ElitePaperBadge onDark={onDark} />
   if (tier === "FREE") return null
   const label = tier === "METERED" ? "Preview" : tier === "PAID" ? "Paid" : "Members"
   return (

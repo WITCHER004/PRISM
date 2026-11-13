@@ -15,6 +15,8 @@ import { ArrowRight, BadgeCheck, Timer } from "lucide-react"
 import type { Metadata } from "next"
 import { JsonLd } from "@/components/seo/JsonLd"
 import { SITE_URL } from "@/lib/seo"
+import { InstantIdeasTray } from "@/components/ideas/InstantIdeasTray"
+import { EliteSpark } from "@/components/papers/ElitePaper"
 
 export const metadata: Metadata = {
   title: { absolute: "Prism — Ideas, refracted" },
@@ -105,6 +107,13 @@ export default async function HomePage() {
         {/* Topic rail */}
         <nav aria-label="Topics" className="max-w-7xl mx-auto px-4 sm:px-6">
           <div className="flex gap-2 overflow-x-auto scrollbar-none pb-1 -mx-4 px-4 sm:mx-0 sm:px-0">
+            <Link
+              href="/explore?filter=papers"
+              className="shrink-0 inline-flex items-center gap-2 h-10 pl-3 pr-4 rounded-full border border-[var(--elite-line)] bg-[var(--elite-wash)] text-sm font-medium text-[var(--elite-ink)] hover:border-[var(--elite-ink)] transition-colors"
+            >
+              <EliteSpark className="w-3 h-3" />
+              Advanced Papers
+            </Link>
             {MOCK_TAGS.map((tag) => (
               <Link
                 key={tag.id}
@@ -118,6 +127,9 @@ export default async function HomePage() {
             ))}
           </div>
         </nav>
+
+        {/* Short-lived ideas, above the feed */}
+        <InstantIdeasTray className="pt-8" />
 
         {/* Bento */}
         <section className="max-w-7xl mx-auto px-4 sm:px-6 pt-6 pb-16">
