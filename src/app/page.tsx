@@ -7,9 +7,9 @@ import { Reveal } from "@/components/motion/Reveal"
 import { RevealText } from "@/components/motion/RevealText"
 import { Avatar } from "@/components/ui/Avatar"
 import { FollowButton } from "@/components/ui/FollowButton"
-import { MOCK_TAGS, MOCK_USERS, SAMPLE_WRITERS } from "@/lib/data"
-import { getFeedPosts } from "@/actions/posts"
-import { hueStyle } from "@/lib/topics"
+import type { User } from "@/lib/data"
+import { getActiveWriters, getPublishedPosts, getTopicCounts } from "@/lib/server/content"
+import { hueStyle, TOPICS } from "@/lib/topics"
 import { numberWithCommas } from "@/lib/utils"
 import Link from "next/link"
 import { ArrowRight, BadgeCheck } from "lucide-react"
@@ -27,12 +27,13 @@ export const metadata: Metadata = {
   alternates: { canonical: "/" },
 }
 
-// Static, refreshed every 5 minutes. The `?topic=` filter runs in the browser (HomeFeed), so the page
-// is cacheable and crawlers always get the full, unfiltered feed.
-export const revalidate = 300
+// Static, refreshed every minute from Firestore. The `?topic=` filter runs in the browser (HomeFeed), so
+// the page is cacheable and crawlers always get the full, unfiltered feed.
+export const revalidate = 60
 
 export default async function HomePage() {
-  const feed = await getFeedPosts(50)
+  const [feed, writers, counts] = await Promise.all([getPublishedPosts(), getActiveWriters(12), getTopicCounts()])
+  const tags = TOPICS.map((t) => ({ ...t, postCount: counts.get(t.slug) ?? 0 }))
 
   return (
     <div className="min-h-screen flex flex-col bg-[var(--bg)]">
@@ -96,8 +97,8 @@ export default async function HomePage() {
           </Reveal>
 
           <Reveal index={2} className="lg:col-span-5">
-            <Suspense fallback={<SpectrumCard tags={MOCK_TAGS} />}>
-              <SpectrumCardWithTopic tags={MOCK_TAGS} />
+            <Suspense fallback={<SpectrumCard tags={tags} />}>
+              <SpectrumCardWithTopic tags={tags} />
             </Suspense>
           </Reveal>
         </section>
@@ -112,7 +113,7 @@ export default async function HomePage() {
               <EliteSpark className="w-3 h-3" />
               Advanced Papers
             </Link>
-            {MOCK_TAGS.map((tag) => (
+            {tags.map((tag) => (
               <Link
                 key={tag.id}
                 href={`/explore/${tag.slug}`}
@@ -134,13 +135,14 @@ export default async function HomePage() {
         </Suspense>
 
         {/* Writers */}
+        {writers.length > 0 && (
         <section className="pb-16">
           <div className="max-w-7xl mx-auto px-4 sm:px-6">
             <SectionTitle title="Writers worth following" />
           </div>
           <div className="max-w-7xl mx-auto px-4 sm:px-6">
             <ScrollRail label="writers" className="flex gap-4 snap-x pb-2 -mx-4 px-4 sm:mx-0 sm:px-0">
-              {SAMPLE_WRITERS.map((user, i) => (
+              {writers.map((user, i) => (
                 <Reveal key={user.id} index={i} className="snap-start shrink-0 w-[280px]">
                   <WriterCard user={user} />
                 </Reveal>
@@ -148,6 +150,7 @@ export default async function HomePage() {
             </ScrollRail>
           </div>
         </section>
+        )}
 
         {/* Join band */}
         <section className="max-w-7xl mx-auto px-4 sm:px-6 pb-20">
@@ -185,7 +188,7 @@ export default async function HomePage() {
   )
 }
 
-function WriterCard({ user }: { user: (typeof MOCK_USERS)[0] }) {
+function WriterCard({ user }: { user: User }) {
   return (
     <div className="panel h-full p-5 shadow-[var(--shadow)] flex flex-col">
       <div className="flex items-center gap-3">
@@ -195,7 +198,9 @@ function WriterCard({ user }: { user: (typeof MOCK_USERS)[0] }) {
             <span className="truncate">{user.displayName}</span>
             {user.isVerifiedHuman && <BadgeCheck className="w-4 h-4 shrink-0 text-[var(--accent)]" aria-label="Verified writer" />}
           </Link>
-          <p className="meta mt-0.5">{numberWithCommas(user.followerCount)} readers</p>
+          <p className="meta mt-0.5">
+            {numberWithCommas(user.postCount)} {user.postCount === 1 ? "story" : "stories"}
+          </p>
         </div>
       </div>
       <p className="mt-4 text-sm leading-relaxed text-[var(--fg-muted)] line-clamp-3">{user.bio}</p>

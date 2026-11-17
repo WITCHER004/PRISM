@@ -5,9 +5,8 @@ import { useHydrated } from "@/components/studio/useHydrated"
 import { useUIStore } from "@/lib/store"
 
 /**
- * Logs one view of a published article. Demo mode records it in the browser store
- * (deduped per reader per 24h); with a database, the same rules run in
- * POST /api/articles/[id]/views, which also fingerprints signed-out readers by IP.
+ * Logs one view of a published article: deduped per reader per 24h in this browser, then counted on
+ * Firestore articles/{id}.views (the author's own reads don't count).
  */
 export function ViewTracker({ postId, author }: { postId: string; author: string }) {
   const hydrated = useHydrated()

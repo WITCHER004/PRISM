@@ -1,5 +1,11 @@
-// Margin Notes & Social Quote Cards Services and Types
-// Stored in Firestore collection `margin_notes` with local storage mirroring `prism-margin-notes:v1`
+"use client"
+
+// Paragraph-anchored margin notes, stored in Firestore `margin_notes`:
+//   articleId · paragraphIndex · selectedText · noteText · authorId · authorHandle · authorName ·
+//   authorAvatar · createdAt
+
+import { useCallback, useEffect, useState } from "react"
+import { toast, useUIStore } from "@/lib/store"
 
 export interface MarginNote {
   id: string
@@ -7,98 +13,107 @@ export interface MarginNote {
   paragraphIndex: number
   selectedText: string
   noteText: string
+  authorUid?: string
   authorUsername: string
   authorDisplayName: string
   authorAvatar?: string
   createdAt: number
 }
 
-const LOCAL_NOTES_KEY = "prism-margin-notes:v1"
+const NOTES = "margin_notes"
+const fs = () => Promise.all([import("firebase/firestore"), import("@/lib/firebase")])
+const warn = (msg: string, err: unknown) =>
+  console.warn(`[margin-notes] ${msg}`, (err as { code?: string })?.code ?? (err as Error)?.message ?? err)
 
-function readJSON<T>(key: string, fallback: T): T {
-  if (typeof window === "undefined") return fallback
-  try {
-    const raw = localStorage.getItem(key)
-    return raw ? (JSON.parse(raw) as T) : fallback
-  } catch {
-    return fallback
-  }
+type NoteDoc = {
+  articleId: string
+  paragraphIndex: number
+  selectedText: string
+  noteText: string
+  authorId: string
+  authorHandle: string
+  authorName: string
+  authorAvatar: string
+  createdAt: number
 }
 
-function writeJSON(key: string, value: unknown) {
-  if (typeof window === "undefined") return
-  try {
-    localStorage.setItem(key, JSON.stringify(value))
-  } catch {}
+const fromDoc = (id: string, d: Partial<NoteDoc>): MarginNote => ({
+  id,
+  articleId: d.articleId ?? "",
+  paragraphIndex: d.paragraphIndex ?? 0,
+  selectedText: d.selectedText ?? "",
+  noteText: d.noteText ?? "",
+  authorUid: d.authorId,
+  authorUsername: d.authorHandle ?? "",
+  authorDisplayName: d.authorName ?? d.authorHandle ?? "Reader",
+  authorAvatar: d.authorAvatar || undefined,
+  createdAt: d.createdAt ?? 0,
+})
+
+/** Live margin notes on one article, plus add/remove for the signed-in reader */
+export function useMarginNotes(articleId: string) {
+  const [notes, setNotes] = useState<MarginNote[]>([])
+  const uid = useUIStore((s) => s.authUid)
+  const handle = useUIStore((s) => s.currentUser)
+  const profile = useUIStore((s) => s.profile)
+
+  useEffect(() => {
+    if (!articleId) return
+    let stop: (() => void) | undefined
+    let cancelled = false
+    fs()
+      .then(([{ collection, query, where, onSnapshot }, { db }]) => {
+        if (cancelled) return
+        // Single-field filter (no composite index); sorted here
+        stop = onSnapshot(
+          query(collection(db, NOTES), where("articleId", "==", articleId)),
+          (snap) => setNotes(snap.docs.map((d) => fromDoc(d.id, d.data() as Partial<NoteDoc>)).sort((a, b) => b.createdAt - a.createdAt)),
+          (err) => warn("listener stopped", err)
+        )
+      })
+      .catch((err) => warn("Firestore unavailable", err))
+    return () => {
+      cancelled = true
+      stop?.()
+    }
+  }, [articleId])
+
+  const add = useCallback(
+    (noteText: string, payload: { paragraphIndex: number; text: string }) => {
+      if (!uid || !handle) {
+        toast("Sign in to leave margin notes.")
+        return false
+      }
+      const data: NoteDoc = {
+        articleId,
+        paragraphIndex: payload.paragraphIndex,
+        selectedText: payload.text,
+        noteText: noteText.trim(),
+        authorId: uid,
+        authorHandle: handle,
+        authorName: profile.displayName || handle,
+        authorAvatar: profile.avatarUrl || "",
+        createdAt: Date.now(),
+      }
+      fs()
+        .then(([{ collection, addDoc }, { db }]) => addDoc(collection(db, NOTES), data))
+        .catch((err) => {
+          warn("couldn't save the note", err)
+          toast("Couldn't save your margin note.", { tone: "error" })
+        })
+      return true
+    },
+    [articleId, uid, handle, profile.displayName, profile.avatarUrl]
+  )
+
+  const remove = useCallback((noteId: string) => {
+    fs()
+      .then(([{ doc, deleteDoc }, { db }]) => deleteDoc(doc(db, NOTES, noteId)))
+      .catch((err) => {
+        warn("couldn't delete the note", err)
+        toast("Couldn't remove that note.", { tone: "error" })
+      })
+  }, [])
+
+  return { notes, add, remove, currentUser: handle, displayName: profile.displayName || handle || "Reader" }
 }
-
-export function loadLocalMarginNotes(articleId: string): MarginNote[] {
-  const all = readJSON<Record<string, MarginNote[]>>(LOCAL_NOTES_KEY, {})
-  return all[articleId] ?? []
-}
-
-export function saveLocalMarginNote(note: MarginNote) {
-  const all = readJSON<Record<string, MarginNote[]>>(LOCAL_NOTES_KEY, {})
-  const current = all[note.articleId] ?? []
-  all[note.articleId] = [note, ...current]
-  writeJSON(LOCAL_NOTES_KEY, all)
-}
-
-export function deleteLocalMarginNote(articleId: string, noteId: string) {
-  const all = readJSON<Record<string, MarginNote[]>>(LOCAL_NOTES_KEY, {})
-  const current = all[articleId] ?? []
-  all[articleId] = current.filter((n) => n.id !== noteId)
-  writeJSON(LOCAL_NOTES_KEY, all)
-}
-
-/* ── Remote Firestore Integration (Best effort / offline resilient) ───────── */
-
-const NOTES_COLLECTION = "margin_notes"
-
-export async function fetchRemoteMarginNotes(articleId: string): Promise<MarginNote[]> {
-  try {
-    const [{ collection, query, where, orderBy, getDocs }, { db }] = await Promise.all([
-      import("firebase/firestore"),
-      import("@/lib/firestore"),
-    ])
-    const q = query(
-      collection(db, NOTES_COLLECTION),
-      where("articleId", "==", articleId),
-      orderBy("createdAt", "desc")
-    )
-    const snap = await Promise.race([
-      getDocs(q),
-      new Promise<never>((_, reject) => setTimeout(() => reject(new Error("timed out")), 4000)),
-    ])
-    return snap.docs.map((d) => ({ ...(d.data() as MarginNote), id: d.id }))
-  } catch {
-    return []
-  }
-}
-
-export async function saveRemoteMarginNote(note: MarginNote) {
-  try {
-    const [{ doc, setDoc }, { db }] = await Promise.all([
-      import("firebase/firestore"),
-      import("@/lib/firestore"),
-    ])
-    await Promise.race([
-      setDoc(doc(db, NOTES_COLLECTION, note.id), note),
-      new Promise<never>((_, reject) => setTimeout(() => reject(new Error("timed out")), 4000)),
-    ])
-  } catch {}
-}
-
-export async function deleteRemoteMarginNote(noteId: string) {
-  try {
-    const [{ doc, deleteDoc }, { db }] = await Promise.all([
-      import("firebase/firestore"),
-      import("@/lib/firestore"),
-    ])
-    await Promise.race([
-      deleteDoc(doc(db, NOTES_COLLECTION, noteId)),
-      new Promise<never>((_, reject) => setTimeout(() => reject(new Error("timed out")), 4000)),
-    ])
-  } catch {}
-}
-

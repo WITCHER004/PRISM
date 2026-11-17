@@ -10,7 +10,10 @@ import { useAuth } from "@/components/providers/AuthProvider"
 import { NotificationsMenu } from "@/components/layout/NotificationsMenu"
 import { Wordmark } from "@/components/ui/Wordmark"
 import { useViewer } from "@/components/providers/useViewer"
-import { canOpenReviewDashboard } from "@/lib/moderation/workflow"
+import { useAccess, usePanelInbox } from "@/components/providers/useAccess"
+import { EliteNameBadge } from "@/components/elite/EliteBadges"
+import { openUpgrade } from "@/components/elite/UpgradeDialog"
+import { CountBadge, PanelApplyButton } from "@/components/panel/PanelApplication"
 import {
   Search,
   Feather,
@@ -24,7 +27,6 @@ import {
   Settings,
   LogOut,
   FileText,
-  MessageSquareReply,
   Wallet,
   Sparkles,
   ChevronDown,
@@ -52,20 +54,24 @@ export function SiteHeader() {
   const router = useRouter()
   const { theme, setTheme } = useUIStore()
   const { logout } = useAuth()
-  const { viewer: user, loading, isElite } = useViewer()
+  const { viewer: user, loading, isElite: viewerElite } = useViewer()
+  const access = useAccess()
+  const isElite = viewerElite || access.isElite
+  const inbox = usePanelInbox(access.isPanelMember ? access.username : null)
   const [mobileOpen, setMobileOpen] = useState(false)
   const [userMenuOpen, setUserMenuOpen] = useState(false)
   const [query, setQuery] = useState("")
   const searchRef = useRef<HTMLInputElement>(null)
-  const isReviewer = canOpenReviewDashboard(user?.role)
   const isEditor = pathname?.startsWith("/editor")
 
-  const navLinks = [
+  // Same sections for every member; staff tools live only in the separate /admin portal
+  const navLinks: { href: string; label: string; active: boolean; gold?: boolean; count?: number }[] = [
     { href: "/", label: "Feed", active: pathname === "/" },
     { href: "/explore", label: "Explore", active: !!pathname?.startsWith("/explore") },
-    isReviewer
-      ? { href: "/review-dashboard", label: "Review Queue", active: !!pathname?.startsWith("/review-dashboard") }
-      : { href: "/elite", label: "Elite", gold: true, active: !!pathname?.startsWith("/elite") },
+    { href: "/elite", label: "Elite", gold: true, active: !!pathname?.startsWith("/elite") },
+    ...(user && access.isPanelMember
+      ? [{ href: "/panel", label: "Review Panel", active: !!pathname?.startsWith("/panel"), count: inbox.total }]
+      : []),
   ]
 
   // ⌘K / Ctrl+K: focus the bar when it's on screen, otherwise open the search page
@@ -141,7 +147,7 @@ export function SiteHeader() {
           <Wordmark />
           <span aria-hidden className="hidden md:block h-4 w-px bg-[var(--nav-divider)] mx-1" />
           <nav aria-label="Primary" className="hidden md:flex items-center gap-1">
-            {navLinks.map(({ href, label, gold, active }) => (
+            {navLinks.map(({ href, label, gold, active, count }) => (
               <Link
                 key={href}
                 href={href}
@@ -155,6 +161,7 @@ export function SiteHeader() {
               >
                 {gold && <span aria-hidden className="text-[10px] text-[#C27C0E] theme-dark:text-[#E0A53A]">✦</span>}
                 {label}
+                {!!count && <CountBadge n={count} className="ml-0.5 h-[18px] min-w-[18px] text-[10.5px]" />}
               </Link>
             ))}
           </nav>
@@ -247,6 +254,11 @@ export function SiteHeader() {
                   <span className="hidden xl:block text-[13px] font-medium text-[var(--fg-secondary)] truncate max-w-[110px]">
                     {user.displayName}
                   </span>
+                  {isElite && (
+                    <span aria-label="Elite member" className="text-[11px] leading-none text-[#C27C0E] theme-dark:text-[#E0A53A]">
+                      ✦
+                    </span>
+                  )}
                   <ChevronDown
                     aria-hidden
                     className={cn(
@@ -265,22 +277,18 @@ export function SiteHeader() {
                         initial={{ opacity: 0, y: -4, scale: 0.98 }}
                         animate={{ opacity: 1, y: 0, scale: 1, transition: { duration: dur.fast * 1.4, ease: ease.out } }}
                         exit={{ opacity: 0, y: -4, scale: 0.98, transition: { duration: dur.fast, ease: ease.in } }}
-                        className="absolute right-0 top-full mt-2.5 w-56 p-1.5 origin-top-right rounded-2xl bg-[var(--panel)] border border-[var(--border)] shadow-xl z-50"
+                        className="absolute right-0 top-full mt-2.5 w-72 p-1.5 origin-top-right rounded-2xl bg-[var(--panel)] border border-[var(--border)] shadow-xl z-50"
                       >
                         <div className="px-2.5 pt-2 pb-2.5 mb-1 border-b border-[var(--border)]">
                           <div className="flex items-center justify-between gap-2">
                             <p className="text-[13.5px] font-semibold text-[var(--fg)] truncate">{user.displayName}</p>
-                            <span
-                              className={cn(
-                                "shrink-0 inline-flex items-center gap-1 h-5 px-1.5 rounded-full text-[10.5px] font-medium tracking-wide border",
-                                isElite
-                                  ? "text-[var(--gold)] border-[var(--gold)]/35 bg-[var(--gold)]/10"
-                                  : "text-[var(--fg-muted)] border-[var(--border)] bg-[var(--surface)]"
-                              )}
-                            >
-                              {isElite && <span aria-hidden className="w-1 h-1 rounded-full bg-[var(--gold)]" />}
-                              {isElite ? "Elite" : "Free"}
-                            </span>
+                            {isElite ? (
+                              <EliteNameBadge />
+                            ) : (
+                              <span className="shrink-0 inline-flex items-center h-5 px-1.5 rounded-full text-[10.5px] font-medium tracking-wide border text-[var(--fg-muted)] border-[var(--border)] bg-[var(--surface)]">
+                                Free
+                              </span>
+                            )}
                           </div>
                           <p className="mt-0.5 text-xs text-[var(--fg-muted)] truncate">@{user.username}</p>
                           {user.email && <p className="text-xs text-[var(--fg-subtle)] truncate">{user.email}</p>}
@@ -289,13 +297,8 @@ export function SiteHeader() {
                         {[
                           { href: "/profile", icon: User, label: "Profile Hub" },
                           { href: "/dashboard", icon: FileText, label: "My Articles" },
-                          ...(isReviewer
-                            ? [{ href: "/review-dashboard?tab=counters", icon: MessageSquareReply, label: "Writer Rebuttals" }]
-                            : []),
                           { href: "/bookmarks", icon: Bookmark, label: "Library" },
-                          isElite
-                            ? { href: "/dashboard/earnings", icon: Wallet, label: "Earnings" }
-                            : { href: "/elite", icon: Sparkles, label: "Upgrade to Elite" },
+                          ...(isElite ? [{ href: "/dashboard/earnings", icon: Wallet, label: "Earnings" }] : []),
                           { href: "/settings", icon: Settings, label: "Settings" },
                         ].map(({ href, icon: Icon, label }) => (
                           <Link key={href} href={href} role="menuitem" onClick={() => setUserMenuOpen(false)} className={menuItem}>
@@ -303,6 +306,24 @@ export function SiteHeader() {
                             {label}
                           </Link>
                         ))}
+
+                        {/* Progressive capabilities: upgrade in place, then the panel button's own states */}
+                        <div className="my-1 h-px bg-[var(--border)]" />
+                        {!isElite && (
+                          <button
+                            type="button"
+                            role="menuitem"
+                            onClick={() => {
+                              setUserMenuOpen(false)
+                              openUpgrade()
+                            }}
+                            className={cn(menuItem, "w-full font-medium text-[var(--elite-ink)]")}
+                          >
+                            <Sparkles className="w-[15px] h-[15px]" strokeWidth={1.75} />
+                            Upgrade to Prism Elite
+                          </button>
+                        )}
+                        <PanelApplyButton variant="menu" onNavigate={() => setUserMenuOpen(false)} className="mt-0.5" />
 
                         <div className="my-1 h-px bg-[var(--border)]" />
                         <button

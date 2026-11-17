@@ -3,20 +3,19 @@
 import { useState } from "react"
 import { CircleCheck, CircleX, Clock, MessageSquareReply, Scale } from "lucide-react"
 import { findAccount } from "@/lib/data"
-import { PANEL_PASS_THRESHOLD, PANEL_SIZE } from "@/lib/elite/config"
-import { canCounterVote, reconsiderationStatus, tallyPanel, type CounterReason, type PanelVote, type Reconsideration } from "@/lib/elite/panel"
+import { canCounterVote, passThreshold, reconsiderationStatus, tallyPanel, type CounterReason, type PanelVote, type Reconsideration } from "@/lib/elite/panel"
 import type { Draft } from "@/lib/store"
 import { cn, formatRelativeDate } from "@/lib/utils"
 import { CounterDialog } from "./CounterDialog"
 
-/** Ten squares: emerald = PASS, rose = FAIL, outline = not yet voted */
+/** One square per seat: emerald = PASS, rose = FAIL, outline = not yet voted */
 export function PanelMeter({ votes, className }: { votes: readonly PanelVote[]; className?: string }) {
   const t = tallyPanel(votes)
   return (
     <div className={className}>
       <div
         role="img"
-        aria-label={`${t.pass} pass, ${t.fail} fail, ${t.pending} not voted. ${PANEL_PASS_THRESHOLD} passes publish.`}
+        aria-label={`${t.pass} pass, ${t.fail} fail, ${t.pending} not voted. ${passThreshold(t.total)} passes publish.`}
         className="flex gap-1"
       >
         {[...votes]
@@ -36,7 +35,7 @@ export function PanelMeter({ votes, className }: { votes: readonly PanelVote[]; 
           <b className="text-emerald-700">{t.pass} pass</b> · <b className="text-rose-700">{t.fail} fail</b> · {t.pending} pending
         </span>
         <span>
-          {PANEL_PASS_THRESHOLD} of {PANEL_SIZE} needed
+          {passThreshold(t.total)} of {t.total} needed
         </span>
       </div>
     </div>
@@ -140,7 +139,7 @@ export function PanelScorecard({ draft, asAuthor }: { draft: Draft; asAuthor: bo
       </ul>
 
       {asAuthor && draft.status === "PENDING_PEER_PANEL" && (
-        <p className="mt-4 text-sm text-[var(--fg-muted)]">You can appeal FAIL votes once all {PANEL_SIZE} members have voted.</p>
+        <p className="mt-4 text-sm text-[var(--fg-muted)]">You can appeal FAIL votes once all {draft.panel?.length ?? 0} members have voted.</p>
       )}
 
       {appealing && (

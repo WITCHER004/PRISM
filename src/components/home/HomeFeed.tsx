@@ -2,19 +2,19 @@
 
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
-import { ArrowRight, Timer, X } from "lucide-react"
+import { ArrowRight, PenLine, Timer, X } from "lucide-react"
 import { PostCard } from "@/components/posts/PostCard"
 import { Reveal } from "@/components/motion/Reveal"
 import { SpectrumCard } from "@/components/home/SpectrumCard"
-import { hueStyle } from "@/lib/topics"
-import { MOCK_TAGS, type Post, type Tag } from "@/lib/data"
+import { hueStyle, TOPICS } from "@/lib/topics"
+import type { Post, Tag } from "@/lib/data"
 
 const UNFILTERED = 10
 
 /** The `?topic=` the spectrum card sets, read in the browser so the page itself stays static. */
 function useTopic(): Tag | undefined {
   const slug = useSearchParams().get("topic")
-  return MOCK_TAGS.find((t) => t.slug === slug)
+  return TOPICS.find((t) => t.slug === slug)
 }
 
 export function SpectrumCardWithTopic({ tags }: { tags: Tag[] }) {
@@ -53,7 +53,9 @@ export function HomeFeed({ posts: all, topic }: { posts: Post[]; topic?: Tag }) 
           </div>
         )}
 
-        {!lead ? (
+        {!lead && !topic ? (
+          <EmptyFeed />
+        ) : !lead ? (
           <div className="panel p-10 text-center text-[var(--fg-muted)]">
             No {topic?.name} stories in the feed yet.{" "}
             <Link href={`/explore/${topic?.slug}`} className="underline underline-offset-4 text-[var(--fg)]">
@@ -105,6 +107,28 @@ export function HomeFeed({ posts: all, topic }: { posts: Post[]; topic?: Tag }) 
         </section>
       )}
     </>
+  )
+}
+
+/** The whole site has nothing published yet */
+function EmptyFeed() {
+  return (
+    <div className="relative overflow-hidden rounded-[28px] border border-[var(--border)] bg-[var(--panel)] px-6 py-16 sm:py-20 text-center">
+      <div aria-hidden className="absolute inset-x-0 top-0 h-1 spectrum-bg opacity-80" />
+      <p className="meta">The first page is blank</p>
+      <h2 className="display mt-4 text-[2rem] sm:text-[2.75rem] leading-[1.02] max-w-xl mx-auto">
+        No essays published yet — be the first to publish on Prism.
+      </h2>
+      <p className="mt-4 max-w-md mx-auto text-[var(--fg-muted)] leading-relaxed">
+        Every story here is written by a person and read by a person. Yours could open the feed.
+      </p>
+      <Link
+        href="/editor/new"
+        className="mt-8 inline-flex items-center gap-2 h-12 px-6 rounded-full bg-[var(--fg)] text-[var(--bg)] font-medium hover:bg-[var(--fg-secondary)] transition-colors"
+      >
+        <PenLine className="w-4 h-4" /> Write the first story
+      </Link>
+    </div>
   )
 }
 

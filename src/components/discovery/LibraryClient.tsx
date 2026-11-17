@@ -4,7 +4,8 @@ import { useMemo, useState } from "react"
 import Link from "next/link"
 import { AnimatePresence, motion } from "motion/react"
 import { Bookmark, Users } from "lucide-react"
-import { MOCK_POSTS, MOCK_USERS } from "@/lib/data"
+import type { Post } from "@/lib/data"
+import { useMembers, usePublishedPosts } from "@/lib/live/hooks"
 import { useUIStore } from "@/lib/store"
 import { PostCard } from "@/components/posts/PostCard"
 import { Avatar } from "@/components/ui/Avatar"
@@ -21,23 +22,25 @@ export function LibraryClient() {
   const bookmarked = useUIStore((s) => s.bookmarkedPosts)
   const followed = useUIStore((s) => s.followedUsers)
   const [tab, setTab] = useState<Tab>("saved")
+  const posts = usePublishedPosts()
+  const members = useMembers()
 
   // Most recently saved first (Sets keep insertion order)
   const saved = useMemo(
     () =>
       [...bookmarked]
         .reverse()
-        .map((id) => MOCK_POSTS.find((p) => p.id === id))
-        .filter((p): p is (typeof MOCK_POSTS)[number] => !!p),
-    [bookmarked]
+        .map((id) => posts.find((p) => p.id === id))
+        .filter((p): p is Post => !!p),
+    [bookmarked, posts]
   )
-  const writers = useMemo(() => MOCK_USERS.filter((u) => followed.has(u.username)), [followed])
+  const writers = useMemo(() => members.filter((u) => followed.has(u.username)), [followed, members])
   const fromFollowing = useMemo(
     () =>
-      MOCK_POSTS.filter((p) => followed.has(p.author.username)).sort(
+      posts.filter((p) => followed.has(p.author.username)).sort(
         (a, b) => +new Date(b.publishedAt) - +new Date(a.publishedAt)
       ),
-    [followed]
+    [followed, posts]
   )
 
   const tabs = [

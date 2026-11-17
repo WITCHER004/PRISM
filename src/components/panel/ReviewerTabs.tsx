@@ -1,17 +1,17 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { CheckCircle2, CircleCheck, CircleX, FlaskConical, Inbox, Loader2, Scale, Users } from "lucide-react"
+import { CheckCircle2, CircleCheck, CircleX, Inbox, Loader2, Scale, Users } from "lucide-react"
 import { StoryArticle } from "@/components/studio/StoryArticle"
 import { StudioDialog, DialogActions } from "@/components/studio/StudioDialog"
 import { Phase1Breakdown, StatusPill } from "@/components/moderation/Phase1Report"
-import { useIdentity } from "@/components/profile/identity"
+import { useIdentity, userOfIdentity } from "@/components/profile/identity"
 import { Avatar } from "@/components/ui/Avatar"
 import { Button } from "@/components/ui/Button"
-import { findAccount, MOCK_USERS } from "@/lib/data"
-import { CLOSING_NOTE_MIN, FAILURE_REASON_MIN, PANEL_PASS_THRESHOLD, PANEL_SIZE, TEXT_MAX } from "@/lib/elite/config"
-import { reconsiderationStatus, tallyPanel, type PanelVote } from "@/lib/elite/panel"
-import { DEV_TOOLS } from "@/lib/devtools"
+import { findAccount } from "@/lib/data"
+import { CLOSING_NOTE_MIN, FAILURE_REASON_MIN, TEXT_MAX } from "@/lib/elite/config"
+import { passThreshold, REVIEW_CRITERIA, reconsiderationStatus, tallyPanel, type PanelVote, type ReviewCriterion } from "@/lib/elite/panel"
+import { IntegrityScores } from "./IntegrityScores"
 import { htmlToText } from "@/components/studio/studio-ui"
 import { useUIStore, toast, type Draft } from "@/lib/store"
 import { cn, formatRelativeDate } from "@/lib/utils"
@@ -46,7 +46,7 @@ function Preview({ draft }: { draft: Draft }) {
         tags={v.tags}
         paywall={v.paywall}
         date={draft.submittedAt ?? draft.updatedAt}
-        author={{ ...(author.base ?? MOCK_USERS[0]), username: author.username, avatarUrl: author.avatarUrl }}
+        author={userOfIdentity(author)}
         authorName={author.displayName}
       />
     </article>
@@ -110,22 +110,31 @@ export function PanelTab({ me, staff }: { me: string; staff: boolean }) {
 
 function PanelPaper({ draft, me, staff }: { draft: Draft; me: string; staff: boolean }) {
   const castPanelVote = useUIStore((s) => s.castPanelVote)
-  const devFillPanel = useUIStore((s) => s.devFillPanel)
   const votes = draft.panel!
   const mine = votes.find((v) => v.reviewer === me)
   const [mode, setMode] = useState<null | "PASS" | "FAIL">(null)
+  const [criterion, setCriterion] = useState<ReviewCriterion | null>(null)
   const [reason, setReason] = useState("")
   const [error, setError] = useState("")
   const t = tallyPanel(votes)
   const open = draft.status === "PENDING_PEER_PANEL"
 
+  const start = (m: "PASS" | "FAIL") => {
+    setMode(m)
+    setCriterion(null)
+    setReason("")
+    setError("")
+  }
+
   const submit = () => {
     if (!mode) return
-    const res = castPanelVote(draft.id, mode, reason)
+    if (!criterion) return setError("Pick the criterion your vote rests on.")
+    const res = castPanelVote(draft.id, mode, reason, criterion)
     if (!res.ok) return setError(res.error)
-    toast(mode === "PASS" ? "PASS vote recorded" : "FAIL vote recorded with your reason", { tone: "success" })
+    toast(mode === "PASS" ? `Approved (PASS) on ${criterion}` : `Rejected (FAIL) on ${criterion}, with your reason`, { tone: "success" })
     setMode(null)
   }
+  const canSubmit = !!criterion && (mode === "PASS" || reason.trim().length >= FAILURE_REASON_MIN)
 
   return (
     <div className="grid xl:grid-cols-[minmax(0,1fr)_320px] gap-6 items-start min-w-0">
@@ -133,7 +142,7 @@ function PanelPaper({ draft, me, staff }: { draft: Draft; me: string; staff: boo
       <aside className="space-y-4 xl:sticky xl:top-24">
         <section className="panel p-5">
           <h2 className="font-display text-lg font-semibold tracking-tight flex items-center gap-2">
-            <Users className="w-4 h-4" /> Panel ({PANEL_SIZE})
+            <Users className="w-4 h-4" /> Panel ({votes.length})
           </h2>
           <PanelMeter votes={votes} className="mt-4" />
           {staff && (
@@ -146,22 +155,9 @@ function PanelPaper({ draft, me, staff }: { draft: Draft; me: string; staff: boo
               ))}
             </ul>
           )}
-          {DEV_TOOLS && open && t.pending > 0 && (
-            <div className="mt-4 rounded-[12px] border border-dashed border-slate-300 p-3">
-              <p className="flex items-center gap-1.5 text-xs font-semibold text-slate-600">
-                <FlaskConical className="w-3.5 h-3.5" /> Dev: cast the {t.pending} remaining votes
-              </p>
-              <div className="mt-2 flex flex-wrap gap-1.5">
-                <Button size="xs" variant="secondary" onClick={() => devFillPanel(draft.id, PANEL_PASS_THRESHOLD - 1)}>
-                  {PANEL_PASS_THRESHOLD - 1} pass total (fails)
-                </Button>
-                <Button size="xs" variant="secondary" onClick={() => devFillPanel(draft.id, PANEL_SIZE)}>
-                  All pass
-                </Button>
-              </div>
-            </div>
-          )}
         </section>
+
+        <IntegrityScores draft={draft} />
 
         {draft.phase1 && (
           <section className="panel p-5">
@@ -177,7 +173,15 @@ function PanelPaper({ draft, me, staff }: { draft: Draft; me: string; staff: boo
             <h2 className="font-display text-lg font-semibold tracking-tight">Your vote</h2>
             {mine.decision ? (
               <div className="mt-3 space-y-2">
-                <VoteChip vote={mine} />
+                <div className="flex flex-wrap items-center gap-2">
+                  <VoteChip vote={mine} />
+                  {mine.criterion && (
+                    <span className="inline-flex items-center h-6 px-2.5 rounded-full border border-[var(--border)] text-xs text-[var(--fg-secondary)]">
+                      {mine.criterion}
+                    </span>
+                  )}
+                </div>
+                {mine.note && <p className="text-sm text-[var(--fg-secondary)] whitespace-pre-line">{mine.note}</p>}
                 {mine.failureReason && (
                   <blockquote className="pl-3 border-l-2 border-rose-200 text-sm text-[var(--fg-secondary)] whitespace-pre-line">
                     {mine.failureReason}
@@ -187,27 +191,11 @@ function PanelPaper({ draft, me, staff }: { draft: Draft; me: string; staff: boo
               </div>
             ) : open ? (
               <div className="mt-4 flex flex-col gap-2">
-                <Button
-                  size="lg"
-                  className="bg-emerald-600 text-white hover:bg-emerald-700"
-                  onClick={() => {
-                    setMode("PASS")
-                    setReason("")
-                    setError("")
-                  }}
-                >
-                  <CircleCheck className="w-4 h-4" /> PASS
+                <Button size="lg" className="bg-emerald-600 text-white hover:bg-emerald-700" onClick={() => start("PASS")}>
+                  <CircleCheck className="w-4 h-4" /> Approve (Pass)
                 </Button>
-                <Button
-                  variant="outline"
-                  size="lg"
-                  onClick={() => {
-                    setMode("FAIL")
-                    setReason("")
-                    setError("")
-                  }}
-                >
-                  <CircleX className="w-4 h-4" /> FAIL
+                <Button variant="outline" size="lg" onClick={() => start("FAIL")}>
+                  <CircleX className="w-4 h-4" /> Reject (Fail)
                 </Button>
               </div>
             ) : (
@@ -220,35 +208,63 @@ function PanelPaper({ draft, me, staff }: { draft: Draft; me: string; staff: boo
       <StudioDialog
         open={mode !== null}
         onOpenChange={(o) => !o && setMode(null)}
-        title={mode === "PASS" ? "Vote PASS?" : "Vote FAIL"}
+        title={mode === "PASS" ? "Approve (Pass)" : "Reject (Fail)"}
         description={
           mode === "PASS"
-            ? `Your vote counts toward the ${PANEL_PASS_THRESHOLD} needed to publish. Votes can't be changed.`
-            : "A FAIL vote must say why. The writer sees your reason (not your name) and can answer it with a counter-reason."
+            ? `Your vote counts toward the ${passThreshold(votes.length)} needed to publish. Votes can't be changed.`
+            : "A FAIL vote must say why. The writer sees your reason (not your name) and can answer it with a counter-rebuttal."
         }
       >
-        {mode === "FAIL" && (
-          <label className="mt-5 block">
-            <span className="text-sm font-medium">Failure reason (required)</span>
-            <textarea
-              value={reason}
-              onChange={(e) => {
-                setReason(e.target.value)
-                setError("")
-              }}
-              rows={5}
-              maxLength={TEXT_MAX}
-              autoFocus
-              placeholder="Which claim, method or section fails, and what would fix it."
-              className={fieldClass}
-            />
+        <fieldset className="mt-5">
+          <legend className="text-sm font-medium">
+            {mode === "PASS" ? "Strongest criterion" : "Failing criterion"} <span className="text-[var(--error)]">*</span>
+          </legend>
+          <div role="radiogroup" className="mt-2 grid grid-cols-2 gap-2">
+            {REVIEW_CRITERIA.map((c) => (
+              <button
+                key={c}
+                type="button"
+                role="radio"
+                aria-checked={criterion === c}
+                onClick={() => {
+                  setCriterion(c)
+                  setError("")
+                }}
+                className={cn(
+                  "h-10 px-3 rounded-[10px] border text-sm text-left transition-colors",
+                  criterion === c
+                    ? mode === "PASS"
+                      ? "border-emerald-500 bg-emerald-50 text-emerald-900 font-medium"
+                      : "border-rose-400 bg-rose-50 text-rose-900 font-medium"
+                    : "border-[var(--border)] hover:border-[var(--border-strong)]"
+                )}
+              >
+                {c}
+              </button>
+            ))}
+          </div>
+        </fieldset>
+        <label className="mt-4 block">
+          <span className="text-sm font-medium">{mode === "FAIL" ? "Failure reason (required)" : "Note to the panel (optional)"}</span>
+          <textarea
+            value={reason}
+            onChange={(e) => {
+              setReason(e.target.value)
+              setError("")
+            }}
+            rows={mode === "FAIL" ? 5 : 3}
+            maxLength={TEXT_MAX}
+            placeholder={mode === "FAIL" ? "Which claim, method or section fails, and what would fix it." : "What makes it hold up."}
+            className={fieldClass}
+          />
+          {mode === "FAIL" && (
             <span className="mt-1 block text-xs text-[var(--fg-muted)]">
               {Math.max(0, FAILURE_REASON_MIN - reason.trim().length) > 0
                 ? `${FAILURE_REASON_MIN - reason.trim().length} more characters needed`
                 : "Ready"}
             </span>
-          </label>
-        )}
+          )}
+        </label>
         {error && (
           <p role="alert" className="mt-2 text-sm text-[var(--error)]">
             {error}
@@ -263,9 +279,9 @@ function PanelPaper({ draft, me, staff }: { draft: Draft; me: string; staff: boo
             className={mode === "PASS" ? "bg-emerald-600 text-white hover:bg-emerald-700" : undefined}
             variant={mode === "FAIL" ? "primary" : undefined}
             onClick={submit}
-            disabled={mode === "FAIL" && reason.trim().length < FAILURE_REASON_MIN}
+            disabled={!canSubmit}
           >
-            {mode === "PASS" ? "Cast PASS vote" : "Cast FAIL vote"}
+            {mode === "PASS" ? "Cast Approve vote" : "Cast Reject vote"}
           </Button>
         </DialogActions>
       </StudioDialog>
@@ -285,7 +301,7 @@ interface CounterItem {
   counter: NonNullable<PanelVote["counter"]>
 }
 
-export function CountersTab({ me, staff }: { me: string; staff: boolean }) {
+export function CountersTab({ me, staff, actor }: { me: string; staff: boolean; actor?: string }) {
   const drafts = useUIStore((s) => s.drafts)
   const items = useMemo(() => {
     const out: CounterItem[] = []
@@ -316,14 +332,14 @@ export function CountersTab({ me, staff }: { me: string; staff: boolean }) {
     <ul className="mt-6 space-y-4">
       {items.map((it) => (
         <li key={it.key}>
-          <CounterCard item={it} me={me} />
+          <CounterCard item={it} me={me} actor={actor} />
         </li>
       ))}
     </ul>
   )
 }
 
-function CounterCard({ item, me }: { item: CounterItem; me: string }) {
+function CounterCard({ item, me, actor }: { item: CounterItem; me: string; actor?: string }) {
   const reconsiderCounter = useUIStore((s) => s.reconsiderCounter)
   const author = useIdentity(item.draft.authorUsername)
   const [mode, setMode] = useState<null | "ACCEPT" | "UPHOLD">(null)
@@ -335,14 +351,14 @@ function CounterCard({ item, me }: { item: CounterItem; me: string }) {
   const by = findAccount(item.originalBy)
   const panelVotes = item.draft.panel
   const t = panelVotes ? tallyPanel(panelVotes) : null
-  const publishesOnAccept = item.kind === "employee" || (t ? t.pass + 1 >= PANEL_PASS_THRESHOLD : false)
+  const publishesOnAccept = item.kind === "employee" || (t ? t.pass + 1 >= passThreshold(t.total) : false)
 
   useEffect(() => setError(""), [mode])
 
   const decide = () => {
     if (!mode) return
     setBusy(true)
-    const res = reconsiderCounter(item.draft.id, item.target, mode, note)
+    const res = reconsiderCounter(item.draft.id, item.target, mode, note, actor)
     setBusy(false)
     if (!res.ok) return setError(res.error)
     toast(
@@ -371,7 +387,7 @@ function CounterCard({ item, me }: { item: CounterItem; me: string }) {
         </div>
         {t && (
           <span className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full border border-slate-200 bg-slate-50 text-xs text-slate-700 tabular-nums">
-            <Scale className="w-3.5 h-3.5" /> {t.pass}/{PANEL_SIZE} pass · {PANEL_PASS_THRESHOLD} needed
+            <Scale className="w-3.5 h-3.5" /> {t.pass}/{t.total} pass · {passThreshold(t.total)} needed
           </span>
         )}
       </div>
@@ -415,7 +431,7 @@ function CounterCard({ item, me }: { item: CounterItem; me: string }) {
           mode === "ACCEPT"
             ? item.kind === "panel"
               ? publishesOnAccept
-                ? `The FAIL becomes a PASS. That brings the panel to ${PANEL_PASS_THRESHOLD} passes, so the article publishes now.`
+                ? `The FAIL becomes a PASS. That brings the panel to ${t ? passThreshold(t.total) : ""} passes, so the article publishes now.`
                 : "The FAIL becomes a PASS. The article publishes once the panel reaches consensus."
               : "The rejection is reversed and the article publishes now."
             : "The decision stands. The writer sees your closing note."

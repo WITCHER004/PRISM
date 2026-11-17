@@ -10,9 +10,9 @@ import { Avatar } from "@/components/ui/Avatar"
 import { FollowButton } from "@/components/ui/FollowButton"
 import { TopicFollowButton } from "@/components/discovery/TopicFollowButton"
 import { EmptyState } from "@/components/discovery/EmptyState"
-import { getFeedPosts } from "@/actions/posts"
-import { MOCK_TAGS, type Tag, type User } from "@/lib/data"
-import { hueStyle } from "@/lib/topics"
+import type { Tag, User } from "@/lib/data"
+import { getPublishedPosts, getTopicCounts } from "@/lib/server/content"
+import { hueStyle, TOPICS } from "@/lib/topics"
 import { numberWithCommas } from "@/lib/utils"
 import { JsonLd } from "@/components/seo/JsonLd"
 import { absoluteUrl, breadcrumbList, pageMetadata, SITE_URL, TOPIC_DESCRIPTIONS } from "@/lib/seo"
@@ -24,9 +24,16 @@ interface TagPageProps {
 const topicDescription = (tag: Tag) =>
   TOPIC_DESCRIPTIONS[tag.slug] ?? `Independent ${tag.name} essays and stories on Prism, from writers you can follow.`
 
+export const revalidate = 60
+
+async function topicsWithCounts(): Promise<Tag[]> {
+  const counts = await getTopicCounts()
+  return TOPICS.map((t) => ({ ...t, postCount: counts.get(t.slug) ?? 0 }))
+}
+
 export async function generateMetadata({ params }: TagPageProps): Promise<Metadata> {
   const { tag: tagSlug } = await params
-  const tag = MOCK_TAGS.find((t) => t.slug === tagSlug)
+  const tag = TOPICS.find((t) => t.slug === tagSlug)
   if (!tag) return { title: "Topic not found", robots: { index: false } }
   return pageMetadata({
     title: `${tag.name} essays and stories`,
@@ -38,10 +45,10 @@ export async function generateMetadata({ params }: TagPageProps): Promise<Metada
 
 export default async function TagPage({ params }: TagPageProps) {
   const { tag: tagSlug } = await params
-  const tag = MOCK_TAGS.find((t) => t.slug === tagSlug)
+  const [all, topics] = await Promise.all([getPublishedPosts(), topicsWithCounts()])
+  const tag = topics.find((t) => t.slug === tagSlug)
   if (!tag) notFound()
 
-  const all = await getFeedPosts(30)
   const tagPosts = all
     .filter((p) => p.tags.some((t) => t.slug === tag.slug))
     .sort((a, b) => b.clapCount - a.clapCount)
@@ -50,8 +57,8 @@ export default async function TagPage({ params }: TagPageProps) {
   const coCount = new Map<string, number>()
   for (const p of tagPosts) for (const t of p.tags) if (t.slug !== tag.slug) coCount.set(t.slug, (coCount.get(t.slug) ?? 0) + 1)
   const related: Tag[] = [
-    ...MOCK_TAGS.filter((t) => coCount.has(t.slug)).sort((a, b) => coCount.get(b.slug)! - coCount.get(a.slug)!),
-    ...MOCK_TAGS.filter((t) => t.slug !== tag.slug && !coCount.has(t.slug)).sort((a, b) => (b.postCount ?? 0) - (a.postCount ?? 0)),
+    ...topics.filter((t) => coCount.has(t.slug)).sort((a, b) => coCount.get(b.slug)! - coCount.get(a.slug)!),
+    ...topics.filter((t) => t.slug !== tag.slug && !coCount.has(t.slug)).sort((a, b) => (b.postCount ?? 0) - (a.postCount ?? 0)),
   ].slice(0, 6)
 
   const writers = [...new Map(tagPosts.map((p) => [p.author.username, p.author] as [string, User])).values()]
@@ -155,7 +162,9 @@ export default async function TagPage({ params }: TagPageProps) {
                           <span className="truncate">{w.displayName}</span>
                           {w.isVerifiedHuman && <BadgeCheck className="w-3.5 h-3.5 shrink-0 text-[var(--accent)]" aria-label="Verified writer" />}
                         </Link>
-                        <p className="meta mt-0.5">{numberWithCommas(w.followerCount)} readers</p>
+                        <p className="meta mt-0.5">
+                          {numberWithCommas(tagPosts.filter((p) => p.author.username === w.username).length)} in {tag.name}
+                        </p>
                       </div>
                       <FollowButton username={w.username} displayName={w.displayName} size="sm" tone="outline" />
                     </li>

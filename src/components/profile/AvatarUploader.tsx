@@ -5,7 +5,7 @@ import { Camera, Loader2, Trash2, ZoomIn, ZoomOut } from "lucide-react"
 import { Avatar } from "@/components/ui/Avatar"
 import { Button } from "@/components/ui/Button"
 import { StudioDialog, DialogActions } from "@/components/studio/StudioDialog"
-import { toast } from "@/lib/store"
+import { toast, useUIStore } from "@/lib/store"
 import { cn } from "@/lib/utils"
 
 const ACCEPT = ["image/jpeg", "image/png", "image/webp"]
@@ -20,20 +20,22 @@ export function validateImageFile(file: File): string | null {
   return null
 }
 
-/** Upload a cropped avatar; falls back to the inline image if the server can't be reached */
-async function uploadAvatar(blob: Blob, fallback: string): Promise<string> {
-  const form = new FormData()
-  form.append("file", blob, "avatar.jpg")
-  let res: Response
-  try {
-    res = await fetch("/api/profile/avatar", { method: "POST", body: form })
-  } catch {
-    return fallback // offline: keep the image in the browser
-  }
-  const body = (await res.json().catch(() => ({}))) as { url?: string; error?: string }
-  if (res.ok && body.url) return body.url
-  if (res.status < 500 && body.error) throw new Error(body.error) // the image was rejected
-  return fallback
+/**
+ * Uploads the cropped avatar to Firebase Storage (avatars/{uid}/{time}_avatar.jpg), then points both
+ * the Auth profile and users/{uid} at the new download URL.
+ */
+async function uploadAvatar(blob: Blob): Promise<string> {
+  const [{ auth, db, updateProfile }, { doc, updateDoc }, { avatarPath, uploadImageToStorage }] = await Promise.all([
+    import("@/lib/firebase"),
+    import("firebase/firestore"),
+    import("@/lib/storage"),
+  ])
+  const user = auth.currentUser
+  if (!user) throw new Error("Sign in to change your photo.")
+  const file = new File([blob], "avatar.jpg", { type: "image/jpeg" })
+  const url = await uploadImageToStorage(file, avatarPath(user.uid, file))
+  await Promise.all([updateProfile(user, { photoURL: url }), updateDoc(doc(db, "users", user.uid), { photoURL: url })])
+  return url
 }
 
 interface AvatarUploaderProps {
@@ -189,13 +191,16 @@ function CropDialog({ source, onCancel, onDone }: { source: string; onCancel: ()
     ctx.imageSmoothingQuality = "high"
     const size = VIEW / scale
     ctx.drawImage(img.el, -pos.x / scale, -pos.y / scale, size, size, 0, 0, OUT, OUT)
-    const dataUrl = canvas.toDataURL("image/jpeg", 0.88)
     const blob = await new Promise<Blob | null>((r) => canvas.toBlob(r, "image/jpeg", 0.88))
     try {
-      const url = blob ? await uploadAvatar(blob, dataUrl) : dataUrl
+      if (!blob) throw new Error("Couldn't prepare that image. Try another one.")
+      const url = await uploadAvatar(blob)
+      useUIStore.getState().updateProfile({ avatarUrl: url })
       onDone(url)
+      toast("Profile photo updated", { tone: "success" })
     } catch (err) {
-      toast((err as Error).message, { tone: "error" })
+      const code = (err as { code?: string }).code
+      toast(code === "storage/unauthorized" ? "Storage rules blocked the upload. Deploy storage.rules and try again." : (err as Error).message || "Upload failed.", { tone: "error" })
       setSaving(false)
     }
   }

@@ -2,55 +2,47 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react"
 import {
-  deleteRemoteIdea,
-  fetchRemoteIdeas,
+  createIdea,
+  deleteIdea,
   isActive,
-  loadLocalIdeas,
-  loadReactions,
   loadSeen,
   newIdeaId,
-  saveLocalIdeas,
-  saveReactions,
-  saveRemoteIdea,
   saveSeen,
+  toggleIdeaReaction,
+  watchIdeas,
   type IdeaFormat,
   type IdeaReaction,
   type IdeaTheme,
   type InstantIdea,
 } from "@/lib/ideas"
 import type { Viewer } from "@/components/providers/useViewer"
+import { toast } from "@/lib/store"
 
 const CLEANUP_TICK_MS = 30_000
 
 export type NewIdea = { text: string; format: IdeaFormat; theme: IdeaTheme; durationMs: number }
 
 /**
- * Active Instant Ideas: this device's (localStorage) merged with Firestore's. Expired ideas drop out on
- * every render, on a 30-second tick, and exactly when the next one is due, so they vanish live.
+ * Live Instant Ideas from Firestore. Expired ideas drop out on every snapshot, on a 30-second tick,
+ * and exactly when the next one is due, so they vanish while you watch.
  */
-export function useInstantIdeas() {
+export function useInstantIdeas(viewerUid?: string) {
   const [ready, setReady] = useState(false)
   const [now, setNow] = useState(0)
-  const [local, setLocal] = useState<InstantIdea[]>([])
   const [remote, setRemote] = useState<InstantIdea[]>([])
-  const [reactions, setReactions] = useState<Record<string, IdeaReaction[]>>({})
   const [seen, setSeen] = useState<Set<string>>(() => new Set())
 
-  // Client-only state: load after mount so server and first client render match
   useEffect(() => {
-    const t = Date.now()
-    setNow(t)
-    setLocal(loadLocalIdeas(t))
-    setReactions(loadReactions())
+    setNow(Date.now())
     setSeen(loadSeen())
-    setReady(true)
-    let cancelled = false
-    fetchRemoteIdeas(t).then((r) => {
-      if (!cancelled) setRemote(r)
-    })
-    return () => {
-      cancelled = true
-    }
+    return watchIdeas(
+      (ideas) => {
+        setRemote(ideas)
+        setNow(Date.now())
+        setReady(true)
+      },
+      () => setReady(true)
+    )
   }, [])
 
   useEffect(() => {
@@ -58,31 +50,16 @@ export function useInstantIdeas() {
     return () => clearInterval(id)
   }, [])
 
-  const ideas = useMemo(() => {
-    const byId = new Map<string, InstantIdea>()
-    for (const i of remote) byId.set(i.id, i)
-    for (const i of local) byId.set(i.id, i) // this device's copy wins
-    return [...byId.values()].filter((i) => isActive(i, now)).sort((a, b) => b.createdAt - a.createdAt)
-  }, [local, remote, now])
+  const ideas = useMemo(() => remote.filter((i) => isActive(i, now)).sort((a, b) => b.createdAt - a.createdAt), [remote, now])
 
   // Wake exactly when the soonest idea expires, so it doesn't linger up to 30s
   useEffect(() => {
-    if (!ideas.length) return
-    const next = Math.min(...ideas.map((i) => i.expiresAt))
+    const mortal = ideas.filter((i) => !i.isImmortal)
+    if (!mortal.length) return
+    const next = Math.min(...mortal.map((i) => i.expiresAt))
     const t = setTimeout(() => setNow(Date.now()), Math.max(0, next - Date.now()) + 50)
     return () => clearTimeout(t)
   }, [ideas])
-
-  // Keep expired ideas out of storage too
-  useEffect(() => {
-    if (!ready) return
-    setLocal((prev) => {
-      const kept = prev.filter((i) => isActive(i, now))
-      if (kept.length === prev.length) return prev
-      saveLocalIdeas(kept)
-      return kept
-    })
-  }, [now, ready])
 
   const post = useCallback((input: NewIdea, author: Viewer) => {
     const created = Date.now()
@@ -98,66 +75,35 @@ export function useInstantIdeas() {
       createdAt: created,
       expiresAt: created + input.durationMs,
     }
+    // Shown straight away; the snapshot replaces it once Firestore confirms
+    setRemote((prev) => [idea, ...prev.filter((i) => i.id !== idea.id)])
     setNow(created)
-    setLocal((prev) => {
-      const next = [idea, ...prev]
-      saveLocalIdeas(next)
-      return next
+    createIdea(idea).catch((err) => {
+      setRemote((prev) => prev.filter((i) => i.id !== idea.id))
+      toast("Couldn't post your idea. Check your connection and try again.", { tone: "error" })
+      console.warn("[ideas] create failed", err)
     })
-    saveRemoteIdea(idea) // best effort; never blocks the UI
     return idea
   }, [])
 
   const remove = useCallback((idea: InstantIdea) => {
-    setLocal((prev) => {
-      const next = prev.filter((i) => i.id !== idea.id)
-      saveLocalIdeas(next)
-      return next
-    })
     setRemote((prev) => prev.filter((i) => i.id !== idea.id))
-    if (!idea.sample) deleteRemoteIdea(idea.id)
+    void deleteIdea(idea.id)
   }, [])
 
-  const toggleReaction = useCallback((id: string, r: IdeaReaction, voterHandle?: string) => {
-    setReactions((prev) => {
-      const mine = prev[id] ?? []
-      const next = { ...prev, [id]: mine.includes(r) ? mine.filter((x) => x !== r) : [...mine, r] }
-      saveReactions(next)
-      return next
-    })
-
-    // If voterHandle is provided, record it in local idea voterIds
-    if (voterHandle) {
-      setLocal((prev) => {
-        const next = prev.map((idea) => {
-          if (idea.id !== id) return idea
-          const existingVoters = idea.voterIds ?? []
-          const voterIds = existingVoters.includes(voterHandle) ? existingVoters : [...existingVoters, voterHandle]
-          return { ...idea, voterIds }
-        })
-        saveLocalIdeas(next)
-        return next
+  const toggleReaction = useCallback(
+    (id: string, r: IdeaReaction) => {
+      if (!viewerUid) {
+        toast("Sign in to react to ideas.")
+        return
+      }
+      toggleIdeaReaction(id, r, viewerUid).catch((err) => {
+        toast("Couldn't save your reaction.", { tone: "error" })
+        console.warn("[ideas] reaction failed", err)
       })
-    }
-  }, [])
-
-  /** Test helper to immediately add 5 sparks to verify threshold crossing */
-  const addSparksTest = useCallback((id: string, count: number = 5) => {
-    setLocal((prev) => {
-      const next = prev.map((idea) => {
-        if (idea.id !== id) return idea
-        const currentSparked = idea.counts?.sparked ?? 0
-        const newSparked = currentSparked + count
-        const counts = { ...idea.counts, sparked: newSparked }
-        const isImmortal = newSparked >= 25
-        const testVoters = ["priyarao", "marcuswilliams", "sarahkim", "alexchen", "elena_v"]
-        const voterIds = Array.from(new Set([...(idea.voterIds ?? []), ...testVoters.slice(0, count)]))
-        return { ...idea, counts, isImmortal, voterIds }
-      })
-      saveLocalIdeas(next)
-      return next
-    })
-  }, [])
+    },
+    [viewerUid]
+  )
 
   const markSeen = useCallback((id: string) => {
     setSeen((prev) => {
@@ -168,12 +114,10 @@ export function useInstantIdeas() {
     })
   }, [])
 
-  const reactionCount = useCallback(
-    (idea: InstantIdea, r: IdeaReaction) => (idea.counts?.[r] ?? 0) + (reactions[idea.id]?.includes(r) ? 1 : 0),
-    [reactions]
-  )
+  const reacted = useCallback((idea: InstantIdea, r: IdeaReaction) => !!viewerUid && !!idea.reactors?.[r]?.includes(viewerUid), [viewerUid])
+  const reactionCount = useCallback((idea: InstantIdea, r: IdeaReaction) => idea.counts?.[r] ?? 0, [])
 
-  return { ready, now, ideas, post, remove, reactions, toggleReaction, reactionCount, seen, markSeen, addSparksTest }
+  return { ready, now, ideas, post, remove, toggleReaction, reacted, reactionCount, seen, markSeen }
 }
 
 export type InstantIdeasApi = ReturnType<typeof useInstantIdeas>

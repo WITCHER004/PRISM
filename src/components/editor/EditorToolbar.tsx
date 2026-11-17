@@ -9,6 +9,7 @@ import {
 } from "lucide-react"
 import { dur, ease } from "@/lib/motion"
 import { cn } from "@/lib/utils"
+import { InlineImageUpload } from "./CoverImageField"
 
 export type UrlMode = "link" | "image" | null
 
@@ -261,6 +262,7 @@ function UrlField({
       {error && (
         <p id={`${id}-err`} className="mt-2 px-1 text-xs text-[var(--error)]">{error}</p>
       )}
+      {mode === "image" && <InlineImageUpload onUploaded={onSubmit} />}
     </motion.form>
   )
 }

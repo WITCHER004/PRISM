@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation"
 import { AnimatePresence, motion } from "motion/react"
 import { ArrowRight, Check, Sparkles, BookOpen, RotateCcw, Eye, EyeOff } from "lucide-react"
 import { useUIStore } from "@/lib/store"
-import { MOCK_USERS, MOCK_TAGS } from "@/lib/data"
+import { TOPICS } from "@/lib/topics"
 import { dur, ease, spring } from "@/lib/motion"
 import { cn } from "@/lib/utils"
 import { signInWithGoogle, signInWithGithub, logInWithEmail, resetPassword, logOutFirebase } from "@/lib/firebase"
@@ -31,7 +31,6 @@ export function LoginForm({ redirectTo }: { redirectTo?: string }) {
   const router = useRouter()
   const target = safeRedirect(redirectTo, "/")
   const currentUser = useUIStore((s) => s.currentUser)
-  const signIn = useUIStore((s) => s.signIn)
   const signOut = useUIStore((s) => s.signOut)
   const interestedTopics = useUIStore((s) => s.interestedTopics)
   const setInterestedTopics = useUIStore((s) => s.setInterestedTopics)
@@ -56,15 +55,6 @@ export function LoginForm({ redirectTo }: { redirectTo?: string }) {
     setSelectedTopics((prev) =>
       prev.includes(slug) ? prev.filter((t) => t !== slug) : [...prev, slug]
     )
-  }
-
-  // After authentication credentials are submitted
-  const handleAuthSuccess = async (address: string) => {
-    const username = signIn(address)
-    const name = useUIStore.getState().profile.displayName
-    const user = MOCK_USERS.find((u) => u.username === username)
-    setWelcomeName(username === MOCK_USERS[0].username ? name : user?.displayName ?? username)
-    setStatus("categories")
   }
 
   const handleResetPassword = async () => {
@@ -119,9 +109,8 @@ export function LoginForm({ redirectTo }: { redirectTo?: string }) {
       if (res?.user) {
         const u = res.user
         const address = u.email || emailVal
-        const name = u.displayName || address.split("@")[0]
-        signIn(address, name)
-        setWelcomeName(name)
+        // The session itself comes from onAuthStateChanged (AuthProvider)
+        setWelcomeName(u.displayName || address.split("@")[0])
         setStatus("categories")
         return
       }
@@ -171,9 +160,7 @@ export function LoginForm({ redirectTo }: { redirectTo?: string }) {
       if (result?.user) {
         const u = result.user
         const address = u.email || `${u.uid}@${p}.firebase`
-        const name = u.displayName || address.split("@")[0]
-        signIn(address, name)
-        setWelcomeName(name)
+        setWelcomeName(u.displayName || address.split("@")[0])
         setStatus("categories")
         return
       }
@@ -256,7 +243,7 @@ export function LoginForm({ redirectTo }: { redirectTo?: string }) {
 
         {/* Categories Grid */}
         <div className="grid grid-cols-2 gap-2 mt-5 sm:mt-6 max-h-[300px] overflow-y-auto pr-1">
-          {MOCK_TAGS.map((tag) => {
+          {TOPICS.map((tag) => {
             const isSelected = selectedTopics.includes(tag.slug)
             return (
               <button
@@ -273,9 +260,6 @@ export function LoginForm({ redirectTo }: { redirectTo?: string }) {
                 <div className="min-w-0 pr-1">
                   <span className="block text-xs sm:text-sm font-semibold truncate text-[var(--fg)]">
                     {tag.name}
-                  </span>
-                  <span className="block text-[11px] text-[var(--fg-muted)]">
-                    {tag.postCount} stories
                   </span>
                 </div>
                 <span

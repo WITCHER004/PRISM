@@ -7,7 +7,6 @@ import { Button } from "@/components/ui/Button"
 import { AvatarUploader } from "./AvatarUploader"
 import { SOCIAL_ICON } from "./SocialLinks"
 import { useUIStore, toast, type Profile } from "@/lib/store"
-import { MOCK_USERS } from "@/lib/data"
 import { handleError, normalizeHandle, SOCIAL_KEYS, SOCIALS, type SocialKey } from "@/lib/social"
 import { cn } from "@/lib/utils"
 
@@ -59,7 +58,7 @@ export function EditProfileDialog({ open, onOpenChange }: { open: boolean; onOpe
   const profile = useUIStore((s) => s.profile)
   const currentUser = useUIStore((s) => s.currentUser)
   const updateProfile = useUIStore((s) => s.updateProfile)
-  const base = MOCK_USERS.find((u) => u.username === currentUser)
+  const base = useUIStore((s) => (currentUser ? s.users[currentUser] : undefined))
 
   const pickFields = (p: Profile): Fields => ({
     displayName: p.displayName,
@@ -140,7 +139,7 @@ export function EditProfileDialog({ open, onOpenChange }: { open: boolean; onOpe
       <form onSubmit={save} noValidate className="mt-6 space-y-5">
         <AvatarUploader
           value={draft.avatarUrl}
-          fallbackSrc={base?.avatarUrl}
+          fallbackSrc={base?.photoURL ?? undefined}
           name={draft.displayName || "You"}
           onChange={(url) => setDraft((d) => ({ ...d, avatarUrl: url }))}
         />

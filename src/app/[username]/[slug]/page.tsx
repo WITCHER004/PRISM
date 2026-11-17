@@ -1,11 +1,13 @@
-import { MOCK_POSTS, MOCK_COMMENTS, MOCK_PEER_REVIEWS } from "@/lib/data"
 import { deepReadMinutes, PAPER_MASK, PAPER_PREVIEW_FRACTION } from "@/lib/papers"
-import { seededCertificate } from "@/lib/craft"
-import { SEED_DOSSIERS } from "@/lib/dossier"
+import { certificateFrom } from "@/lib/craft"
+import { dossierFromPanel } from "@/lib/dossier"
+import { getArticleBySlug, getPublishedPosts } from "@/lib/server/content"
 import { CraftBadge } from "@/components/craft/CraftBadge"
 import { PeerDossierCard } from "@/components/dossier/PeerDossierCard"
 import { ElitePaperBadge, MaybePaperScope, PaperAbstract, PaperGate, PaperRibbon } from "@/components/papers/ElitePaper"
 import { getPostBySlug } from "@/actions/posts"
+
+export const revalidate = 60
 import { notFound } from "next/navigation"
 import { SiteHeader } from "@/components/layout/SiteHeader"
 import { SiteFooter } from "@/components/layout/SiteFooter"
@@ -21,9 +23,6 @@ import { TableOfContents, type TocItem } from "@/components/posts/TableOfContent
 import { Reveal } from "@/components/motion/Reveal"
 import { RevealText } from "@/components/motion/RevealText"
 import { ParallaxImage } from "@/components/motion/ParallaxImage"
-import { CodeSandboxBlock } from "@/components/interactive/CodeSandboxBlock"
-import { ChartBlock } from "@/components/interactive/ChartBlock"
-import { PollBlock } from "@/components/interactive/PollBlock"
 import { ReadTimeTracker } from "@/components/posts/ReadTimeTracker"
 import { hueStyle } from "@/lib/topics"
 import Link from "next/link"
@@ -139,12 +138,13 @@ export default async function PostPage({ params }: PostPageProps) {
   const isPaywalled = post.paywallTier !== "FREE" || !!paper
   // Papers preview a quarter; metered stories half; member-only and paid ones a third
   const previewFraction = paper ? PAPER_PREVIEW_FRACTION : post.paywallTier === "METERED" ? 0.5 : 0.33
-  const paperReview =
-    (MOCK_PEER_REVIEWS[post.id]?.length ?? 0) > 0 || paper?.depth === "monograph" ? "Peer-reviewed" : "Editor-reviewed"
-  // The interactive demo blocks belong to the distributed-transactions story only
-  const showDemoBlocks = post.slug === "hidden-cost-distributed-transactions"
+  const [article, published] = await Promise.all([getArticleBySlug(username, slug), getPublishedPosts()])
+  const paperReview = article?.panelPassed ? "Peer-reviewed" : "Editor-reviewed"
+  // Earned records only: the writing telemetry captured in the editor, and the panel's real votes
+  const certificate = article?.craft ? certificateFrom(article.craft, post.wordCount, article.liveAiPercent ?? article.phase1?.aiPercent) : null
+  const dossier = article?.panelPassed ? dossierFromPanel(article.id, article.panel, article.publishedAt) : null
 
-  const relatedPosts = MOCK_POSTS.filter(
+  const relatedPosts = published.filter(
     (p) =>
       p.id !== post.id &&
       p.tags.some((t) => post.tags.some((pt) => pt.id === t.id))
@@ -284,7 +284,7 @@ export default async function PostPage({ params }: PostPageProps) {
                   </div>
                 </dl>
                 <RatingChip postId={post.id} href="#reviews" />
-                <CraftBadge certificate={seededCertificate(post.id, post.wordCount)} authorName={post.author.displayName} />
+                {certificate && <CraftBadge certificate={certificate} authorName={post.author.displayName} />}
                 <UnlockedOnly postId={post.id} paywalled={isPaywalled}>
                   <ListenMode
                     title={post.title}
@@ -297,10 +297,10 @@ export default async function PostPage({ params }: PostPageProps) {
           </header>
 
           {/* Elite / peer-reviewed: the panel's verdict, open to every reader */}
-          {SEED_DOSSIERS[post.id] && (
+          {dossier && (
             <div className="max-w-4xl mx-auto px-4 sm:px-6 mt-8">
               <PeerDossierCard
-                dossier={SEED_DOSSIERS[post.id]}
+                dossier={dossier}
                 authorName={post.author.displayName}
                 authorAvatar={post.author.avatarUrl}
               />
@@ -347,23 +347,6 @@ export default async function PostPage({ params }: PostPageProps) {
                   previewFraction={previewFraction}
                   mask={paper ? PAPER_MASK : undefined}
                 />
-
-                {/* Interactive storytelling blocks (demo story) */}
-                {showDemoBlocks && (!isPaywalled || paper) && (
-                  <UnlockedOnly postId={post.id} paywalled={isPaywalled}>
-                  <div className="mt-12 space-y-8">
-                    <CodeSandboxBlock
-                      title="Interactive Saga Compensating Transaction Simulation"
-                      description="Edit and click 'Run Simulation' to observe how distributed compensation restores state on failure."
-                    />
-                    <ChartBlock
-                      title="System Benchmark: 2PC vs. Saga Orchestrator"
-                      subtitle="Tested at Stripe under 10k concurrent payment transactions."
-                    />
-                    <PollBlock question="Which distributed transaction architecture does your team currently run in production?" />
-                  </div>
-                  </UnlockedOnly>
-                )}
 
                 {isPaywalled && (
                   <LockedOnly postId={post.id} paywalled={isPaywalled}>
@@ -436,7 +419,7 @@ export default async function PostPage({ params }: PostPageProps) {
 
                   <ReviewsSection postId={post.id} postAuthor={post.author.username} className="mt-16" />
 
-                  <CommentSection postId={post.id} comments={MOCK_COMMENTS} postTitle={post.title} />
+                  <CommentSection postId={post.id} postTitle={post.title} />
                 </>
               </UnlockedOnly>
             </div>

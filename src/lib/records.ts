@@ -1,6 +1,5 @@
-// Best-effort Firestore mirror for article records (craft certificates, peer dossiers).
-// The source of truth stays local (the persisted store / seeded data), so the UI never waits on
-// Firestore and an offline or misconfigured database only produces a console warning.
+// Standalone copies of an article's earned records (craft certificates, peer dossiers), written by the
+// author's client. Both are derived from articles/{id}, which stays the source of truth.
 
 const TIMEOUT_MS = 8000
 // One write per record per page load is plenty
@@ -28,6 +27,6 @@ export async function mirrorRecord(collection: RecordCollection, id: string, dat
     await withTimeout(setDoc(doc(db, collection, id), { ...clean(data), updatedAt: serverTimestamp() }, { merge: true }))
   } catch (err) {
     written.delete(key)
-    warn(`Couldn't confirm ${collection}/${id} reached Firestore; the local copy is used.`, err)
+    warn(`Couldn't save ${collection}/${id}.`, err)
   }
 }

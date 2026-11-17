@@ -1,5 +1,5 @@
-import { getFeedPosts } from "@/actions/posts"
-import { MOCK_TAGS } from "@/lib/data"
+import { getPublishedPosts } from "@/lib/server/content"
+import { TOPICS } from "@/lib/topics"
 import { absoluteUrl } from "@/lib/seo"
 
 export const revalidate = 3600
@@ -7,14 +7,14 @@ export const revalidate = 3600
 // llms.txt (https://llmstxt.org): a plain-Markdown map of the site for AI agents and answer engines.
 // Built from the site URL so it can never point at another domain.
 export async function GET() {
-  const posts = (await getFeedPosts(50)).filter((p) => p.status === "PUBLISHED")
+  const posts = (await getPublishedPosts()).slice(0, 200)
   const u = absoluteUrl
 
   const body = `# Prism
 
 > Independent writing for curious readers. Discover stories across topics and follow the writers you value.
 
-Prism is a publishing platform demo. The site includes sample writers and stories; memberships and payouts shown in the interface are not live financial services.
+Prism is a publishing platform for independent writers. Every story listed here was published by a member and passed Prism's review. Memberships and payouts shown in the interface are not live financial services.
 
 ## Public pages
 
@@ -27,7 +27,7 @@ Prism is a publishing platform demo. The site includes sample writers and storie
 
 ## Topics
 
-${MOCK_TAGS.map((t) => `- [${t.name}](${u(`/explore/${t.slug}`)})`).join("\n")}
+${TOPICS.map((t) => `- [${t.name}](${u(`/explore/${t.slug}`)})`).join("\n")}
 
 ## Stories
 
@@ -41,7 +41,7 @@ ${posts.map((p) => `- [${p.title}](${u(`/${p.author.username}/${p.slug}`)}): by 
 
 The legal pages are illustrative placeholders, not binding agreements or final policies. Membership checkout is simulated and does not take payments.
 
-Only publicly published stories and public writer profiles should be treated as public content. Drafts and browser-local story previews are not published.
+Only publicly published stories and public writer profiles should be treated as public content. Drafts and stories still under review are not published.
 `
 
   return new Response(body, { headers: { "Content-Type": "text/plain; charset=utf-8" } })

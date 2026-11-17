@@ -42,15 +42,15 @@ export function ProfileClient({ user, posts, topics }: ProfileClientProps) {
   const bio = isMe && profile.bio.trim() ? profile.bio : user.bio
   const avatarUrl = (hydrated && identity?.avatarUrl) || user.avatarUrl
 
-  // Stories written in this browser that passed review (readers see the approved version)
+  // Stories published since this page was last rendered on the server (live from Firestore)
   const localStories = useMemo(
     () =>
       hydrated
         ? Object.values(drafts)
-            .filter((d) => d.live && d.authorUsername === user.username)
+            .filter((d) => d.live && d.authorUsername === user.username && !posts.some((p) => p.id === d.id))
             .sort((a, b) => +new Date(b.publishedAt ?? b.updatedAt) - +new Date(a.publishedAt ?? a.updatedAt))
         : [],
-    [drafts, hydrated, user.username]
+    [drafts, hydrated, user.username, posts]
   )
   const storyCount = posts.length + localStories.length
   // Following adds you to the count, so the number reacts to the button
@@ -197,7 +197,7 @@ function Stat({ label, value }: { label: string; value: string }) {
   )
 }
 
-// A story the signed-in writer published in this browser (lives in the store, read at /story/[id])
+// A story published after the server render (live from Firestore, read at /story/[id])
 function LocalStoryCard({ draft }: { draft: Draft }) {
   const story = draft.live ?? draft
   const tag = story.tags[0]

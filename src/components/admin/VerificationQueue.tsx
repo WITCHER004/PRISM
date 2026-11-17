@@ -3,18 +3,15 @@
 import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { AnimatePresence, motion } from "motion/react"
-import { CheckCircle2, Clock, Inbox, Loader2, MessageSquareWarning, ShieldCheck, ShieldX, Users } from "lucide-react"
-import { SiteHeader } from "@/components/layout/SiteHeader"
-import { SiteFooter } from "@/components/layout/SiteFooter"
-import { useHydrated } from "@/components/studio/useHydrated"
+import { CheckCircle2, Clock, Inbox, Loader2, MessageSquareWarning } from "lucide-react"
 import { StoryArticle } from "@/components/studio/StoryArticle"
 import { StudioDialog, DialogActions } from "@/components/studio/StudioDialog"
 import { Phase1Breakdown, StatusPill } from "@/components/moderation/Phase1Report"
-import { useIdentity } from "@/components/profile/identity"
+import { IntegrityScores } from "@/components/panel/IntegrityScores"
+import { useIdentity, userOfIdentity } from "@/components/profile/identity"
 import { Avatar } from "@/components/ui/Avatar"
 import { Button } from "@/components/ui/Button"
-import { findAccount, MOCK_USERS, PEER_REVIEWERS } from "@/lib/data"
-import { canOpenReviewDashboard, canReview } from "@/lib/moderation/workflow"
+import { findAccount } from "@/lib/data"
 import { reconsiderationStatus } from "@/lib/elite/panel"
 import { CountersTab, PanelTab } from "@/components/panel/ReviewerTabs"
 import { useUIStore, toast, type Draft } from "@/lib/store"
@@ -24,133 +21,49 @@ import { wordCount } from "@/components/studio/studio-ui"
 
 type Filter = "queue" | "decided"
 type Tab = Filter | "panel" | "counters"
-const REVIEWER_DEMO = MOCK_USERS.find((u) => u.role === "EMPLOYEE")!
-const PANEL_DEMO = PEER_REVIEWERS[0]
 
-export function ReviewDashboard() {
-  const hydrated = useHydrated()
-  const currentUser = useUIStore((s) => s.currentUser)
-  const role = findAccount(currentUser)?.role
-
-  return (
-    <div className="min-h-screen flex flex-col bg-[var(--bg)]">
-      <SiteHeader />
-      <main className="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 pt-10 sm:pt-14 pb-24">
-        {!hydrated ? (
-          <div className="space-y-4" aria-busy="true" aria-label="Loading review queue">
-            <div className="h-12 w-72 rounded-[14px] bg-[var(--surface)] animate-pulse" />
-            <div className="h-64 rounded-[var(--radius-card)] bg-[var(--surface)] animate-pulse" />
-          </div>
-        ) : canOpenReviewDashboard(role) ? (
-          <Workspace me={currentUser!} staff={canReview(role)} />
-        ) : (
-          <AccessGate signedIn={!!currentUser} />
-        )}
-      </main>
-      <SiteFooter />
-    </div>
-  )
-}
-
-function AccessGate({ signedIn }: { signedIn: boolean }) {
-  const setCurrentUser = useUIStore((s) => s.setCurrentUser)
-  return (
-    <div className="max-w-lg mx-auto text-center py-16">
-      <span className="mx-auto grid place-items-center w-14 h-14 rounded-full bg-[var(--surface)] text-[var(--fg-muted)]">
-        <ShieldX className="w-6 h-6" />
-      </span>
-      <p className="meta mt-6">Employees only</p>
-      <h1 className="display mt-3 text-[2rem] sm:text-[2.5rem]">The review queue is for Prism staff</h1>
-      <p className="mt-3 text-[var(--fg-muted)] leading-relaxed">
-        {signedIn
-          ? "Your account doesn't have the reviewer role. Stories you submit show up here for our editors."
-          : "Sign in with a staff account to review submitted stories."}
-      </p>
-      <div className="mt-8 rounded-[16px] border border-dashed border-[var(--border-strong)] p-5 text-left">
-        <p className="text-sm font-semibold">Demo mode</p>
-        <p className="mt-1 text-sm text-[var(--fg-muted)]">
-          Switch to the sample staff account, {REVIEWER_DEMO.displayName}, to try the employee side. Switch back from the account menu.
-        </p>
-        <div className="mt-4 flex flex-col sm:flex-row gap-2">
-          <Button
-            variant="primary"
-            size="lg"
-            onClick={() => {
-              setCurrentUser(REVIEWER_DEMO.username)
-              toast(`Signed in as ${REVIEWER_DEMO.displayName} (reviewer)`, { tone: "success" })
-            }}
-          >
-            <ShieldCheck className="w-4 h-4" /> Continue as {REVIEWER_DEMO.displayName}
-          </Button>
-          <Button
-            variant="secondary"
-            size="lg"
-            onClick={() => {
-              setCurrentUser(PANEL_DEMO.username)
-              toast(`Signed in as ${PANEL_DEMO.displayName} (peer panel)`, { tone: "success" })
-            }}
-          >
-            <Users className="w-4 h-4" /> {PANEL_DEMO.displayName} (panel)
-          </Button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function Workspace({ me, staff }: { me: string; staff: boolean }) {
+/**
+ * Admin portal: Phase 2 verification. Free and Elite articles that passed the ≤ 20% AI check wait
+ * here for an employee to publish, reject, or (Elite) send on to the panel. Staff also oversee
+ * panels and rule on counter-reasons to employee rejections. Every action is taken as `actor`,
+ * the admin-portal session.
+ */
+export function VerificationWorkspace({ actor }: { actor: string }) {
   const drafts = useUIStore((s) => s.drafts)
-  const [tab, setTab] = useState<Tab>(staff ? "queue" : "panel")
+  const [tab, setTab] = useState<Tab>("queue")
 
-  // Deep links from notifications: /review-dashboard?tab=panel|counters
+  // Deep links from notifications: /admin/verification?tab=counters
   useEffect(() => {
     const t = new URLSearchParams(window.location.search).get("tab")
-    if (t === "panel" || t === "counters" || (staff && (t === "queue" || t === "decided"))) setTab(t)
-  }, [staff])
+    if (t === "panel" || t === "counters" || t === "queue" || t === "decided") setTab(t)
+  }, [])
 
   const counts = useMemo(() => {
     const all = Object.values(drafts)
     let counters = 0
     for (const d of all) {
-      if (d.status !== "COUNTER_SUBMITTED" || d.authorUsername === me) continue
-      counters += (d.panel ?? []).filter((v) => reconsiderationStatus(v) === "PENDING" && (staff || v.reviewer === me)).length
-      if (staff && d.appeal && reconsiderationStatus(d.appeal) === "PENDING") counters++
+      if (d.status !== "COUNTER_SUBMITTED") continue
+      counters += (d.panel ?? []).filter((v) => reconsiderationStatus(v) === "PENDING").length
+      if (d.appeal && reconsiderationStatus(d.appeal) === "PENDING") counters++
     }
     return {
       queue: all.filter((d) => d.status === "PENDING_EMPLOYEE_REVIEW").length,
       decided: all.filter((d) => d.review && d.status !== "PENDING_EMPLOYEE_REVIEW").length,
-      panel: all.filter(
-        (d) => d.status === "PENDING_PEER_PANEL" && d.panel?.some((v) => (staff ? !v.decision : v.reviewer === me && !v.decision))
-      ).length,
+      panel: all.filter((d) => d.status === "PENDING_PEER_PANEL" && d.panel?.some((v) => !v.decision)).length,
       counters,
     }
-  }, [drafts, me, staff])
+  }, [drafts])
 
-  const tabs: { value: Tab; label: string; count: number }[] = staff
-    ? [
-        { value: "queue", label: "Waiting", count: counts.queue },
-        { value: "panel", label: "Peer panel", count: counts.panel },
-        { value: "counters", label: "Counter-Reasons to Reconsider", count: counts.counters },
-        { value: "decided", label: "Decided", count: counts.decided },
-      ]
-    : [
-        { value: "panel", label: "Panel assignments", count: counts.panel },
-        { value: "counters", label: "Counter-Reasons to Reconsider", count: counts.counters },
-      ]
+  const tabs: { value: Tab; label: string; count: number }[] = [
+    { value: "queue", label: "Awaiting verification", count: counts.queue },
+    { value: "panel", label: "Panel oversight", count: counts.panel },
+    { value: "counters", label: "Counter-reasons", count: counts.counters },
+    { value: "decided", label: "Decided", count: counts.decided },
+  ]
 
   return (
     <>
-      <div className="max-w-2xl">
-        <p className="meta">Phase 2 · {staff ? "Employee review & panel lead" : "Peer panel"}</p>
-        <h1 className="display mt-3 text-[2.5rem] sm:text-[3.25rem]">Review dashboard</h1>
-        <p className="mt-4 text-[var(--fg-muted)] text-base sm:text-lg leading-relaxed">
-          {staff
-            ? "Every story here passed the automated check (at most 20% AI). Publish it or send it back with notes, oversee Elite peer panels, and rule on writers' counter-reasons."
-            : "Vote PASS or FAIL on the Elite papers you're assigned to. A FAIL needs a reason, and writers can answer it with a counter-reason you'll reconsider here."}
-        </p>
-      </div>
-
-      <div role="tablist" aria-label="Review sections" className="mt-10 flex items-center gap-1 border-b border-[var(--border)] overflow-x-auto">
+      <div role="tablist" aria-label="Verification sections" className="flex items-center gap-1 border-b border-[var(--border)] overflow-x-auto">
         {tabs.map((t) => (
           <button
             key={t.value}
@@ -169,11 +82,11 @@ function Workspace({ me, staff }: { me: string; staff: boolean }) {
       </div>
 
       {tab === "panel" ? (
-        <PanelTab me={me} staff={staff} />
+        <PanelTab me={actor} staff />
       ) : tab === "counters" ? (
-        <CountersTab me={me} staff={staff} />
+        <CountersTab me={actor} staff actor={actor} />
       ) : (
-        <Queue reviewer={me} filter={tab} />
+        <Queue reviewer={actor} filter={tab} />
       )}
     </>
   )
@@ -222,7 +135,7 @@ function Queue({ reviewer, filter }: { reviewer: string; filter: Filter }) {
           <p className="mt-4 font-semibold">{filter === "queue" ? "Queue is clear" : "No decisions yet"}</p>
           <p className="mt-1 text-sm text-[var(--fg-muted)]">
             {filter === "queue"
-              ? "New submissions appear here as soon as they pass Phase 1."
+              ? "Free and Elite submissions appear here as soon as they pass the AI check."
               : "Stories you approve or send back are listed here."}
           </p>
         </div>
@@ -286,7 +199,7 @@ function ReviewPanel({ draft, reviewer }: { draft: Draft; reviewer: string }) {
   const decide = () => {
     if (!mode) return
     setBusy(true)
-    const res = decideReview(draft.id, mode === "approve" ? "APPROVED" : "REJECTED", notes)
+    const res = decideReview(draft.id, mode === "approve" ? "APPROVED" : "REJECTED", notes, reviewer)
     setBusy(false)
     if (!res.ok) {
       setError(res.error)
@@ -317,7 +230,7 @@ function ReviewPanel({ draft, reviewer }: { draft: Draft; reviewer: string }) {
             // No postId: reviewers always read the whole paper
             paper={draft.paper}
             date={draft.submittedAt ?? draft.updatedAt}
-            author={{ ...(author.base ?? MOCK_USERS[0]), username: author.username, avatarUrl: author.avatarUrl }}
+            author={userOfIdentity(author)}
             authorName={author.displayName}
           />
         )}
@@ -325,6 +238,7 @@ function ReviewPanel({ draft, reviewer }: { draft: Draft; reviewer: string }) {
 
       {/* Decision rail */}
       <aside className="space-y-4 xl:sticky xl:top-24">
+        <IntegrityScores draft={draft} />
         <section className="panel p-5" aria-labelledby={`p1-${draft.id}`}>
           <h2 id={`p1-${draft.id}`} className="font-display text-lg font-semibold tracking-tight">
             Phase 1 report

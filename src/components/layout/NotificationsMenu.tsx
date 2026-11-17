@@ -8,14 +8,14 @@ import { useUIStore } from "@/lib/store"
 import { formatRelativeDate, cn } from "@/lib/utils"
 import { dur, ease } from "@/lib/motion"
 
-const ICONS = { follow: UserPlus, comment: MessageCircle, clap: Sparkles, system: Bell, review: ShieldCheck } as const
+const ICONS = { follow: UserPlus, comment: MessageCircle, clap: Sparkles, system: Bell, review: ShieldCheck, idea_published: Sparkles } as const
 
 // Bell with unread dot; opens a panel listing activity. Reading an item marks it read.
 export function NotificationsMenu({ buttonClassName }: { buttonClassName: string }) {
   const [open, setOpen] = useState(false)
-  const { notifications: all, markAllRead, markRead, currentUser } = useUIStore()
-  // Review outcomes are addressed to one writer; sample notifications have no recipient
-  const notifications = all.filter((n) => !n.to || n.to === currentUser)
+  const { notifications: all, markAllRead, markRead, currentUser, authUid } = useUIStore()
+  // Live from Firestore notifications where recipientId == you
+  const notifications = all.filter((n) => (n.toUid ? n.toUid === authUid : n.to === currentUser))
   const unread = notifications.filter((n) => !n.read).length
 
   return (

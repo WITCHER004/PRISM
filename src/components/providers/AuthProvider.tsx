@@ -11,12 +11,20 @@ import {
   type FirebaseUser,
 } from "@/lib/firebase"
 import { useUIStore } from "@/lib/store"
+import { isAdminUser } from "@/lib/admin"
+import { handleFrom } from "@/lib/live/schema"
 
 export type UserProfile = {
   uid: string
   email: string | null
   displayName: string | null
   photoURL: string | null
+  /** Role fields (see src/lib/access.ts); mirrored to Firestore users/{uid} */
+  tier?: "free" | "elite"
+  isPanelMember?: boolean
+  panelApplicationStatus?: "none" | "pending" | "approved" | "rejected"
+  isAdmin?: boolean
+  suspended?: boolean
   [key: string]: unknown
 }
 
@@ -27,6 +35,8 @@ type AuthContextValue = {
   loading: boolean
   signInWithGoogle: () => Promise<FirebaseUser | null>
   logout: () => Promise<void>
+  /** Update the in-memory profile right away (role changes); persisting is the caller's job */
+  patchUserProfile: (patch: Partial<UserProfile>) => void
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
@@ -35,10 +45,6 @@ const AuthContext = createContext<AuthContextValue | null>(null)
 const warn = (msg: string, err: unknown) =>
   console.warn(`[auth] ${msg}`, (err as { code?: string })?.code ?? (err as Error)?.message ?? err)
 
-/**
- * Fetch users/{uid}, creating it on first sign-in. Never throws: if Firestore is offline,
- * unreachable or denied, it falls back to the cached doc, then to a profile built from the Firebase user.
- */
 /** Profile built from the auth user alone; the name falls back to the email prefix */
 const profileFromAuth = (u: FirebaseUser): UserProfile => ({
   uid: u.uid,
@@ -47,34 +53,57 @@ const profileFromAuth = (u: FirebaseUser): UserProfile => ({
   photoURL: u.photoURL,
 })
 
+/** A handle nobody else has claimed: the name-derived base, then base2, base3… */
+async function claimHandle(base: string, uid: string): Promise<string> {
+  const [{ collection, getDocs, query, where }, { db }] = await Promise.all([import("firebase/firestore"), import("@/lib/firebase")])
+  for (let n = 1; n < 50; n++) {
+    const candidate = n === 1 ? base : `${base.slice(0, 17)}${n}`
+    const taken = await getDocs(query(collection(db, "users"), where("handle", "==", candidate)))
+    if (taken.docs.every((d) => d.id === uid)) return candidate
+  }
+  return `${base.slice(0, 12)}${uid.slice(0, 8).toLowerCase()}`
+}
+
+/**
+ * Creates users/{uid} on first sign-in (uid, email, displayName, handle, photoURL, bio, tier,
+ * isPanelMember, panelApplicationStatus, isAdmin, createdAt) and refreshes the login fields after.
+ * Never throws: if Firestore is unreachable the session carries on with the auth profile.
+ */
 async function syncUserProfile(u: FirebaseUser): Promise<UserProfile> {
   const base = profileFromAuth(u)
   try {
-    const [{ doc, getDoc, getDocFromCache, setDoc, serverTimestamp }, { db }] = await Promise.all([
-      import("firebase/firestore"),
-      import("@/lib/firestore"),
-    ])
+    const [{ doc, getDoc, setDoc, serverTimestamp }, { db }] = await Promise.all([import("firebase/firestore"), import("@/lib/firebase")])
     const ref = doc(db, "users", u.uid)
+    const snap = await getDoc(ref)
+    const admin = isAdminUser(u)
 
-    let snap
-    try {
-      snap = await getDoc(ref)
-    } catch (err) {
-      warn(`Firestore unreachable for users/${u.uid}; trying the local cache.`, err)
-      try {
-        snap = await getDocFromCache(ref)
-      } catch {
-        return base // nothing cached: carry on with the auth profile
+    if (!snap.exists()) {
+      const handle = await claimHandle(handleFrom(u.displayName, u.email, u.uid), u.uid)
+      const created = {
+        uid: u.uid,
+        email: u.email,
+        displayName: base.displayName || handle,
+        handle,
+        photoURL: u.photoURL,
+        bio: "",
+        tier: "free",
+        isPanelMember: false,
+        panelApplicationStatus: "none",
+        isAdmin: admin,
+        createdAt: serverTimestamp(),
+        lastLoginAt: serverTimestamp(),
       }
+      await setDoc(ref, created)
+      return { ...base, ...created, createdAt: undefined, lastLoginAt: undefined } as UserProfile
     }
 
-    // Writes aren't awaited: offline they stay pending until the server acks, and sync once it's back
-    const write = snap.exists()
-      ? setDoc(ref, { ...base, lastLoginAt: serverTimestamp() }, { merge: true })
-      : setDoc(ref, { ...base, createdAt: serverTimestamp(), lastLoginAt: serverTimestamp() })
-    write.catch((err) => warn(`Could not save users/${u.uid} (check Firestore rules).`, err))
-
-    return snap.exists() ? { ...(snap.data() as UserProfile), ...base } : base
+    const existing = snap.data() as UserProfile & { handle?: string }
+    const patch: Record<string, unknown> = { email: u.email, isAdmin: admin, lastLoginAt: serverTimestamp() }
+    // Older docs may predate handles; the profile photo stays whatever the user last uploaded
+    if (!existing.handle) patch.handle = await claimHandle(handleFrom(existing.displayName ?? u.displayName, u.email, u.uid), u.uid)
+    if (!existing.photoURL && u.photoURL) patch.photoURL = u.photoURL
+    setDoc(ref, patch, { merge: true }).catch((err) => warn(`Could not update users/${u.uid}.`, err))
+    return { ...base, ...existing, ...patch, lastLoginAt: undefined } as UserProfile
   } catch (err) {
     warn("Firestore profile sync skipped; using the Firebase auth profile.", err)
     return base
@@ -103,6 +132,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             ? {
                 uid: firebaseUser.uid,
                 email: firebaseUser.email,
+                emailVerified: firebaseUser.emailVerified,
                 displayName: firebaseUser.displayName,
                 photoURL: firebaseUser.photoURL,
               }
@@ -111,13 +141,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         if (!firebaseUser) {
           setUserProfile(null)
-          const local = useUIStore.getState().currentUser
-          if (local) {
-            console.warn(
-              `[auth] App session is @${local} but Firebase has no signed-in user. ` +
-                "The app treats you as signed in; sign out and back in to restore the Firebase session."
-            )
-          }
           return
         }
         // Usable profile right away; replaced by the Firestore doc if it loads
@@ -152,9 +175,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await logOutFirebase()
   }, [])
 
+  const patchUserProfile = useCallback((patch: Partial<UserProfile>) => {
+    setUserProfile((p) => (p ? { ...p, ...patch } : p))
+  }, [])
+
   const value = useMemo(
-    () => ({ user, userProfile, loading, signInWithGoogle, logout }),
-    [user, userProfile, loading, signInWithGoogle, logout]
+    () => ({ user, userProfile, loading, signInWithGoogle, logout, patchUserProfile }),
+    [user, userProfile, loading, signInWithGoogle, logout, patchUserProfile]
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

@@ -11,7 +11,7 @@ import {
   Users, Scale, ArrowRight,
 } from "lucide-react"
 import { useUIStore, toast, type Draft, type PaywallChoice } from "@/lib/store"
-import { MOCK_TAGS } from "@/lib/data"
+import { TOPICS } from "@/lib/topics"
 import { Button } from "@/components/ui/Button"
 import { Wordmark } from "@/components/ui/Wordmark"
 import { StudioDialog, DialogActions } from "@/components/studio/StudioDialog"
@@ -31,7 +31,9 @@ import { useSubscription } from "@/components/elite/hooks"
 import { EliteTag } from "@/components/elite/EliteBadges"
 import { requestPhase1 } from "@/lib/moderation/client"
 import { AIHumanGauge, Phase1Breakdown, StatusPill } from "@/components/moderation/Phase1Report"
-import { PaperSettings } from "@/components/papers/PaperSettings"
+import { PaperSettings, PanelReviewSetting } from "@/components/papers/PaperSettings"
+import { CoverImageField } from "@/components/editor/CoverImageField"
+import { openUpgrade } from "@/components/elite/UpgradeDialog"
 import { useCraftTracker } from "@/components/craft/useCraftTracker"
 import { certificateFrom } from "@/lib/craft"
 import { mirrorRecord } from "@/lib/records"
@@ -113,6 +115,9 @@ function EditorWorkspace({ initial }: { initial?: Draft }) {
   const [tags, setTags] = useState<string[]>(initial?.tags ?? [])
   const [paywall, setPaywall] = useState<PaywallChoice>(initial?.paywall ?? "FREE")
   const [paper, setPaper] = useState<AdvancedPaper | undefined>(initial?.paper)
+  const [coverImageUrl, setCoverImageUrl] = useState<string | undefined>(initial?.coverImageUrl)
+  // Elite writers send stories to the peer panel unless they switch it off
+  const [panelReview, setPanelReview] = useState<boolean>(initial?.panelReview ?? true)
   // Proof-of-craft telemetry: counts and timings only
   const craft = useCraftTracker(initial?.craft)
   const detachCraft = useRef<(() => void) | null>(null)
@@ -126,7 +131,7 @@ function EditorWorkspace({ initial }: { initial?: Draft }) {
   // Edits to a live story wait for review; readers keep seeing the approved version
   const hasUnsubmittedEdits =
     !!live &&
-    (live.title !== title || live.subtitle !== subtitle || live.contentHtml !== html || live.paywall !== paywall || live.tags.join() !== tags.join() || JSON.stringify(live.paper) !== JSON.stringify(paper))
+    (live.title !== title || live.subtitle !== subtitle || live.contentHtml !== html || live.paywall !== paywall || live.tags.join() !== tags.join() || JSON.stringify(live.paper) !== JSON.stringify(paper) || (live.coverImageUrl ?? "") !== (coverImageUrl ?? ""))
 
   const [saveState, setSaveState] = useState<SaveState>(initial ? "saved" : "idle")
   const [savedAt, setSavedAt] = useState<string | null>(initial?.updatedAt ?? null)
@@ -155,8 +160,8 @@ function EditorWorkspace({ initial }: { initial?: Draft }) {
   }, [craft])
 
   // Latest values for the save function (used from timers, key handlers and unmount)
-  const latest = useRef({ title, subtitle, html, tags, paywall, paper })
-  latest.current = { title, subtitle, html, tags, paywall, paper }
+  const latest = useRef({ title, subtitle, html, tags, paywall, paper, panelReview, coverImageUrl })
+  latest.current = { title, subtitle, html, tags, paywall, paper, panelReview, coverImageUrl }
 
   const save = useCallback(
     (opts: { quiet?: boolean; manual?: boolean } = {}) => {
@@ -176,6 +181,8 @@ function EditorWorkspace({ initial }: { initial?: Draft }) {
         tags: v.tags,
         paywall: v.paywall,
         paper: v.paper,
+        panelReview: v.panelReview,
+        coverImageUrl: v.coverImageUrl,
         craft: craft.snapshot(),
         originIdeaId: originIdeaMetadata?.originIdeaId,
         originIdeaText: originIdeaMetadata?.originIdeaText,
@@ -700,6 +707,14 @@ function EditorWorkspace({ initial }: { initial?: Draft }) {
               {isLive && <p className="mt-2 text-xs text-[var(--fg-muted)]">The address stays fixed once a story is published.</p>}
             </section>
 
+            <CoverImageField
+              value={coverImageUrl}
+              onChange={(url) => {
+                setCoverImageUrl(url)
+                touch()
+              }}
+            />
+
             <TopicsField tags={tags} onAdd={addTag} onRemove={removeTag} />
 
             <fieldset>
@@ -747,8 +762,18 @@ function EditorWorkspace({ initial }: { initial?: Draft }) {
 
             <PaperSettings
               paper={paper}
+              locked={!isElite}
               onChange={(next) => {
                 setPaper(next)
+                touch()
+              }}
+            />
+
+            <PanelReviewSetting
+              on={panelReview}
+              locked={!isElite}
+              onChange={(next) => {
+                setPanelReview(next)
                 touch()
               }}
             />
@@ -802,7 +827,7 @@ function EditorWorkspace({ initial }: { initial?: Draft }) {
                 ? stored?.track === "PEER_PANEL"
                   ? `Phase 1 passed. A Prism reviewer reads it next; once they approve, ${PANEL_SIZE} peer reviewers vote and it publishes when ${PANEL_PASS_THRESHOLD} vote PASS.`
                   : "Phase 1 passed. A Prism reviewer will read it next, and you'll get a notification when they decide."
-                : isElite
+                : isElite && panelReview
                   ? `As an Elite writer your story goes through three checks: an automated AI-content check (at most ${AI_MAX_PERCENT}% AI), a review by a Prism employee, then a vote by a ${PANEL_SIZE}-member peer panel.`
                   : `Every story goes through two checks before it's published: an automated AI-content check (at most ${AI_MAX_PERCENT}% AI), then a review by a Prism employee.`
         }
@@ -900,7 +925,11 @@ function EditorWorkspace({ initial }: { initial?: Draft }) {
                     <span className="block text-xs text-[var(--fg-muted)]">A Prism editor approves it or sends notes.</span>
                   </span>
                 </li>
-                {isElite ? (
+                {isElite && !panelReview ? (
+                  <li className="px-4 py-3 text-xs text-[var(--fg-muted)]">
+                    Peer panel review is switched off for this story, so it publishes after the employee review.
+                  </li>
+                ) : isElite ? (
                   <li className="flex items-start gap-3 px-4 py-3">
                     <Users className="w-4 h-4 mt-0.5 shrink-0 text-[var(--fg-muted)]" />
                     <span>
@@ -915,9 +944,9 @@ function EditorWorkspace({ initial }: { initial?: Draft }) {
                 ) : (
                   <li className="px-4 py-3 text-xs text-[var(--fg-muted)]">
                     Elite writers also get a {PANEL_SIZE}-member peer panel review.{" "}
-                    <Link href="/elite" className="inline-flex items-center gap-1 font-medium text-indigo-700 hover:underline">
-                      See Elite <ArrowRight className="w-3 h-3" />
-                    </Link>
+                    <button type="button" onClick={openUpgrade} className="inline-flex items-center gap-1 font-medium text-[var(--elite-ink)] hover:underline">
+                      Upgrade to Prism Elite <ArrowRight className="w-3 h-3" />
+                    </button>
                   </li>
                 )}
               </ol>
@@ -1083,7 +1112,7 @@ function latestDate(savedAt: string | null) {
 
 function TopicsField({ tags, onAdd, onRemove }: { tags: string[]; onAdd: (t: string) => boolean; onRemove: (t: string) => void }) {
   const [value, setValue] = useState("")
-  const suggestions = MOCK_TAGS.filter((t) => !tags.includes(t.slug)).slice(0, 6)
+  const suggestions = TOPICS.filter((t) => !tags.includes(t.slug)).slice(0, 6)
   const full = tags.length >= 5
 
   return (

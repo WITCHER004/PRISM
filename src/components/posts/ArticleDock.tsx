@@ -19,8 +19,7 @@ interface ArticleDockProps {
 }
 
 export function ArticleDock({ postId, clapCount, commentCount, author, layout }: ArticleDockProps) {
-  const { clappedPosts, clapPost, bookmarkedPosts, toggleBookmark, peerReviews } = useUIStore()
-  const postReviews = peerReviews[postId] ?? []
+  const { clappedPosts, clapPost, bookmarkedPosts, toggleBookmark } = useUIStore()
   const userClaps = clappedPosts[postId] ?? 0
   const saved = bookmarkedPosts.has(postId)
   const [bursts, setBursts] = useState<number[]>([])
@@ -104,12 +103,6 @@ export function ArticleDock({ postId, clapCount, commentCount, author, layout }:
         <span className={count}>{commentCount}</span>
       </div>
 
-      <div className={cn("flex items-center", rail ? "flex-col gap-1" : "gap-1")}>
-        <a href="#peer-reviews" className={btn} aria-label="Jump to peer reviews" title="Peer Reviews">
-          <ShieldCheck className="w-[18px] h-[18px]" />
-        </a>
-        <span className={count}>{postReviews.length}</span>
-      </div>
 
       {rail && <div className="w-6 h-px bg-[var(--border)] my-1" />}
 

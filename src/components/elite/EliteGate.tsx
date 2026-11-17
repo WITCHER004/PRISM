@@ -4,6 +4,7 @@ import Link from "next/link"
 import { ArrowRight, Lock } from "lucide-react"
 import { useHydrated } from "@/components/studio/useHydrated"
 import { useSubscription } from "./hooks"
+import { openUpgrade } from "./UpgradeDialog"
 
 /** Renders children only for active Elite members; everyone else gets an upgrade prompt */
 export function EliteGate({
@@ -33,12 +34,21 @@ export function EliteGate({
           Your Elite subscription is inactive. Your earnings and badges are kept and come back when you renew.
         </p>
       )}
-      <Link
-        href="/elite"
-        className="mt-8 inline-flex items-center justify-center gap-2 h-11 px-6 rounded-full text-sm font-medium bg-indigo-600 text-white hover:bg-indigo-700 transition-colors"
-      >
-        {lapsed ? "Renew Elite" : "See Elite plans"} <ArrowRight className="w-4 h-4" />
-      </Link>
+      <div className="mt-8 flex flex-wrap justify-center gap-2">
+        <button
+          type="button"
+          onClick={openUpgrade}
+          className="inline-flex items-center justify-center gap-2 h-11 px-6 rounded-full text-sm font-medium bg-[var(--fg)] text-[var(--bg)] hover:opacity-90 transition-opacity"
+        >
+          <Lock className="w-4 h-4 text-[var(--gold)]" /> {lapsed ? "Renew Prism Elite" : "Upgrade to Prism Elite"}
+        </button>
+        <Link
+          href="/elite"
+          className="inline-flex items-center justify-center gap-2 h-11 px-5 rounded-full text-sm font-medium border border-[var(--border-strong)] hover:border-[var(--fg)] transition-colors"
+        >
+          Compare plans <ArrowRight className="w-4 h-4" />
+        </Link>
+      </div>
     </div>
   )
 }

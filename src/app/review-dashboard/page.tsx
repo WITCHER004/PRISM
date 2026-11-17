@@ -1,11 +1,8 @@
-import type { Metadata } from "next"
-import { ReviewDashboard } from "./ReviewDashboard"
+import { redirect } from "next/navigation"
 
-export const metadata: Metadata = {
-  title: "Review queue",
-  robots: { index: false, follow: false },
-}
-
-export default function ReviewDashboardPage() {
-  return <ReviewDashboard />
+// The old combined dashboard was split: panel members review at /panel on the main site, and staff
+// work the verification queue inside the isolated /admin portal. Old links land on the panel.
+export default async function ReviewDashboardPage({ searchParams }: { searchParams: Promise<{ tab?: string }> }) {
+  const { tab } = await searchParams
+  redirect(tab === "counters" ? "/panel?tab=counters" : "/panel")
 }

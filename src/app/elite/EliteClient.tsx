@@ -3,29 +3,29 @@
 import { useState } from "react"
 import Link from "next/link"
 import * as TooltipPrimitive from "@radix-ui/react-tooltip"
-import { ArrowRight, Check, CreditCard, Loader2, Lock, Minus, PartyPopper } from "lucide-react"
+import { ArrowRight, Check, Minus } from "lucide-react"
 import { SiteHeader } from "@/components/layout/SiteHeader"
 import { SiteFooter } from "@/components/layout/SiteFooter"
 import { StudioDialog, DialogActions } from "@/components/studio/StudioDialog"
 import { useHydrated } from "@/components/studio/useHydrated"
 import { BadgePill, EliteTag } from "@/components/elite/EliteBadges"
 import { useSubscription } from "@/components/elite/hooks"
+import { openUpgrade } from "@/components/elite/UpgradeDialog"
+import { PanelApplyButton } from "@/components/panel/PanelApplication"
+import { useRoleActions } from "@/components/providers/useAccess"
 import { Button } from "@/components/ui/Button"
-import { BADGE_ORDER, BADGES } from "@/lib/elite/badges"
-import { ELITE_PERIOD_DAYS, ELITE_PRICE_USD, PANEL_PASS_THRESHOLD, PANEL_SIZE, PAYOUT_RPM_USD } from "@/lib/elite/config"
+import { BADGE_ORDER } from "@/lib/elite/badges"
+import { ELITE_PRICE_USD, PANEL_PASS_THRESHOLD, PANEL_SIZE, PAYOUT_RPM_USD } from "@/lib/elite/config"
 import { TIER_FEATURES } from "@/lib/elite/subscription"
 import { useUIStore, toast } from "@/lib/store"
-import { cn, formatDate } from "@/lib/utils"
-
-type Phase = null | "form" | "processing" | "done"
+import { formatDate } from "@/lib/utils"
 
 export function EliteClient() {
   const hydrated = useHydrated()
   const currentUser = useUIStore((s) => s.currentUser)
   const { isElite, subscription } = useSubscription()
-  const [phase, setPhase] = useState<Phase>(null)
   const [cancelOpen, setCancelOpen] = useState(false)
-  const cancelElite = useUIStore((s) => s.cancelElite)
+  const { cancel } = useRoleActions()
   const lapsed = subscription.tier === "ELITE" && !isElite
 
   return (
@@ -116,13 +116,33 @@ export function EliteClient() {
                   </div>
                 </div>
               ) : (
-                <Button size="lg" className="w-full bg-indigo-600 text-white hover:bg-indigo-700" onClick={() => setPhase("form")}>
-                  {lapsed ? "Renew Elite" : "Upgrade to Elite"} <ArrowRight className="w-4 h-4" />
+                <Button size="lg" className="w-full bg-indigo-600 text-white hover:bg-indigo-700" onClick={openUpgrade}>
+                  {lapsed ? "Renew Elite" : "Upgrade to Prism Elite"} <ArrowRight className="w-4 h-4" />
                 </Button>
               )}
             </div>
           </div>
         </section>
+
+        {/* Peer Review Panel: Elite members apply from here, in place */}
+        {hydrated && currentUser && (
+          <section
+            className="mt-12 panel p-6 sm:p-8 flex flex-col md:flex-row md:items-center md:justify-between gap-5"
+            aria-labelledby="panel-apply-title"
+          >
+            <div className="max-w-xl">
+              <p className="meta">Peer Review Panel</p>
+              <h2 id="panel-apply-title" className="mt-2 font-display text-xl font-semibold">
+                Review the papers that earn Peer-Reviewed Scholar
+              </h2>
+              <p className="mt-2 text-sm text-[var(--fg-muted)] leading-relaxed">
+                {PANEL_SIZE} Elite reviewers vote on every Elite paper and {PANEL_PASS_THRESHOLD} PASS votes publish it. Panel members
+                are Elite writers approved by an admin for the domains they know.
+              </p>
+            </div>
+            <PanelApplyButton className="shrink-0 h-11 px-5" />
+          </section>
+        )}
 
         {/* Comparison */}
         <section className="mt-16" aria-labelledby="compare-title">
@@ -193,8 +213,6 @@ export function EliteClient() {
       </main>
       <SiteFooter />
 
-      <CheckoutDialog phase={phase} setPhase={setPhase} />
-
       <StudioDialog
         open={cancelOpen}
         onOpenChange={setCancelOpen}
@@ -209,7 +227,7 @@ export function EliteClient() {
             variant="primary"
             size="lg"
             onClick={() => {
-              cancelElite()
+              cancel()
               setCancelOpen(false)
               toast("Elite cancelled. Badges are hidden until you renew.")
             }}
@@ -219,123 +237,5 @@ export function EliteClient() {
         </DialogActions>
       </StudioDialog>
     </div>
-  )
-}
-
-function CheckoutDialog({ phase, setPhase }: { phase: Phase; setPhase: (p: Phase) => void }) {
-  const upgradeToElite = useUIStore((s) => s.upgradeToElite)
-  const [card, setCard] = useState({ number: "4242 4242 4242 4242", expiry: "12 / 30", cvc: "123", name: "" })
-  const [error, setError] = useState("")
-
-  const pay = async () => {
-    setError("")
-    setPhase("processing")
-    try {
-      // Mock checkout handler; with a database + ELITE_PAYMENT_PROVIDER this creates a Stripe/Razorpay session
-      const res = await fetch("/api/elite/checkout", { method: "POST" })
-      const body = (await res.json()) as { reference?: string; status?: string; error?: string }
-      if (!res.ok || !body.reference) throw new Error(body.error ?? "Checkout failed.")
-      const done = upgradeToElite(body.reference)
-      if (!done.ok) throw new Error(done.error)
-      setPhase("done")
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Checkout failed.")
-      setPhase("form")
-    }
-  }
-
-  const input = "mt-1.5 w-full h-11 px-3.5 rounded-[12px] bg-white border border-slate-200 text-sm outline-none focus:border-indigo-500 tabular-nums"
-
-  return (
-    <StudioDialog
-      open={phase !== null}
-      onOpenChange={(o) => !o && phase !== "processing" && setPhase(null)}
-      dismissable={phase !== "processing"}
-      title={phase === "done" ? "Welcome to Elite" : "Upgrade to Elite"}
-      description={
-        phase === "done"
-          ? "Your Elite Author badge is live, new views of your articles now earn money, and the peer panel is open to you."
-          : `$${ELITE_PRICE_USD}.00 every ${ELITE_PERIOD_DAYS} days. Cancel any time.`
-      }
-    >
-      {phase === "done" ? (
-        <div className="mt-6">
-          <div className="flex items-center gap-3 rounded-[14px] border border-emerald-200 bg-emerald-50 p-4">
-            <PartyPopper className="w-5 h-5 text-emerald-700" />
-            <TooltipPrimitive.Provider>
-              <BadgePill id="ELITE_AUTHOR" />
-            </TooltipPrimitive.Provider>
-            <span className="text-sm text-emerald-900">{BADGES.ELITE_AUTHOR.howEarned}</span>
-          </div>
-          <DialogActions>
-            <Link
-              href="/editor/new"
-              className="inline-flex items-center justify-center h-11 px-6 rounded-full text-sm font-medium border border-[var(--border-strong)] hover:border-[var(--fg)]"
-            >
-              Write for the panel
-            </Link>
-            <Link
-              href="/dashboard/earnings"
-              className="inline-flex items-center justify-center gap-2 h-11 px-6 rounded-full text-sm font-medium bg-indigo-600 text-white hover:bg-indigo-700"
-            >
-              Open earnings <ArrowRight className="w-4 h-4" />
-            </Link>
-          </DialogActions>
-        </div>
-      ) : (
-        <form
-          className="mt-6"
-          onSubmit={(e) => {
-            e.preventDefault()
-            void pay()
-          }}
-        >
-          <p className="flex items-center gap-2 rounded-[12px] border border-dashed border-slate-300 bg-slate-50 px-3.5 py-2.5 text-xs text-slate-600">
-            <Lock className="w-3.5 h-3.5" /> Test checkout — no card is charged. The test card is prefilled.
-          </p>
-          <label className="mt-4 block text-sm font-medium">
-            Name on card
-            <input
-              className={input}
-              value={card.name}
-              onChange={(e) => setCard({ ...card, name: e.target.value })}
-              placeholder="Your name"
-              autoComplete="cc-name"
-            />
-          </label>
-          <label className="mt-3 block text-sm font-medium">
-            Card number
-            <span className="relative block">
-              <input className={cn(input, "pr-10")} value={card.number} onChange={(e) => setCard({ ...card, number: e.target.value })} inputMode="numeric" />
-              <CreditCard className="absolute right-3 top-1/2 mt-[3px] -translate-y-1/2 w-4 h-4 text-slate-400" />
-            </span>
-          </label>
-          <div className="mt-3 grid grid-cols-2 gap-3">
-            <label className="block text-sm font-medium">
-              Expiry
-              <input className={input} value={card.expiry} onChange={(e) => setCard({ ...card, expiry: e.target.value })} />
-            </label>
-            <label className="block text-sm font-medium">
-              CVC
-              <input className={input} value={card.cvc} onChange={(e) => setCard({ ...card, cvc: e.target.value })} inputMode="numeric" />
-            </label>
-          </div>
-          {error && (
-            <p role="alert" className="mt-3 text-sm text-[var(--error)]">
-              {error}
-            </p>
-          )}
-          <DialogActions>
-            <Button type="button" variant="secondary" size="lg" onClick={() => setPhase(null)} disabled={phase === "processing"}>
-              Not now
-            </Button>
-            <Button type="submit" size="lg" className="bg-indigo-600 text-white hover:bg-indigo-700" disabled={phase === "processing"}>
-              {phase === "processing" && <Loader2 className="w-4 h-4 animate-spin" />}
-              Pay ${ELITE_PRICE_USD}.00
-            </Button>
-          </DialogActions>
-        </form>
-      )}
-    </StudioDialog>
   )
 }

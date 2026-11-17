@@ -6,7 +6,9 @@ import Image from "next/image"
 import { useRouter, useSearchParams } from "next/navigation"
 import { AnimatePresence, motion } from "motion/react"
 import { ArrowRight, BadgeCheck, CornerDownLeft, History, Search, SearchX, X } from "lucide-react"
-import { MOCK_POSTS, MOCK_TAGS, SAMPLE_WRITERS, type Post, type Tag, type User } from "@/lib/data"
+import type { Post, Tag, User } from "@/lib/data"
+import { TOPICS } from "@/lib/topics"
+import { useMembers, usePublishedPosts } from "@/lib/live/hooks"
 import { Avatar } from "@/components/ui/Avatar"
 import { FollowButton } from "@/components/ui/FollowButton"
 import { PillTabs } from "./PillTabs"
@@ -27,8 +29,8 @@ const termsOf = (q: string) => [...new Set(q.toLowerCase().split(/\s+/).filter(B
 const hasAll = (hay: string, terms: string[]) => terms.every((t) => hay.includes(t))
 const hits = (s: string | undefined, terms: string[]) => (s ? terms.filter((t) => s.toLowerCase().includes(t)).length : 0)
 
-function searchStories(terms: string[]): Post[] {
-  return MOCK_POSTS.map((p) => {
+function searchStories(all: Post[], terms: string[]): Post[] {
+  return all.map((p) => {
     const tagText = p.tags.map((t) => `${t.name} ${t.slug}`).join(" ")
     const hay = [p.title, p.subtitle, p.excerpt, tagText, p.author.displayName].join(" ").toLowerCase()
     if (!hasAll(hay, terms)) return null
@@ -40,14 +42,14 @@ function searchStories(terms: string[]): Post[] {
     .map((x) => x.p)
 }
 
-function searchPeople(terms: string[]): User[] {
-  return SAMPLE_WRITERS.filter((u) => hasAll(`${u.displayName} ${u.username} ${u.bio}`.toLowerCase(), terms)).sort(
-    (a, b) => hits(`${b.displayName} ${b.username}`, terms) - hits(`${a.displayName} ${a.username}`, terms) || b.followerCount - a.followerCount
+function searchPeople(all: User[], terms: string[]): User[] {
+  return all.filter((u) => hasAll(`${u.displayName} ${u.username} ${u.bio}`.toLowerCase(), terms)).sort(
+    (a, b) => hits(`${b.displayName} ${b.username}`, terms) - hits(`${a.displayName} ${a.username}`, terms) || b.postCount - a.postCount
   )
 }
 
 function searchTopics(terms: string[]): Tag[] {
-  return MOCK_TAGS.filter((t) => hasAll(`${t.name} ${t.slug}`.toLowerCase(), terms))
+  return TOPICS.filter((t) => hasAll(`${t.name} ${t.slug}`.toLowerCase(), terms))
 }
 
 // ── component ───────────────────────────────────────────────────────────────
@@ -88,8 +90,10 @@ export function SearchClient() {
   }, [])
 
   const terms = useMemo(() => termsOf(query), [query])
-  const stories = useMemo(() => (terms.length ? searchStories(terms) : []), [terms])
-  const people = useMemo(() => (terms.length ? searchPeople(terms) : []), [terms])
+  const allPosts = usePublishedPosts()
+  const members = useMembers()
+  const stories = useMemo(() => (terms.length ? searchStories(allPosts, terms) : []), [allPosts, terms])
+  const people = useMemo(() => (terms.length ? searchPeople(members, terms) : []), [members, terms])
   const topics = useMemo(() => (terms.length ? searchTopics(terms) : []), [terms])
   const total = stories.length + people.length + topics.length
 
@@ -454,7 +458,7 @@ function PersonResult({ user, terms, active, ...rest }: { user: User; terms: str
           {user.isVerifiedHuman && <BadgeCheck className="w-4 h-4 shrink-0 text-[var(--accent)]" aria-label="Verified writer" />}
         </p>
         <p className="meta mt-0.5">
-          @<Highlight text={user.username} terms={terms} /> · {numberWithCommas(user.followerCount)} readers
+          @<Highlight text={user.username} terms={terms} /> · {numberWithCommas(user.postCount)} {user.postCount === 1 ? "story" : "stories"}
         </p>
         <p className="mt-1 text-sm text-[var(--fg-muted)] line-clamp-1">
           <Highlight text={snippet(user.bio, terms, 50)} terms={terms} />
@@ -612,7 +616,7 @@ function NoResults({ query, onPick }: { query: string; onPick: (q: string) => vo
 function TopicChips() {
   return (
     <div className="flex flex-wrap gap-2">
-      {MOCK_TAGS.map((tag) => (
+      {TOPICS.map((tag) => (
         <Link
           key={tag.slug}
           href={`/explore/${tag.slug}`}

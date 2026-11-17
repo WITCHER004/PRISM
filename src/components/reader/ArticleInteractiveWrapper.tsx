@@ -1,19 +1,11 @@
 "use client"
 
-import { useState, useRef, useEffect } from "react"
+import { useState, useRef } from "react"
 import { SelectionPopover, type SelectionPayload } from "@/components/reader/SelectionPopover"
 import { MarginNotesDrawer } from "@/components/reader/MarginNotesDrawer"
 import { QuoteCardModal } from "@/components/reader/QuoteCardModal"
-import { useUIStore, toast } from "@/lib/store"
-import {
-  loadLocalMarginNotes,
-  saveLocalMarginNote,
-  deleteLocalMarginNote,
-  fetchRemoteMarginNotes,
-  saveRemoteMarginNote,
-  deleteRemoteMarginNote,
-  type MarginNote,
-} from "@/lib/marginNotes"
+import { toast } from "@/lib/store"
+import { useMarginNotes } from "@/lib/marginNotes"
 
 interface ArticleInteractiveProps {
   articleId: string
@@ -39,25 +31,7 @@ export function ArticleInteractiveWrapper({
   const [quoteModalOpen, setQuoteModalOpen] = useState(false)
   const [selectedQuote, setSelectedQuote] = useState("")
   const [activeSelection, setActiveSelection] = useState<SelectionPayload | null>(null)
-  const [notes, setNotes] = useState<MarginNote[]>([])
-
-  const currentUser = useUIStore((s) => s.currentUser)
-  const profile = useUIStore((s) => s.profile)
-
-  useEffect(() => {
-    const local = loadLocalMarginNotes(articleId)
-    setNotes(local)
-    fetchRemoteMarginNotes(articleId).then((remote) => {
-      if (remote.length) {
-        setNotes((prev) => {
-          const map = new Map<string, MarginNote>()
-          for (const n of remote) map.set(n.id, n)
-          for (const n of prev) map.set(n.id, n)
-          return Array.from(map.values()).sort((a, b) => b.createdAt - a.createdAt)
-        })
-      }
-    })
-  }, [articleId])
+  const { notes, add, remove, currentUser, displayName } = useMarginNotes(articleId)
 
   const handleAddMarginNote = (payload: SelectionPayload) => {
     setActiveSelection(payload)
@@ -70,29 +44,12 @@ export function ArticleInteractiveWrapper({
   }
 
   const handleSaveNote = (noteText: string, payload: SelectionPayload) => {
-    const newNote: MarginNote = {
-      id: "note_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
-      articleId,
-      paragraphIndex: payload.paragraphIndex,
-      selectedText: payload.text,
-      noteText,
-      authorUsername: currentUser || "reader",
-      authorDisplayName: profile.displayName || currentUser || "Reader",
-      authorAvatar: profile.avatarUrl,
-      createdAt: Date.now(),
-    }
-
-    setNotes((prev) => [newNote, ...prev])
-    saveLocalMarginNote(newNote)
-    saveRemoteMarginNote(newNote)
-    toast("Margin note added to paragraph!")
+    if (add(noteText, payload)) toast("Margin note added to paragraph!")
     setActiveSelection(null)
   }
 
   const handleDeleteNote = (noteId: string) => {
-    setNotes((prev) => prev.filter((n) => n.id !== noteId))
-    deleteLocalMarginNote(articleId, noteId)
-    deleteRemoteMarginNote(noteId)
+    remove(noteId)
     toast("Margin note removed")
   }
 
@@ -113,7 +70,7 @@ export function ArticleInteractiveWrapper({
         onDeleteNote={handleDeleteNote}
         activeSelection={activeSelection}
         currentUsername={currentUser}
-        currentDisplayName={profile.displayName || currentUser || "Reader"}
+        currentDisplayName={displayName}
       />
 
       <QuoteCardModal

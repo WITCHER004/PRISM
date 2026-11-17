@@ -5,6 +5,10 @@ import { PANEL_PASS_THRESHOLD, PANEL_SIZE } from "./config"
 // The browser store (demo mode) and the Prisma services (src/lib/server) both apply these.
 
 export type PanelDecision = "PASS" | "FAIL"
+
+/** Every vote names the criterion it rests on: the paper's strongest (PASS) or failing (FAIL) dimension */
+export const REVIEW_CRITERIA = ["Methodology", "Originality", "Clarity", "Citations"] as const
+export type ReviewCriterion = (typeof REVIEW_CRITERIA)[number]
 export type ReconsiderationStatus = "NONE" | "PENDING" | "ACCEPTED" | "UPHELD"
 
 /** The writer's defense of a FAIL vote or an employee rejection */
@@ -28,7 +32,11 @@ export interface PanelVote {
   /** Username of the panel member */
   reviewer: string
   decision: PanelDecision | null
+  /** The structured reason behind the vote */
+  criterion?: ReviewCriterion
   failureReason?: string
+  /** Optional comment on a PASS */
+  note?: string
   decidedAt?: string
   /** Set when a FAIL was flipped to PASS on reconsideration */
   originalDecision?: PanelDecision
@@ -72,7 +80,7 @@ export function tallyPanel(votes: readonly PanelVote[]): PanelTally {
     pending,
     total: votes.length,
     complete: votes.length > 0 && pending === 0,
-    consensus: pass >= PANEL_PASS_THRESHOLD,
+    consensus: votes.length > 0 && pass >= passThreshold(votes.length),
     openCounters: votes.filter((v) => reconsiderationStatus(v) === "PENDING").length,
     appealable: votes.filter((v) => v.decision === "FAIL" && !v.counter).length,
   }
@@ -90,10 +98,19 @@ export function panelStatus(votes: readonly PanelVote[]): ArticleStatus {
   return "REJECTED"
 }
 
-/** Picks PANEL_SIZE distinct reviewers, never the author */
+/**
+ * Votes needed to pass a panel of `size`: 7 of 10 for a full panel, the same 70% share (rounded up)
+ * while the panel has fewer approved members than PANEL_SIZE.
+ */
+export function passThreshold(size: number): number {
+  if (size >= PANEL_SIZE) return PANEL_PASS_THRESHOLD
+  return Math.max(1, Math.ceil((size * PANEL_PASS_THRESHOLD) / PANEL_SIZE))
+}
+
+/** Picks up to PANEL_SIZE distinct reviewers, never the author. Throws when nobody is eligible. */
 export function assignPanel(pool: readonly string[], author: string, random: () => number = Math.random): string[] {
   const eligible = [...new Set(pool)].filter((u) => u !== author)
-  if (eligible.length < PANEL_SIZE) throw new Error(`Need ${PANEL_SIZE} peer reviewers; only ${eligible.length} are available.`)
+  if (eligible.length === 0) throw new Error("No approved peer reviewers are available yet.")
   // Fisher–Yates shuffle, then take the first PANEL_SIZE
   for (let i = eligible.length - 1; i > 0; i--) {
     const j = Math.floor(random() * (i + 1))

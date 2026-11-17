@@ -1,9 +1,8 @@
 "use client"
 
-import { useShallow } from "zustand/react/shallow"
 import { BadgeCheck, ShieldCheck } from "lucide-react"
-import { findAccount, type User, type UserRole } from "@/lib/data"
-import { SAMPLE_READERS } from "@/lib/reviews"
+import type { User, UserRole } from "@/lib/data"
+import { userFromDoc } from "@/lib/live/schema"
 import { useUIStore } from "@/lib/store"
 import type { SocialHandles } from "@/lib/social"
 import { Avatar } from "@/components/ui/Avatar"
@@ -16,50 +15,52 @@ export interface Identity {
   avatarUrl: string
   role: UserRole
   handles: SocialHandles
-  /** Sample-data account behind this identity, if any */
+  /** The account behind this identity (from Firestore users), if it exists */
   base?: User
 }
 
 const FALLBACK_AVATAR = (seed: string) => `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(seed)}&backgroundColor=e2e8f0`
 
-/**
- * Who a username is, as seen in this browser: sample data, overlaid with profile edits
- * (name, bio, handles, uploaded avatar) made by that account here.
- */
+/** Who a handle is: their live users/{uid} document (the signed-in user's own edits apply instantly) */
 export function useIdentity(username: string | null | undefined): Identity | null {
-  const { currentUser, profile, saved } = useUIStore(
-    useShallow((s) => ({
-      currentUser: s.currentUser,
-      profile: s.profile,
-      saved: username ? ((s as unknown as { savedProfiles?: Record<string, unknown> }).savedProfiles?.[username] as typeof s.profile | undefined) : undefined,
-    }))
-  )
+  const doc = useUIStore((s) => (username ? s.users[username] : undefined))
+  const isMe = useUIStore((s) => !!username && s.currentUser === username)
+  const profile = useUIStore((s) => s.profile)
   if (!username) return null
-  const base = findAccount(username)
-  const reader = SAMPLE_READERS.find((u) => u.username === username)
-  const p = username === currentUser ? profile : saved
+  const base = doc ? userFromDoc(doc) : undefined
+  const p = isMe ? profile : undefined
   return {
     username,
-    displayName: p?.displayName?.trim() || base?.displayName || reader?.displayName || username,
+    displayName: p?.displayName?.trim() || base?.displayName || username,
     bio: p ? p.bio : (base?.bio ?? ""),
-    avatarUrl: p?.avatarUrl || base?.avatarUrl || reader?.avatarUrl || FALLBACK_AVATAR(username),
-    role: base?.role ?? "READER",
-    handles: p
-      ? {
-          linkedinHandle: (p as { linkedinHandle?: string }).linkedinHandle,
-          instagramHandle: (p as { instagramHandle?: string }).instagramHandle,
-          twitterHandle: p.twitterHandle,
-          githubHandle: (p as { githubHandle?: string }).githubHandle,
-          websiteUrl: p.websiteUrl,
-        }
-      : {
-          linkedinHandle: base?.linkedinHandle,
-          instagramHandle: base?.instagramHandle,
-          twitterHandle: base?.twitterHandle,
-          githubHandle: base?.githubHandle,
-          websiteUrl: base?.websiteUrl,
-        },
+    avatarUrl: p?.avatarUrl || base?.avatarUrl || FALLBACK_AVATAR(username),
+    role: doc?.isPanelMember ? "PEER_REVIEWER" : "WRITER",
+    handles: {
+      linkedinHandle: p ? p.linkedinHandle : base?.linkedinHandle,
+      instagramHandle: p ? p.instagramHandle : base?.instagramHandle,
+      twitterHandle: p ? p.twitterHandle : base?.twitterHandle,
+      githubHandle: p ? p.githubHandle : base?.githubHandle,
+      websiteUrl: p ? p.websiteUrl : base?.websiteUrl,
+    },
     base,
+  }
+}
+
+/** An Identity as the `User` shape article components expect */
+export function userOfIdentity(id: Identity): User {
+  return {
+    id: id.base?.id ?? id.username,
+    username: id.username,
+    displayName: id.displayName,
+    bio: id.bio,
+    avatarUrl: id.avatarUrl,
+    role: id.role,
+    isVerifiedHuman: id.base?.isVerifiedHuman ?? false,
+    followerCount: id.base?.followerCount ?? 0,
+    followingCount: id.base?.followingCount ?? 0,
+    postCount: id.base?.postCount ?? 0,
+    createdAt: id.base?.createdAt ?? new Date(0).toISOString(),
+    ...id.handles,
   }
 }
 

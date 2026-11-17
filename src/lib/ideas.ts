@@ -1,7 +1,5 @@
-// Instant Ideas: short thoughts that delete themselves after 1–24 hours.
-// Stored in Firestore `instant_ideas` when it's reachable, always mirrored to localStorage.
-
-import { MOCK_USERS } from "@/lib/data"
+// Instant Ideas: short thoughts that delete themselves after 1–24 hours, unless readers spark them past
+// IMMORTAL_THRESHOLD reactions. Stored in Firestore `instant_ideas` (no local copies).
 
 export type IdeaFormat = "thought" | "quote" | "code"
 export type IdeaTheme = "paper" | "obsidian" | "amber" | "blueprint"
@@ -19,13 +17,13 @@ export interface InstantIdea {
   /** ms since epoch */
   createdAt: number
   expiresAt: number
-  /** Reaction counts from other readers (seed data); the viewer's own taps are added locally */
+  /** Reaction counts (everyone's, including the viewer's) */
   counts?: Partial<Record<IdeaReaction, number>>
-  /** Built-in sample, never written to Firestore */
-  sample?: boolean
+  /** Who reacted, by uid */
+  reactors?: Partial<Record<IdeaReaction, string[]>>
   /** When total sparks/reactions >= 25, the idea is permanently preserved and immune to deletion */
   isImmortal?: boolean
-  /** List of voter usernames/UIDs who sparked or reacted to this idea */
+  /** uids of everyone who reacted; they're notified if the idea becomes a published article */
   voterIds?: string[]
 }
 
@@ -124,87 +122,9 @@ export const lifeLeft = (idea: InstantIdea, now: number) =>
 
 export const newIdeaId = () => "idea_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 7)
 
-/* ── Samples ───────────────────────────────────────────────────────────────── */
+/* ── Per-viewer UI state (which ideas this browser has opened) ─────────────── */
 
-// Built relative to "now" so the tray looks alive on first visit; they then expire for real
-export function sampleIdeas(now: number): InstantIdea[] {
-  const by = (username: string) => MOCK_USERS.find((u) => u.username === username) ?? MOCK_USERS[0]
-  const make = (
-    id: string,
-    username: string,
-    text: string,
-    format: IdeaFormat,
-    theme: IdeaTheme,
-    durationMs: number,
-    remainingMs: number,
-    counts: InstantIdea["counts"]
-  ): InstantIdea => {
-    const u = by(username)
-    return {
-      id,
-      text,
-      format,
-      theme,
-      authorHandle: u.username,
-      authorName: u.displayName,
-      authorAvatar: u.avatarUrl,
-      createdAt: now - (durationMs - remainingMs),
-      expiresAt: now + remainingMs,
-      counts,
-      sample: true,
-    }
-  }
-  return [
-    make(
-      "sample_ledger",
-      "alexchen",
-      "Half-formed: idempotency keys are a product decision, not an infra one. Whoever decides how long a key lives is deciding how long a customer can safely retry.",
-      "thought",
-      "paper",
-      24 * HOUR,
-      23 * HOUR + 12 * MINUTE,
-      { sparked: 41, deep: 12 }
-    ),
-    make(
-      "sample_jitter",
-      "marcuswilliams",
-      "retry(fn, { backoff: \"exponential\", jitter: \"full\" })\n// full jitter beat equal jitter in every load test this week",
-      "code",
-      "blueprint",
-      12 * HOUR,
-      5 * HOUR + 8 * MINUTE,
-      { sparked: 18, deep: 9 }
-    ),
-    make(
-      "sample_quote",
-      "priyarao",
-      "The map is not the territory, but the changelog is the history of the territory.",
-      "quote",
-      "obsidian",
-      6 * HOUR,
-      47 * MINUTE,
-      { sparked: 63, deep: 21 }
-    ),
-    make(
-      "sample_sources",
-      "sarahkim",
-      "Collecting primary sources on municipal broadband: three city audits and one FCC dataset so far. Send me the ones you trust, not the op-eds.",
-      "thought",
-      "amber",
-      1 * HOUR,
-      18 * MINUTE,
-      { sparked: 7, deep: 3 }
-    ),
-  ]
-}
-
-/* ── Local persistence ─────────────────────────────────────────────────────── */
-
-const LOCAL_KEY = "prism-instant-ideas:v1"
-const REACTIONS_KEY = "prism-idea-reactions:v1"
 const SEEN_KEY = "prism-idea-seen:v1"
-
-type LocalState = { ideas: InstantIdea[]; seededAt: number }
 
 function readJSON<T>(key: string, fallback: T): T {
   try {
@@ -218,86 +138,164 @@ function writeJSON(key: string, value: unknown) {
   try {
     localStorage.setItem(key, JSON.stringify(value))
   } catch {
-    // Private mode / quota: the session still works from memory
+    // Private mode / quota: the ring just won't remember it was seen
   }
 }
 
-/** Local ideas, minus anything expired. Re-seeds the samples once the last batch has fully expired. */
-export function loadLocalIdeas(now: number): InstantIdea[] {
-  const state = readJSON<LocalState>(LOCAL_KEY, { ideas: [], seededAt: 0 })
-  let ideas = state.ideas.filter((i) => isActive(i, now))
-  let seededAt = state.seededAt
-  if (now - seededAt > 24 * HOUR) {
-    ideas = [...ideas.filter((i) => !i.sample), ...sampleIdeas(now)]
-    seededAt = now
-  }
-  writeJSON(LOCAL_KEY, { ideas, seededAt })
-  return ideas
-}
-
-export function saveLocalIdeas(ideas: InstantIdea[]) {
-  const state = readJSON<LocalState>(LOCAL_KEY, { ideas: [], seededAt: Date.now() })
-  writeJSON(LOCAL_KEY, { ...state, ideas })
-}
-
-export const loadReactions = () => readJSON<Record<string, IdeaReaction[]>>(REACTIONS_KEY, {})
-export const saveReactions = (r: Record<string, IdeaReaction[]>) => writeJSON(REACTIONS_KEY, r)
 export const loadSeen = () => new Set(readJSON<string[]>(SEEN_KEY, []))
 export const saveSeen = (seen: Set<string>) => writeJSON(SEEN_KEY, [...seen].slice(-200))
 
-/* ── Firestore (best effort) ───────────────────────────────────────────────── */
+/* ── Firestore: instant_ideas ──────────────────────────────────────────────── */
+//
+// instant_ideas/{id}: authorId · authorHandle · authorName · authorAvatar · content · mode · canvasTheme ·
+// createdAt · expiresAt · reactions {sparked, deep} · reactors {sparked: uid[], deep: uid[]} ·
+// totalReactions · voterIds (uids) · isImmortal
 
 const COLLECTION = "instant_ideas"
-// console.warn, not console.error: Next.js dev turns console.error into the full-screen overlay
 const warn = (msg: string, err: unknown) =>
   console.warn(`[ideas] ${msg}`, (err as { code?: string })?.code ?? (err as Error)?.message ?? err)
 
-function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
-  return Promise.race([p, new Promise<T>((_, reject) => setTimeout(() => reject(new Error("timed out")), ms))])
+const fs = () => Promise.all([import("firebase/firestore"), import("@/lib/firebase")])
+
+type IdeaDoc = {
+  authorId: string
+  authorHandle: string
+  authorName: string
+  authorAvatar: string
+  content: string
+  mode: IdeaFormat
+  canvasTheme: IdeaTheme
+  createdAt: number
+  expiresAt: number
+  reactions: Record<IdeaReaction, number>
+  reactors: Record<IdeaReaction, string[]>
+  totalReactions: number
+  voterIds: string[]
+  isImmortal: boolean
 }
 
-/** Active ideas from Firestore. Empty on any failure (offline, rules, no database). */
-export async function fetchRemoteIdeas(now: number): Promise<InstantIdea[]> {
-  try {
-    const [{ collection, query, where, orderBy, limit, getDocs }, { db }] = await Promise.all([
-      import("firebase/firestore"),
-      import("@/lib/firestore"),
-    ])
-    const snap = await withTimeout(
-      getDocs(query(collection(db, COLLECTION), where("expiresAt", ">", now), orderBy("expiresAt"), limit(60))),
-      8000
-    )
-    return snap.docs
-      .map((d) => ({ ...(d.data() as InstantIdea), id: d.id }))
-      .filter((i) => typeof i.text === "string" && typeof i.expiresAt === "number" && isActive(i, now))
-  } catch (err) {
-    warn("Firestore unavailable; showing ideas saved on this device.", err)
-    return []
+function ideaFromDoc(id: string, d: Partial<IdeaDoc>): InstantIdea | null {
+  if (typeof d.content !== "string" || typeof d.expiresAt !== "number") return null
+  return {
+    id,
+    text: d.content,
+    format: d.mode ?? "thought",
+    theme: d.canvasTheme && d.canvasTheme in THEMES ? d.canvasTheme : "paper",
+    authorHandle: d.authorHandle ?? "",
+    authorName: d.authorName ?? d.authorHandle ?? "Member",
+    authorAvatar: d.authorAvatar || undefined,
+    authorUid: d.authorId,
+    createdAt: typeof d.createdAt === "number" ? d.createdAt : 0,
+    expiresAt: d.expiresAt,
+    counts: { sparked: d.reactions?.sparked ?? 0, deep: d.reactions?.deep ?? 0 },
+    reactors: { sparked: d.reactors?.sparked ?? [], deep: d.reactors?.deep ?? [] },
+    isImmortal: d.isImmortal === true,
+    voterIds: d.voterIds ?? [],
   }
 }
 
-export async function saveRemoteIdea(idea: InstantIdea) {
-  try {
-    const [{ doc, setDoc }, { db }] = await Promise.all([import("firebase/firestore"), import("@/lib/firestore")])
-    // Not awaited past the timeout: offline writes stay queued and sync when the connection returns
-    await withTimeout(setDoc(doc(db, COLLECTION, idea.id), stripUndefined(idea)), 8000)
-  } catch (err) {
-    warn("Couldn't confirm the idea reached Firestore; it's saved on this device and syncs if the write was queued.", err)
+/**
+ * Live list of ideas, newest first. Expired, non-immortal ideas are filtered out and deleted from
+ * Firestore when they're seen (best effort: whoever's client notices first removes them).
+ * Returns an unsubscribe function.
+ */
+export function watchIdeas(onChange: (ideas: InstantIdea[]) => void, onError?: () => void): () => void {
+  let stop: (() => void) | undefined
+  let cancelled = false
+  let first = false
+  // Firestore retries silently when the database is unreachable or missing: don't spin forever
+  const giveUp = setTimeout(() => !first && onError?.(), 8000)
+  fs()
+    .then(([{ collection, query, orderBy, limit, onSnapshot }, { db }]) => {
+      if (cancelled) return
+      stop = onSnapshot(
+        query(collection(db, COLLECTION), orderBy("createdAt", "desc"), limit(120)),
+        (snap) => {
+          first = true
+          const now = Date.now()
+          const live: InstantIdea[] = []
+          for (const d of snap.docs) {
+            const idea = ideaFromDoc(d.id, d.data() as Partial<IdeaDoc>)
+            if (!idea) continue
+            if (isActive(idea, now)) live.push(idea)
+            else void deleteIdea(idea.id)
+          }
+          onChange(live)
+        },
+        (err) => {
+          warn("ideas listener stopped", err)
+          onError?.()
+        }
+      )
+    })
+    .catch((err) => {
+      warn("Firestore unavailable", err)
+      onError?.()
+    })
+  return () => {
+    cancelled = true
+    clearTimeout(giveUp)
+    stop?.()
   }
 }
 
-export async function deleteRemoteIdea(id: string) {
+export async function createIdea(idea: InstantIdea): Promise<void> {
+  const [{ doc, setDoc }, { db }] = await fs()
+  const data: IdeaDoc = {
+    authorId: idea.authorUid ?? "",
+    authorHandle: idea.authorHandle,
+    authorName: idea.authorName,
+    authorAvatar: idea.authorAvatar ?? "",
+    content: idea.text,
+    mode: idea.format,
+    canvasTheme: idea.theme,
+    createdAt: idea.createdAt,
+    expiresAt: idea.expiresAt,
+    reactions: { sparked: 0, deep: 0 },
+    reactors: { sparked: [], deep: [] },
+    totalReactions: 0,
+    voterIds: [],
+    isImmortal: false,
+  }
+  await setDoc(doc(db, COLLECTION, idea.id), data)
+}
+
+export async function deleteIdea(id: string): Promise<void> {
   try {
-    const [{ doc, deleteDoc }, { db }] = await Promise.all([import("firebase/firestore"), import("@/lib/firestore")])
-    await withTimeout(deleteDoc(doc(db, COLLECTION, id)), 8000)
+    const [{ doc, deleteDoc }, { db }] = await fs()
+    await deleteDoc(doc(db, COLLECTION, id))
   } catch (err) {
-    warn("Couldn't delete the idea from Firestore.", err)
+    warn(`couldn't delete instant_ideas/${id}`, err)
   }
 }
 
-// Firestore rejects undefined field values
-const stripUndefined = <T extends object>(o: T) =>
-  Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined)) as T
+/**
+ * Adds or removes the viewer's reaction in a transaction, so counts, voterIds and the immortal flag
+ * stay consistent when several readers react at once. Once immortal, an idea stays immortal.
+ */
+export async function toggleIdeaReaction(id: string, reaction: IdeaReaction, uid: string): Promise<void> {
+  const [{ doc, runTransaction }, { db }] = await fs()
+  const ref = doc(db, COLLECTION, id)
+  await runTransaction(db, async (tx) => {
+    const snap = await tx.get(ref)
+    if (!snap.exists()) return
+    const d = snap.data() as Partial<IdeaDoc>
+    const reactors = { sparked: [...(d.reactors?.sparked ?? [])], deep: [...(d.reactors?.deep ?? [])] }
+    const list = reactors[reaction]
+    const i = list.indexOf(uid)
+    if (i >= 0) list.splice(i, 1)
+    else list.push(uid)
+    const reactions = { sparked: reactors.sparked.length, deep: reactors.deep.length }
+    const totalReactions = reactions.sparked + reactions.deep
+    tx.update(ref, {
+      reactors,
+      reactions,
+      totalReactions,
+      voterIds: [...new Set([...reactors.sparked, ...reactors.deep])],
+      isImmortal: d.isImmortal === true || totalReactions >= IMMORTAL_THRESHOLD,
+    })
+  })
+}
 
 /* ── Promote to Full Article ─────────────────────────────────────────────── */
 
@@ -313,16 +311,15 @@ export interface PromotedIdeaSeed {
   theme: IdeaTheme
 }
 
-/** Pre-fill a new article draft from an idea that crossed 25 sparks */
-export function setPromotedIdeaSeed(idea: InstantIdea, extraVoters: string[] = []) {
+/** Pre-fill a new article draft from an idea that crossed 25 sparks (its reactors are notified on publish) */
+export function setPromotedIdeaSeed(idea: InstantIdea) {
   try {
-    const allVoters = Array.from(new Set([...(idea.voterIds ?? []), ...extraVoters]))
     const seed: PromotedIdeaSeed = {
       ideaId: idea.id,
       text: idea.text,
       authorHandle: idea.authorHandle,
       authorName: idea.authorName,
-      voterIds: allVoters,
+      voterIds: [...new Set(idea.voterIds ?? [])],
       format: idea.format,
       theme: idea.theme,
     }

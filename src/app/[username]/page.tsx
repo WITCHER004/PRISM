@@ -3,8 +3,8 @@ import type { Metadata } from "next"
 import { SiteHeader } from "@/components/layout/SiteHeader"
 import { SiteFooter } from "@/components/layout/SiteFooter"
 import { ProfileClient } from "@/components/discovery/ProfileClient"
-import { getFeedPosts } from "@/actions/posts"
-import { MOCK_USERS, type Tag, type User } from "@/lib/data"
+import type { Tag, User } from "@/lib/data"
+import { getPublishedPosts, getUserByHandle } from "@/lib/server/content"
 import { hueStyle } from "@/lib/topics"
 import { JsonLd } from "@/components/seo/JsonLd"
 import { absoluteUrl, breadcrumbList, pageMetadata, truncateDescription } from "@/lib/seo"
@@ -13,16 +13,15 @@ interface ProfilePageProps {
   params: Promise<{ username: string }>
 }
 
+export const revalidate = 60
+
 /**
- * A profile exists if it's a known writer or someone with published stories. Anything else is a
- * 404: this route catches every top-level path, so inventing a profile for unknown names would
- * turn any typo (or /manifest.webmanifest) into an indexable "verified" page.
+ * A profile exists if a users/{uid} document claims the handle. Anything else is a 404: this route
+ * catches every top-level path, so inventing a profile for unknown names would turn any typo
+ * (or /manifest.webmanifest) into an indexable page.
  */
 async function findWriter(username: string): Promise<User | null> {
-  const known = MOCK_USERS.find((u) => u.username === username)
-  if (known) return known
-  const posts = await getFeedPosts(30)
-  return posts.find((p) => p.author.username === username && p.status === "PUBLISHED")?.author ?? null
+  return getUserByHandle(username)
 }
 
 export async function generateMetadata({ params }: ProfilePageProps): Promise<Metadata> {
@@ -43,7 +42,7 @@ export default async function ProfilePage({ params }: ProfilePageProps) {
   const user = await findWriter(username)
   if (!user) notFound()
 
-  const posts = (await getFeedPosts(30))
+  const posts = (await getPublishedPosts())
     .filter((p) => p.author.username === username && p.status === "PUBLISHED")
     .sort((a, b) => +new Date(b.publishedAt) - +new Date(a.publishedAt))
 

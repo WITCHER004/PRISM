@@ -2,18 +2,15 @@
 
 import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
-import { Banknote, CircleCheck, Clock, Download, Eye, FlaskConical, Loader2, TrendingUp, Wallet } from "lucide-react"
+import { Banknote, CircleCheck, Clock, Download, Eye, Loader2, TrendingUp, Wallet } from "lucide-react"
 import { useUIStore, toast } from "@/lib/store"
-import { MOCK_POSTS } from "@/lib/data"
 import { Button } from "@/components/ui/Button"
 import { StudioDialog, DialogActions } from "@/components/studio/StudioDialog"
-import { PageHead, StatTile, money, samplePostsFor, useWriter } from "@/components/studio/studio-ui"
+import { PageHead, StatTile, money, useWriter } from "@/components/studio/studio-ui"
 import { EliteGate } from "@/components/elite/EliteGate"
 import { UserBadges } from "@/components/elite/EliteBadges"
 import { useWallet } from "@/components/elite/hooks"
 import { DEMO_PAYOUT_SETTLE_MS, MIN_PAYOUT_USD, PAYOUT_RPM_USD, TOP_MONETIZED_VIEWS } from "@/lib/elite/config"
-import { earningsByDay, earningsByPost } from "@/lib/elite/wallet"
-import { DEV_TOOLS } from "@/lib/devtools"
 import { cn, formatRelativeDate, numberWithCommas } from "@/lib/utils"
 
 export default function EarningsPage() {
@@ -27,17 +24,13 @@ export default function EarningsPage() {
   )
 }
 
-const fmtShort = (iso: string) => new Date(iso + "T12:00:00Z").toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" })
-
 function EarningsDashboard() {
   const { user } = useWriter()
   const me = user.username
-  const views = useUIStore((s) => s.views)
   const payouts = useUIStore((s) => s.payouts)
   const drafts = useUIStore((s) => s.drafts)
   const requestPayout = useUIStore((s) => s.requestPayout)
   const settlePayouts = useUIStore((s) => s.settlePayouts)
-  const devSimulateViews = useUIStore((s) => s.devSimulateViews)
   const wallet = useWallet(me)
   const [confirm, setConfirm] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -51,30 +44,13 @@ function EarningsDashboard() {
 
   const titles = useMemo(() => {
     const m = new Map<string, { title: string; href: string }>()
-    for (const p of MOCK_POSTS) m.set(p.id, { title: p.title, href: `/${p.author.username}/${p.slug}` })
-    for (const d of Object.values(drafts)) if (d.live) m.set(d.id, { title: d.live.title || "Untitled story", href: `/story/${d.id}` })
+    for (const d of Object.values(drafts)) if (d.live) m.set(d.id, { title: d.live.title || "Untitled story", href: `/${d.authorUsername}/${d.slug}` })
     return m
   }, [drafts])
 
-  // Articles a dev simulation can send readers to: live stories by this writer plus their sample posts
-  const myArticleIds = useMemo(
-    () => [
-      ...Object.values(drafts).filter((d) => d.authorUsername === me && d.live).map((d) => d.id),
-      ...samplePostsFor(me).map((p) => p.id),
-    ],
-    [drafts, me]
-  )
-
-  const rows = useMemo(() => earningsByPost(me, views), [me, views])
-  const days = useMemo(() => earningsByDay(me, views, 30), [me, views])
-  const maxDay = Math.max(0.0001, ...days.map((d) => d.earnings))
+  const rows = wallet.rows
   const myPayouts = payouts.filter((p) => p.username === me)
   const canWithdraw = wallet.availableBalance >= MIN_PAYOUT_USD
-
-  const simulate = (n: number) => {
-    const monetized = devSimulateViews(me, myArticleIds, n)
-    toast(`Simulated ${n} unique readers · ${monetized} monetized`, { tone: "success" })
-  }
 
   const exportCsv = () => {
     const lines = [
@@ -97,7 +73,8 @@ function EarningsDashboard() {
         lede={
           <>
             You earn <b className="text-[var(--fg)]">${PAYOUT_RPM_USD.toFixed(2)} per 1,000 unique views</b> of your published
-            articles. Each reader counts once per article every 24 hours; your own reads don&apos;t count.
+            articles. Each reader counts once per article every 24 hours; your own reads don&apos;t count. Payouts are
+            simulated: no money moves.
           </>
         }
         actions={
@@ -151,63 +128,9 @@ function EarningsDashboard() {
         <StatTile label="Pending payout" icon={Clock} value={money(wallet.pendingPayout)} sub={<span>Paid out {money(wallet.paidOut)}</span>} />
       </section>
 
-      {DEV_TOOLS && (
-        <section className="mt-4 flex flex-wrap items-center gap-2 rounded-[16px] border border-dashed border-slate-300 bg-white px-4 py-3">
-          <FlaskConical className="w-4 h-4 text-slate-500" />
-          <span className="text-sm text-slate-600 mr-2">Dev: simulate unique readers on your published articles</span>
-          {[100, 500, 1000].map((n) => (
-            <Button key={n} size="sm" variant="secondary" onClick={() => simulate(n)} disabled={!myArticleIds.length}>
-              +{numberWithCommas(n)} views
-            </Button>
-          ))}
-          {!myArticleIds.length && (
-            <span className="text-xs text-slate-500">
-              Publish an article first (<Link href="/editor/new" className="underline">write one</Link>).
-            </span>
-          )}
-        </section>
-      )}
-
-      <div className="mt-6 grid lg:grid-cols-5 gap-6">
-        {/* Daily earnings chart */}
-        <section className="lg:col-span-3 panel p-5 sm:p-7" aria-labelledby="chart-title">
-          <div className="flex items-baseline justify-between gap-2">
-            <h2 id="chart-title" className="display text-[1.5rem]">
-              Daily earnings
-            </h2>
-            <span className="meta">Last 30 days</span>
-          </div>
-          <div className="mt-6 flex gap-3">
-            <div className="flex flex-col justify-between h-44 text-[11px] text-[var(--fg-muted)] tabular-nums text-right w-12 shrink-0">
-              <span>{money(maxDay)}</span>
-              <span>$0.00</span>
-            </div>
-            <div
-              role="img"
-              aria-label={`Daily earnings over the last 30 days. Highest day ${money(maxDay)}. Total ${money(days.reduce((a, d) => a + d.earnings, 0))}.`}
-              className="flex-1 h-44 flex items-end gap-[3px] border-b border-l border-[var(--border)] pl-1"
-            >
-              {days.map((d) => (
-                <div key={d.date} className="group relative flex-1 h-full flex items-end">
-                  <div
-                    className={cn("w-full rounded-t-[2px] transition-colors", d.earnings > 0 ? "bg-indigo-500 group-hover:bg-indigo-700" : "bg-slate-100")}
-                    style={{ height: d.earnings > 0 ? `${Math.max(2, (d.earnings / maxDay) * 100)}%` : "2px" }}
-                  />
-                  <span className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-1 hidden group-hover:block whitespace-nowrap rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] shadow-sm z-10">
-                    {fmtShort(d.date)} · {money(d.earnings)} · {d.views} views
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-          <div className="mt-2 ml-16 flex justify-between text-[11px] text-[var(--fg-muted)]">
-            <span>{fmtShort(days[0].date)}</span>
-            <span>{fmtShort(days[days.length - 1].date)}</span>
-          </div>
-        </section>
-
+      <div className="mt-6">
         {/* Payout history */}
-        <section className="lg:col-span-2 panel overflow-hidden" aria-labelledby="payouts-title">
+        <section className="panel overflow-hidden" aria-labelledby="payouts-title">
           <div className="p-5 sm:p-7 pb-4 sm:pb-4 flex items-baseline justify-between">
             <h2 id="payouts-title" className="display text-[1.5rem]">
               Payout history

@@ -4,8 +4,8 @@ import { useMemo, useRef, useState } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { AnimatePresence, motion } from "motion/react"
-import { type Comment, MOCK_USERS } from "@/lib/data"
-import { useUIStore, toast, type LocalComment } from "@/lib/store"
+import { useUIStore, toast } from "@/lib/store"
+import { useComments, type LiveComment } from "@/lib/live/comments"
 import { Avatar } from "@/components/ui/Avatar"
 import { dur, ease, spring } from "@/lib/motion"
 import { formatRelativeDate, cn } from "@/lib/utils"
@@ -13,7 +13,6 @@ import { ChevronDown, LogIn, MessageCircle, Reply, ThumbsUp } from "lucide-react
 
 interface CommentSectionProps {
   postId: string
-  comments: Comment[]
   postTitle: string
 }
 
@@ -30,81 +29,56 @@ interface ThreadItem {
   author: Person
   body: string
   createdAt: string
-  /** Likes from other readers (seeded for sample responses; 0 for new ones) */
+  /** Likes from other readers (the viewer's own like is added on top) */
   baseLikes: number
   replies: ThreadItem[]
 }
 
-// Stable pseudo-random like count for sample responses so "Top" has something to sort by
-function seedLikes(id: string) {
-  let h = 0
-  for (const ch of id) h = (h * 31 + ch.charCodeAt(0)) >>> 0
-  return 3 + (h % 48)
-}
-
-export function CommentSection({ postId, comments, postTitle }: CommentSectionProps) {
+export function CommentSection({ postId, postTitle }: CommentSectionProps) {
   const pathname = usePathname()
   const currentUser = useUIStore((s) => s.currentUser)
   const displayName = useUIStore((s) => s.profile.displayName)
-  const localComments = useUIStore((s) => s.comments)
-  const likedComments = useUIStore((s) => s.likedComments)
-  const addComment = useUIStore((s) => s.addComment)
-  const toggleCommentLike = useUIStore((s) => s.toggleCommentLike)
+  const avatarUrl = useUIStore((s) => s.profile.avatarUrl)
+  const { comments, add, toggleLike, uid } = useComments(postId)
 
   const [sort, setSort] = useState<"top" | "newest">("top")
   const [replyingTo, setReplyingTo] = useState<string | null>(null)
   // Responses posted in this visit animate in; everything else renders in place
   const [fresh, setFresh] = useState<Set<string>>(() => new Set())
 
-  const person = (username: string): Person => {
-    const u = MOCK_USERS.find((m) => m.username === username)
-    if (username === currentUser) return { username, displayName: displayName || u?.displayName || username, avatarUrl: u?.avatarUrl }
-    return u ? { username, displayName: u.displayName, avatarUrl: u.avatarUrl } : { username, displayName: username }
-  }
-  const me = currentUser ? person(currentUser) : null
+  const me: Person | null = currentUser ? { username: currentUser, displayName: displayName || currentUser, avatarUrl: avatarUrl || undefined } : null
+  const likedComments = useMemo(() => new Set(uid ? comments.filter((c) => c.likerIds.includes(uid)).map((c) => c.id) : []), [comments, uid])
 
   const threads = useMemo(() => {
-    const fromSeed = (c: Comment): ThreadItem => ({
+    const item = (c: LiveComment): ThreadItem => ({
       id: c.id,
-      author: { username: c.author.username, displayName: c.author.displayName, avatarUrl: c.author.avatarUrl },
+      author: { username: c.authorHandle, displayName: c.authorName, avatarUrl: c.authorAvatar },
       body: c.body,
       createdAt: c.createdAt,
-      baseLikes: seedLikes(c.id),
-      replies: (c.replies ?? []).map(fromSeed),
-    })
-    const fromLocal = (c: LocalComment): ThreadItem => ({
-      id: c.id,
-      author: person(c.author),
-      body: c.body,
-      createdAt: c.createdAt,
-      baseLikes: 0,
+      baseLikes: c.likerIds.filter((x) => x !== uid).length,
       replies: [],
     })
-
-    const mine = localComments.filter((c) => c.postId === postId)
-    const roots = [...comments.map(fromSeed), ...mine.filter((c) => !c.parentId).map(fromLocal)]
+    const roots = comments.filter((c) => !c.parentId).map(item)
     const byId = new Map(roots.map((r) => [r.id, r]))
-    for (const c of mine) {
-      if (c.parentId && byId.has(c.parentId)) byId.get(c.parentId)!.replies.push(fromLocal(c))
-    }
+    for (const c of comments) if (c.parentId && byId.has(c.parentId)) byId.get(c.parentId)!.replies.push(item(c))
     for (const r of roots) r.replies.sort((a, b) => a.createdAt.localeCompare(b.createdAt))
 
     // "Top" ranks by other readers' likes, so your own like doesn't make a response jump away
     return roots.sort((a, b) =>
       sort === "top" ? b.baseLikes - a.baseLikes || b.createdAt.localeCompare(a.createdAt) : b.createdAt.localeCompare(a.createdAt)
     )
-    // person() reads currentUser/displayName, both listed
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [comments, localComments, postId, sort, currentUser, displayName])
+  }, [comments, sort, uid])
 
   const total = threads.reduce((n, t) => n + 1 + t.replies.length, 0)
 
   const post = (body: string, parentId?: string) => {
-    const c = addComment({ postId, parentId, body })
-    if (!c) return false
-    setFresh((s) => new Set(s).add(c.id))
+    if (!me || !body.trim()) return false
     if (!parentId) setSort("newest") // make sure the new response is visible at the top
-    toast(parentId ? "Reply posted" : "Response posted", { tone: "success" })
+    add(body, parentId).then((id) => {
+      if (!id) return
+      setFresh((s) => new Set(s).add(id))
+      toast(parentId ? "Reply posted" : "Response posted", { tone: "success" })
+    })
     return true
   }
 
@@ -156,7 +130,7 @@ export function CommentSection({ postId, comments, postTitle }: CommentSectionPr
                 me={me}
                 fresh={fresh}
                 liked={likedComments}
-                onLike={toggleCommentLike}
+                onLike={toggleLike}
                 replyingTo={replyingTo}
                 setReplyingTo={setReplyingTo}
                 onReply={(body) => post(body, t.id)}

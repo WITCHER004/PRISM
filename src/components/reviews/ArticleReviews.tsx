@@ -1,11 +1,11 @@
 "use client"
 
-import { useId, useMemo, useRef, useState } from "react"
+import { useEffect, useId, useMemo, useRef, useState } from "react"
 import Link from "next/link"
 import { AnimatePresence, motion } from "motion/react"
 import { Loader2, MessageSquareText, Pencil, Star, Trash2 } from "lucide-react"
 import { useUIStore, toast } from "@/lib/store"
-import { mergeReviews, REVIEW_BODY_MAX, reviewKey, summarize, type ArticleReview } from "@/lib/reviews"
+import { mergeReviews, REVIEW_BODY_MAX, summarize, type ArticleReview } from "@/lib/reviews"
 import { useHydrated } from "@/components/studio/useHydrated"
 import { useIdentity } from "@/components/profile/identity"
 import { UserBadges } from "@/components/elite/EliteBadges"
@@ -15,16 +15,51 @@ import { Button } from "@/components/ui/Button"
 import { dur, ease } from "@/lib/motion"
 import { cn, formatRelativeDate } from "@/lib/utils"
 
-/** Reviews for one article: sample reviews merged with ones written in this browser */
+/** Live reviews for one article from Firestore, with the reader's own unsynced edit applied */
 export function useArticleReviews(postId: string) {
   const hydrated = useHydrated()
   const local = useUIStore((s) => s.reviews)
   const currentUser = useUIStore((s) => s.currentUser)
+  const [remote, setRemote] = useState<ArticleReview[]>([])
+
+  useEffect(() => {
+    let stop: (() => void) | undefined
+    let cancelled = false
+    Promise.all([import("firebase/firestore"), import("@/lib/firebase")])
+      .then(([{ collection, query, where, onSnapshot }, { db }]) => {
+        if (cancelled) return
+        stop = onSnapshot(
+          query(collection(db, "reviews"), where("postId", "==", postId)),
+          (snap) =>
+            setRemote(
+              snap.docs.map((d) => {
+                const x = d.data()
+                return {
+                  id: d.id,
+                  postId: x.postId,
+                  author: x.authorHandle,
+                  rating: Number(x.rating) || 0,
+                  body: String(x.body ?? ""),
+                  createdAt: new Date(Number(x.createdAt) || 0).toISOString(),
+                  updatedAt: x.updatedAt ? new Date(Number(x.updatedAt)).toISOString() : undefined,
+                }
+              })
+            ),
+          (err) => console.warn("[reviews] listener stopped:", err?.code ?? err)
+        )
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+      stop?.()
+    }
+  }, [postId])
+
   return useMemo(() => {
-    const reviews = mergeReviews(postId, hydrated ? local : {})
-    const mine = hydrated && currentUser ? (local[reviewKey(postId, currentUser)] ?? undefined) : undefined
+    const reviews = mergeReviews(postId, remote, hydrated ? local : {})
+    const mine = hydrated && currentUser ? reviews.find((r) => r.author === currentUser) : undefined
     return { reviews, summary: summarize(reviews), mine, currentUser: hydrated ? currentUser : null, hydrated }
-  }, [postId, local, currentUser, hydrated])
+  }, [postId, remote, local, currentUser, hydrated])
 }
 
 /* ── Stars ──────────────────────────────────────────────────────────────── */

@@ -23,7 +23,8 @@ export async function submitArticleForReview(postId: string) {
     const user = await requireUser()
     const result = await submitArticle(user, postId)
     revalidatePath("/dashboard")
-    revalidatePath("/review-dashboard")
+    revalidatePath("/admin/verification")
+    revalidatePath("/panel")
     return result
   })
 }
@@ -81,7 +82,8 @@ export async function reviewArticle(postId: string, input: z.input<typeof Decisi
     })
     if (to === "PUBLISHED") await awardBadges(post.authorId)
 
-    revalidatePath("/review-dashboard")
+    revalidatePath("/admin/verification")
+    revalidatePath("/panel")
     revalidatePath(`/${post.author.username}/${post.slug}`)
     revalidatePath("/")
     return { status: to }

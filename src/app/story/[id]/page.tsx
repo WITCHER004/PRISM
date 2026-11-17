@@ -12,7 +12,7 @@ import { StatusPill } from "@/components/moderation/Phase1Report"
 import { ShareBar } from "@/components/share/ShareArticle"
 import { RatingChip, ReviewsSection } from "@/components/reviews/ArticleReviews"
 import { ViewTracker } from "@/components/elite/ViewTracker"
-import { MOCK_USERS } from "@/lib/data"
+import { DEFAULT_AVATAR } from "@/lib/live/schema"
 import { STATUS_META } from "@/lib/moderation/workflow"
 import { useUIStore } from "@/lib/store"
 import { hueStyle } from "@/lib/topics"
@@ -26,11 +26,12 @@ import { mirrorRecord } from "@/lib/records"
 
 const pill = "inline-flex items-center gap-1.5 h-10 px-4 rounded-full text-sm font-medium transition-colors"
 
-// A story written in this browser (demo mode keeps drafts in local storage).
+// A story by id, live from Firestore `articles/{id}`.
 // Readers see the version a reviewer approved; the author also sees where their latest edits stand.
 export default function LocalStoryPage() {
   const { id } = useParams<{ id: string }>()
   const hydrated = useHydrated()
+  const articlesReady = useUIStore((s) => s.live.articles)
   const draft = useUIStore((s) => s.drafts[id])
   const currentUser = useUIStore((s) => s.currentUser)
   const author = useIdentity(draft?.authorUsername)
@@ -48,7 +49,7 @@ export default function LocalStoryPage() {
     [draft, live]
   )
 
-  // The author's browser holds the source copy; mirror it to Firestore (best effort, never blocks)
+  // Keep standalone copies of the earned records (best effort, never blocks)
   useEffect(() => {
     if (!isAuthor || !draft) return
     if (certificate) mirrorRecord("craft_certificates", draft.id, { articleId: draft.id, author: draft.authorUsername, ...certificate })
@@ -62,7 +63,7 @@ export default function LocalStoryPage() {
       {view && <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-[640px] hue-glow" />}
       <SiteHeader />
       <main className="relative flex-1">
-        {!hydrated ? (
+        {!hydrated || (!draft && !articlesReady) ? (
           <div className="max-w-3xl mx-auto px-4 sm:px-6 pt-14" aria-busy="true" aria-label="Loading story">
             <div className="h-8 w-28 rounded-full bg-[var(--surface)] animate-pulse" />
             <div className="mt-6 h-16 w-4/5 rounded-[14px] bg-[var(--surface)] animate-pulse" />
@@ -122,7 +123,20 @@ export default function LocalStoryPage() {
               postId={draft.id}
               paperReview={draft.track === "PEER_PANEL" ? "Peer-panel verified" : "Editor-reviewed"}
               date={draft.publishedAt ?? draft.updatedAt}
-              author={{ ...(author.base ?? MOCK_USERS[0]), username: author.username, avatarUrl: author.avatarUrl }}
+              author={{
+                id: author.base?.id ?? draft.authorUid ?? author.username,
+                displayName: author.displayName,
+                bio: author.bio,
+                role: "WRITER",
+                isVerifiedHuman: false,
+                followerCount: 0,
+                followingCount: 0,
+                postCount: 0,
+                createdAt: draft.createdAt ?? draft.updatedAt,
+                ...author.base,
+                username: author.username,
+                avatarUrl: author.avatarUrl || DEFAULT_AVATAR(author.username),
+              }}
               authorName={author.displayName}
               meta={
                 live ? (
@@ -173,7 +187,7 @@ function NotFound({ unpublished }: { unpublished: boolean }) {
       <p className="mt-3 text-[var(--fg-muted)] leading-relaxed">
         {unpublished
           ? "Stories appear once they pass Prism's AI-content check and a review by our editors."
-          : "Stories written in demo mode live in the browser they were written in. It may have been deleted."}
+          : "It may have been deleted, or the link is mistyped."}
       </p>
       <div className="mt-8 flex flex-col sm:flex-row gap-2 justify-center">
         <Link href="/" className={`${pill} justify-center h-11 px-6 bg-[var(--fg)] text-[var(--bg)] hover:bg-[var(--fg-secondary)]`}>

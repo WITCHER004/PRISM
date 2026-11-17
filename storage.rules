@@ -1,0 +1,34 @@
+rules_version = '2';
+
+// Firebase Storage rules for Prism. Deploy with:  npm run deploy:rules
+//   avatars/{uid}/…    profile photos      (written by that user)
+//   articles/{uid}/…   cover + inline images (written by that user)
+// Everything is publicly readable: these images appear on public profiles and stories.
+service firebase.storage {
+  match /b/{bucket}/o {
+    function isAdmin() {
+      return request.auth != null
+        && request.auth.token.email_verified == true
+        && request.auth.token.email in ['ayushra6111@gmail.com', 'surishri03@gmail.com'];
+    }
+    function ownImage(uid) {
+      return request.auth != null && request.auth.uid == uid
+        && request.resource.size < 8 * 1024 * 1024
+        && request.resource.contentType.matches('image/(jpeg|png|webp|gif)');
+    }
+
+    match /avatars/{uid}/{file} {
+      allow read: if true;
+      allow create, update: if ownImage(uid);
+      allow delete: if (request.auth != null && request.auth.uid == uid) || isAdmin();
+    }
+    match /articles/{uid}/{file} {
+      allow read: if true;
+      allow create, update: if ownImage(uid);
+      allow delete: if (request.auth != null && request.auth.uid == uid) || isAdmin();
+    }
+    match /{path=**} {
+      allow read, write: if false;
+    }
+  }
+}

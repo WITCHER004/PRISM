@@ -3,7 +3,7 @@
 import Link from "next/link"
 import { useMemo, useRef, useState } from "react"
 import { AnimatePresence, motion } from "motion/react"
-import { Eye, FileText, Hand, Pencil, PenLine, Trash2, Users, ExternalLink } from "lucide-react"
+import { Eye, FileText, Hand, Pencil, PenLine, Trash2, ExternalLink, MessageSquareText } from "lucide-react"
 import { useUIStore, toast, type Draft } from "@/lib/store"
 import { Button } from "@/components/ui/Button"
 import { Reveal } from "@/components/motion/Reveal"
@@ -11,9 +11,7 @@ import { StudioDialog, DialogActions } from "@/components/studio/StudioDialog"
 import { useHydrated } from "@/components/studio/useHydrated"
 import {
   PageHead,
-  SampleBadge,
   StatTile,
-  samplePostsFor,
   useWriter,
   wordCount,
   htmlToText,
@@ -28,7 +26,7 @@ type Tab = "all" | "drafts" | "review" | "published"
 
 interface Row {
   key: string
-  kind: "local" | "sample"
+  kind: "local"
   title: string
   excerpt: string
   status: ArticleStatus
@@ -64,7 +62,6 @@ export default function StudioOverviewPage() {
   const deletedRef = useRef(false)
   const tablistRef = useRef<HTMLDivElement>(null)
 
-  const samples = useMemo(() => samplePostsFor(user.username), [user.username])
   const localDrafts = useMemo(
     () =>
       Object.values(drafts)
@@ -84,25 +81,13 @@ export default function StudioOverviewPage() {
       date: d.updatedAt,
       minutes: Math.max(1, Math.ceil(wordCount(d.contentHtml) / 238)),
       topic: d.tags[0],
-      viewHref: `/story/${d.id}`,
+      viewHref: d.live ? `/${d.authorUsername}/${d.slug}` : `/story/${d.id}`,
       draft: d,
+      views: d.live ? (d.views ?? 0) : undefined,
+      claps: d.live ? (d.likes ?? 0) : undefined,
     }))
-    const sample: Row[] = samples.map((p) => ({
-      key: p.id,
-      kind: "sample",
-      title: p.title,
-      excerpt: p.subtitle ?? p.excerpt,
-      status: "PUBLISHED",
-      live: true,
-      date: p.publishedAt,
-      minutes: p.readingTimeMin,
-      topic: p.tags[0]?.slug,
-      viewHref: `/${p.author.username}/${p.slug}`,
-      views: p.viewCount,
-      claps: p.clapCount,
-    }))
-    return [...local, ...sample]
-  }, [localDrafts, samples])
+    return local
+  }, [localDrafts])
 
   const counts = {
     all: rows.length,
@@ -115,8 +100,9 @@ export default function StudioOverviewPage() {
   const localPublished = localDrafts.filter((d) => d.live).length
   const localInReview = localDrafts.filter((d) => d.status === "PENDING_EMPLOYEE_REVIEW").length
   const localDraftCount = localDrafts.length - localPublished
-  const sampleViews = samples.reduce((a, p) => a + p.viewCount, 0)
-  const sampleClaps = samples.reduce((a, p) => a + p.clapCount, 0)
+  const totalViews = localDrafts.reduce((a, d) => a + (d.live ? (d.views ?? 0) : 0), 0)
+  const totalClaps = localDrafts.reduce((a, d) => a + (d.live ? (d.likes ?? 0) : 0), 0)
+  const inPanel = localDrafts.filter((d) => d.status === "PENDING_PEER_PANEL" || d.status === "COUNTER_SUBMITTED").length
 
   const confirmDelete = () => {
     if (!pendingDelete) return
@@ -146,11 +132,11 @@ export default function StudioOverviewPage() {
 
       {/* Stats */}
       <section aria-label="Overview" className="mt-10 grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-        <StatTile label="Stories" icon={FileText} value={samples.length + localPublished}
-          sub={hydrated ? <span>{localDraftCount} draft{localDraftCount === 1 ? "" : "s"} · {localInReview} in review · {localPublished} published here</span> : <span>Loading your drafts…</span>} />
-        <StatTile label="Total views" icon={Eye} value={numberWithCommas(sampleViews)} sub={<span>+12% this month</span>} sample />
-        <StatTile label="Followers" icon={Users} value={numberWithCommas(user.followerCount)} sub={<span>+340 this month</span>} sample />
-        <StatTile label="Claps" icon={Hand} value={numberWithCommas(sampleClaps)} sub={<span>+8% this month</span>} sample />
+        <StatTile label="Stories" icon={FileText} value={localPublished}
+          sub={hydrated ? <span>{localDraftCount} draft{localDraftCount === 1 ? "" : "s"} · {localInReview} in review</span> : <span>Loading your stories…</span>} />
+        <StatTile label="Total views" icon={Eye} value={numberWithCommas(totalViews)} sub={<span>Unique reads, all stories</span>} />
+        <StatTile label="With the panel" icon={MessageSquareText} value={inPanel} sub={<span>Elite peer review</span>} />
+        <StatTile label="Claps" icon={Hand} value={numberWithCommas(totalClaps)} sub={<span>From readers</span>} />
       </section>
 
       {/* Stories */}
@@ -159,7 +145,7 @@ export default function StudioOverviewPage() {
           <div>
             <h2 className="display text-[1.75rem]">Your stories</h2>
             <p className="mt-1 text-sm text-[var(--fg-muted)]">
-              Drafts autosave in this browser. Submitting runs an AI-content check, then a Prism employee reviews it.
+              Drafts autosave to your account. Submitting runs an AI-content check, then a Prism employee reviews it.
             </p>
           </div>
           <div ref={tablistRef} role="tablist" aria-label="Filter stories" className="flex items-center gap-1 border-b border-[var(--border)]">
@@ -234,7 +220,7 @@ export default function StudioOverviewPage() {
         }}
         description={
           <>
-            “{pendingDelete?.title.trim() || "Untitled story"}” will be removed from this browser
+            “{pendingDelete?.title.trim() || "Untitled story"}” will be deleted from Prism
             {pendingDelete?.live ? " and its story page will stop working" : ""}. This can&apos;t be undone.
           </>
         }
@@ -262,7 +248,6 @@ function StoryRow({ row, onDelete }: { row: Row; onDelete: () => void }) {
         <div className="flex flex-wrap items-center gap-2">
           {row.live && row.status !== "PUBLISHED" && <StatusPill status="PUBLISHED" />}
           <StatusPill status={row.status} />
-          {row.kind === "sample" && <SampleBadge label="Sample" />}
           {row.topic && (
             <span className="inline-flex items-center gap-1.5 h-6 px-2.5 rounded-full hue-wash hue-ink text-xs font-medium capitalize">
               <span aria-hidden className="w-1.5 h-1.5 rounded-full hue-dot" />

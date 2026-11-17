@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 import { useRouter } from "next/navigation"
 import { AnimatePresence, motion } from "motion/react"
-import { ChevronLeft, ChevronRight, Clock, Flame, Lightbulb, Pause, Quote, Sparkles, Trash2, X, Zap } from "lucide-react"
+import { ChevronLeft, ChevronRight, Clock, Flame, Lightbulb, Pause, Quote, Sparkles, Trash2, X } from "lucide-react"
 import { CountdownRing, IdeaBody, chipSurface, isDarkCanvas } from "@/components/ideas/IdeaParts"
 import type { InstantIdeasApi } from "@/components/ideas/useInstantIdeas"
 import { useViewer } from "@/components/providers/useViewer"
@@ -46,7 +46,7 @@ export function IdeaViewer({ api, startId, onClose }: IdeaViewerProps) {
 }
 
 function ViewerPanel({ api, startId, onClose }: { api: InstantIdeasApi; startId: string; onClose: () => void }) {
-  const { ideas, toggleReaction, reactionCount, reactions, markSeen, remove, addSparksTest } = api
+  const { ideas, toggleReaction, reactionCount, reacted, markSeen, remove } = api
   const router = useRouter()
   const { viewer } = useViewer()
   const [currentId, setCurrentId] = useState(startId)
@@ -156,7 +156,7 @@ function ViewerPanel({ api, startId, onClose }: { api: InstantIdeasApi; startId:
   }
 
   const turnIntoArticle = () => {
-    setPromotedIdeaSeed(idea, viewer ? [viewer.username] : [])
+    setPromotedIdeaSeed(idea)
     onClose()
     router.push("/editor/new")
   }
@@ -275,20 +275,6 @@ function ViewerPanel({ api, startId, onClose }: { api: InstantIdeasApi; startId:
             </span>
           )}
 
-          {/* Testing shortcut: +5 Sparks (Test) */}
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation()
-              addSparksTest?.(idea.id, 5)
-              toast("Added +5 Sparks to this idea!")
-            }}
-            title="Fast-test: Add 5 sparks to cross 25 threshold"
-            className="pointer-events-auto inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium bg-black/30 hover:bg-black/50 text-white backdrop-blur-sm transition-colors"
-          >
-            <Zap className="w-3 h-3 text-amber-300 fill-amber-300" />
-            +5 Sparks (Test)
-          </button>
         </div>
 
         {/* The idea */}
@@ -299,13 +285,13 @@ function ViewerPanel({ api, startId, onClose }: { api: InstantIdeasApi; startId:
         {/* Reactions & Promotion */}
         <footer className="relative z-10 flex flex-wrap items-center gap-2 px-4 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-3">
           {REACTIONS.map(({ key, label, icon: Icon }) => {
-            const on = reactions[idea.id]?.includes(key)
+            const on = reacted(idea, key)
             return (
               <button
                 key={key}
                 type="button"
                 aria-pressed={!!on}
-                onClick={() => toggleReaction(idea.id, key, viewer?.username)}
+                onClick={() => toggleReaction(idea.id, key)}
                 className={cn(
                   "inline-flex items-center gap-1.5 h-10 px-3.5 rounded-full text-[13px] font-medium transition-colors",
                   on ? (dark ? "bg-white text-[#141413]" : "bg-[#141413] text-[#f4f1ea]") : cn(chipSurface(idea.theme), t.ink)
@@ -318,7 +304,7 @@ function ViewerPanel({ api, startId, onClose }: { api: InstantIdeasApi; startId:
             )
           })}
 
-          {savedImmortal ? (
+          {savedImmortal && mine ? (
             <button
               type="button"
               onClick={turnIntoArticle}

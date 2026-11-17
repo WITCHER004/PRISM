@@ -3,15 +3,14 @@
 import { forwardRef, useEffect, useId, useState, useSyncExternalStore } from "react"
 import Link from "next/link"
 import { motion } from "motion/react"
-import { ArrowRight, Loader2, LogOut, AlertCircle, FlaskConical } from "lucide-react"
+import { ArrowRight, Loader2, LogOut, AlertCircle } from "lucide-react"
 import { useUIStore } from "@/lib/store"
-import { MOCK_USERS } from "@/lib/data"
 import { Wordmark } from "@/components/ui/Wordmark"
 import { Avatar } from "@/components/ui/Avatar"
 import { dur, ease } from "@/lib/motion"
 import { cn } from "@/lib/utils"
 
-// Shared pieces for /auth/login and /auth/signup (demo auth runs entirely on the client store)
+// Shared pieces for /auth/login and /auth/signup (Firebase Authentication)
 
 export const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/
 
@@ -73,7 +72,6 @@ export function AuthShell({ children, aside }: { children: React.ReactNode; asid
           <div className="flex-1 flex items-center justify-center py-5 sm:py-8 lg:py-10">
             <div className="w-full max-w-[400px]">{children}</div>
           </div>
-          <DemoNote />
         </div>
 
         {/* Visual side */}
@@ -84,18 +82,6 @@ export function AuthShell({ children, aside }: { children: React.ReactNode; asid
         </aside>
       </div>
     </div>
-  )
-}
-
-function DemoNote() {
-  return (
-    <p className="mx-auto flex items-start gap-2 max-w-[400px] text-[11px] sm:text-xs leading-relaxed text-[var(--fg-muted)] pt-3 pb-1">
-      <FlaskConical className="w-3.5 h-3.5 mt-0.5 shrink-0 text-[var(--accent)]" />
-      <span>
-        <span className="font-medium text-[var(--fg-secondary)]">Demo mode.</span> No emails are sent and no
-        accounts are created on a server: signing in here simply starts a session in this browser.
-      </span>
-    </p>
   )
 }
 
@@ -219,15 +205,15 @@ export function SignedInCard({ username, continueHref, note }: { username: strin
   const signOut = useUIStore((s) => s.signOut)
   const toast = useUIStore((s) => s.toast)
   const displayName = useUIStore((s) => s.profile.displayName)
-  const user = MOCK_USERS.find((u) => u.username === username)
-  const name = username === MOCK_USERS[0].username ? displayName : user?.displayName ?? username
+  const avatarUrl = useUIStore((s) => s.profile.avatarUrl)
+  const name = displayName || username
 
   return (
     <div>
       <p className="meta">Session active</p>
       <h1 className="display mt-3 text-[2.25rem] sm:text-[2.75rem]">You&apos;re already in.</h1>
       <div className="mt-6 panel p-4 flex items-center gap-3 shadow-[var(--shadow)]">
-        <Avatar src={user?.avatarUrl} alt={name} size="md" />
+        <Avatar src={avatarUrl || undefined} alt={name} size="md" />
         <div className="min-w-0">
           <p className="font-medium truncate">{name}</p>
           <p className="text-sm text-[var(--fg-muted)] truncate">@{username}</p>

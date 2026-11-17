@@ -73,6 +73,21 @@ export function UserBadges({ username, compact, className }: { username: string;
 }
 
 /** Small "Elite" tier tag */
+/** Warm-gold "✦ Elite" mark shown beside an Elite member's name */
+export function EliteNameBadge({ className }: { className?: string }) {
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1 h-5 px-1.5 rounded-full border text-[10.5px] font-semibold tracking-wide shrink-0",
+        "text-[var(--gold)] border-[var(--gold)]/35 bg-[var(--gold)]/10",
+        className
+      )}
+    >
+      <span aria-hidden>✦</span> Elite
+    </span>
+  )
+}
+
 export function EliteTag({ className }: { className?: string }) {
   return (
     <span

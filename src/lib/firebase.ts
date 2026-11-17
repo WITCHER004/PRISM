@@ -17,23 +17,33 @@ import {
   type User as FirebaseUser,
 } from "firebase/auth"
 import { getAnalytics, isSupported, type Analytics } from "firebase/analytics"
+import { getFirestore, initializeFirestore, type Firestore } from "firebase/firestore"
+import { getStorage, type FirebaseStorage } from "firebase/storage"
+import { firebaseConfig } from "@/lib/firebase-config"
 
-export const firebaseConfig = {
-  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "AIzaSyDO4D8Ho1I-5QosfIp6ppe6jQcrPeIbQn8",
-  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || "prism-2d284.firebaseapp.com",
-  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "prism-2d284",
-  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || "prism-2d284.firebasestorage.app",
-  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || "264786801070",
-  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID || "1:264786801070:web:464f23895c405eb974583f",
-  measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID || "G-9TGPS0XGJN",
-}
+export { firebaseConfig }
 
-if (!firebaseConfig.projectId) {
-  console.warn("[firebase] projectId is missing. Set NEXT_PUBLIC_FIREBASE_PROJECT_ID in .env.local.")
-}
-
-// Initialize Firebase (singleton pattern for Next.js SSR and hot reloading)
+// One app, one Auth, one Firestore, one Storage — reused across Next.js HMR reloads.
 export const app: FirebaseApp = getApps().length ? getApp() : initializeApp(firebaseConfig)
+
+// Long polling instead of WebChannel streaming: WebChannel drops under Turbopack dev and behind some
+// proxies/ad-blockers, which shows up as "client is offline". initializeFirestore may only run once per
+// app, so the instance is cached on globalThis (HMR re-evaluates this module but keeps the app).
+const g = globalThis as typeof globalThis & { __prismFirestore?: Firestore }
+function createDb(): Firestore {
+  if (g.__prismFirestore) return g.__prismFirestore
+  let instance: Firestore
+  try {
+    instance = initializeFirestore(app, { experimentalForceLongPolling: true })
+  } catch {
+    instance = getFirestore(app) // "already been started": reuse it
+  }
+  g.__prismFirestore = instance
+  return instance
+}
+export const db: Firestore = createDb()
+
+export const storage: FirebaseStorage = getStorage(app)
 
 // Initialize Firebase Authentication
 export const auth: Auth = getAuth(app)

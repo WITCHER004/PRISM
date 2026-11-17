@@ -6,9 +6,8 @@ import { SiteFooter } from "@/components/layout/SiteFooter"
 import { Reveal } from "@/components/motion/Reveal"
 import { ExploreFeed } from "@/components/discovery/ExploreFeed"
 import { FollowedTopicMark } from "@/components/discovery/TopicFollowButton"
-import { getFeedPosts } from "@/actions/posts"
-import { MOCK_TAGS } from "@/lib/data"
-import { hueStyle } from "@/lib/topics"
+import { getPublishedPosts, getTopicCounts } from "@/lib/server/content"
+import { hueStyle, TOPICS } from "@/lib/topics"
 import { numberWithCommas } from "@/lib/utils"
 import { pageMetadata } from "@/lib/seo"
 
@@ -19,14 +18,16 @@ export const metadata: Metadata = pageMetadata({
   socialTitle: "Explore Prism",
 })
 
+export const revalidate = 60
+
 export default async function ExplorePage({
   searchParams,
 }: {
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>
 }) {
   const { filter } = await searchParams
-  const posts = await getFeedPosts(30)
-  const topics = [...MOCK_TAGS].sort((a, b) => (b.postCount ?? 0) - (a.postCount ?? 0))
+  const [posts, counts] = await Promise.all([getPublishedPosts(), getTopicCounts()])
+  const topics = TOPICS.map((t) => ({ ...t, postCount: counts.get(t.slug) ?? 0 })).sort((a, b) => b.postCount - a.postCount)
 
   return (
     <div className="min-h-screen flex flex-col bg-[var(--bg)]">
@@ -34,7 +35,7 @@ export default async function ExplorePage({
       <main className="flex-1">
         {/* Head */}
         <section className="max-w-7xl mx-auto px-4 sm:px-6 pt-12 sm:pt-16 pb-8">
-          <p className="meta">Explore · {MOCK_TAGS.length} topics</p>
+          <p className="meta">Explore · {TOPICS.length} topics</p>
           <h1 className="display mt-3 text-[2.5rem] sm:text-[3.5rem]">
             Every topic, <span className="spectrum-text">one spectrum.</span>
           </h1>
@@ -74,7 +75,7 @@ export default async function ExplorePage({
         {/* Stories */}
         <section aria-labelledby="stories-title" className="max-w-7xl mx-auto px-4 sm:px-6 pb-20">
           <SectionTitle id="stories-title" title="Stories worth your time" />
-          <ExploreFeed posts={posts} topics={MOCK_TAGS} initialFilter={typeof filter === "string" ? filter : undefined} />
+          <ExploreFeed posts={posts} topics={topics} initialFilter={typeof filter === "string" ? filter : undefined} />
         </section>
       </main>
       <SiteFooter />

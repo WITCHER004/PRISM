@@ -1,12 +1,13 @@
 "use client"
 
-import { useState, useRef, useEffect } from "react"
+import { useState, useRef } from "react"
 import Link from "next/link"
 import { BadgeCheck, Gem, Lock } from "lucide-react"
 import { Avatar } from "@/components/ui/Avatar"
-import { MOCK_TAGS, type User } from "@/lib/data"
+import type { User } from "@/lib/data"
+import { TOPICS } from "@/lib/topics"
 import type { PaywallChoice } from "@/lib/store"
-import { useUIStore, toast } from "@/lib/store"
+import { toast } from "@/lib/store"
 import { formatDate, numberWithCommas } from "@/lib/utils"
 import { hasBody, wordCount } from "@/components/studio/studio-ui"
 import { UserBadges } from "@/components/elite/EliteBadges"
@@ -16,18 +17,10 @@ import { deepReadMinutes, PAPER_MASK, PAPER_PREVIEW_FRACTION, type AdvancedPaper
 import { SelectionPopover, type SelectionPayload } from "@/components/reader/SelectionPopover"
 import { MarginNotesDrawer } from "@/components/reader/MarginNotesDrawer"
 import { QuoteCardModal } from "@/components/reader/QuoteCardModal"
-import {
-  loadLocalMarginNotes,
-  saveLocalMarginNote,
-  deleteLocalMarginNote,
-  fetchRemoteMarginNotes,
-  saveRemoteMarginNote,
-  deleteRemoteMarginNote,
-  type MarginNote,
-} from "@/lib/marginNotes"
+import { useMarginNotes } from "@/lib/marginNotes"
 
 export function topicLabel(tag: string) {
-  const known = MOCK_TAGS.find((t) => t.slug === tag)
+  const known = TOPICS.find((t) => t.slug === tag)
   return known ? known.name : tag.replace(/-/g, " ")
 }
 
@@ -62,7 +55,7 @@ interface StoryArticleProps {
 // The reader's view of a story written in Prism — same structure and type as the article page.
 export function StoryArticle({ title, subtitle, html, tags, paywall, date, author, authorName, meta, paper, postId, paperReview = "Editor-reviewed", afterHeader }: StoryArticleProps) {
   const topic = tags[0]
-  const known = topic ? MOCK_TAGS.find((t) => t.slug === topic) : undefined
+  const known = topic ? TOPICS.find((t) => t.slug === topic) : undefined
   const minutes = Math.max(1, Math.ceil(wordCount(html) / 238))
   const gate = PAYWALL_LABEL[paywall]
   const words = wordCount(html)
@@ -72,27 +65,8 @@ export function StoryArticle({ title, subtitle, html, tags, paywall, date, autho
   const [quoteModalOpen, setQuoteModalOpen] = useState(false)
   const [selectedQuote, setSelectedQuote] = useState("")
   const [activeSelection, setActiveSelection] = useState<SelectionPayload | null>(null)
-  const [notes, setNotes] = useState<MarginNote[]>([])
-
-  const currentUser = useUIStore((s) => s.currentUser)
-  const profile = useUIStore((s) => s.profile)
   const effectiveArticleId = postId ?? `article_${author.username}_${title.slice(0, 15)}`
-
-  useEffect(() => {
-    // Load local and fetch remote notes
-    const local = loadLocalMarginNotes(effectiveArticleId)
-    setNotes(local)
-    fetchRemoteMarginNotes(effectiveArticleId).then((remote) => {
-      if (remote.length) {
-        setNotes((prev) => {
-          const map = new Map<string, MarginNote>()
-          for (const n of remote) map.set(n.id, n)
-          for (const n of prev) map.set(n.id, n)
-          return Array.from(map.values()).sort((a, b) => b.createdAt - a.createdAt)
-        })
-      }
-    })
-  }, [effectiveArticleId])
+  const { notes, add, remove, currentUser, displayName } = useMarginNotes(effectiveArticleId)
 
   const handleAddMarginNote = (payload: SelectionPayload) => {
     setActiveSelection(payload)
@@ -105,29 +79,12 @@ export function StoryArticle({ title, subtitle, html, tags, paywall, date, autho
   }
 
   const handleSaveNote = (noteText: string, payload: SelectionPayload) => {
-    const newNote: MarginNote = {
-      id: "note_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
-      articleId: effectiveArticleId,
-      paragraphIndex: payload.paragraphIndex,
-      selectedText: payload.text,
-      noteText,
-      authorUsername: currentUser || "reader",
-      authorDisplayName: profile.displayName || currentUser || "Reader",
-      authorAvatar: profile.avatarUrl,
-      createdAt: Date.now(),
-    }
-
-    setNotes((prev) => [newNote, ...prev])
-    saveLocalMarginNote(newNote)
-    saveRemoteMarginNote(newNote)
-    toast("Margin note added to paragraph!")
+    if (add(noteText, payload)) toast("Margin note added to paragraph!")
     setActiveSelection(null)
   }
 
   const handleDeleteNote = (noteId: string) => {
-    setNotes((prev) => prev.filter((n) => n.id !== noteId))
-    deleteLocalMarginNote(effectiveArticleId, noteId)
-    deleteRemoteMarginNote(noteId)
+    remove(noteId)
     toast("Margin note removed")
   }
 
@@ -149,7 +106,7 @@ export function StoryArticle({ title, subtitle, html, tags, paywall, date, autho
         onDeleteNote={handleDeleteNote}
         activeSelection={activeSelection}
         currentUsername={currentUser}
-        currentDisplayName={profile.displayName || currentUser || "Reader"}
+        currentDisplayName={displayName}
       />
 
       <QuoteCardModal

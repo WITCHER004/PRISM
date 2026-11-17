@@ -18,9 +18,9 @@ const CARD = "shrink-0 snap-start h-[148px] rounded-[18px]"
 
 // Horizontal tray of short-lived ideas above the feed
 export function InstantIdeasTray({ className }: { className?: string }) {
-  const api = useInstantIdeas()
-  const { ready, ideas, now, seen } = api
   const { viewer } = useViewer()
+  const api = useInstantIdeas(viewer?.uid)
+  const { ready, ideas, now, seen } = api
   const [composing, setComposing] = useState(false)
   const [openId, setOpenId] = useState<string | null>(null)
 
@@ -85,7 +85,7 @@ export function InstantIdeasTray({ className }: { className?: string }) {
 
         {ready && ideas.length === 0 && (
           <div className={cn(CARD, "w-[280px] grid place-items-center px-6 border border-[var(--border)] text-center")}>
-            <p className="text-sm text-[var(--fg-muted)]">Every idea has vanished. Drop the next one.</p>
+            <p className="text-sm text-[var(--fg-muted)]">No active Instant Ideas right now — drop a spark.</p>
           </div>
         )}
       </div>

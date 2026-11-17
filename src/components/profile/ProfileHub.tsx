@@ -1,17 +1,21 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
-import { ArrowUpRight, FileText, PenLine, Settings2, Star, UserRoundPen } from "lucide-react"
+import { ArrowUpRight, FileText, Lock, PenLine, Settings2, Sparkles, Star, UserRoundPen, Wallet } from "lucide-react"
+import { EliteNameBadge } from "@/components/elite/EliteBadges"
+import { openUpgrade } from "@/components/elite/UpgradeDialog"
+import { useSubscription, useWallet } from "@/components/elite/hooks"
+import { useAccess, usePanelInbox } from "@/components/providers/useAccess"
+import { PanelApplyButton } from "@/components/panel/PanelApplication"
+import { PANEL_PASS_THRESHOLD, PANEL_SIZE, PAYOUT_RPM_USD } from "@/lib/elite/config"
 import { useUIStore, type Draft } from "@/lib/store"
-import { MOCK_POSTS } from "@/lib/data"
-import { mergeReviews, summarize } from "@/lib/reviews"
+import { summarize } from "@/lib/reviews"
 import { STATUS_META } from "@/lib/moderation/workflow"
 import type { ArticleStatus } from "@/lib/moderation/types"
 import { useHydrated } from "@/components/studio/useHydrated"
 import { Avatar } from "@/components/ui/Avatar"
 import { FollowButton } from "@/components/ui/FollowButton"
-import { PostCard } from "@/components/posts/PostCard"
 import { StatusPill } from "@/components/moderation/Phase1Report"
 import { RatingChip } from "@/components/reviews/ArticleReviews"
 import { htmlToText } from "@/components/studio/studio-ui"
@@ -35,11 +39,11 @@ export function ProfileHub({ username }: { username: string }) {
   const identity = useIdentity(username)
   const currentUser = useUIStore((s) => s.currentUser)
   const drafts = useUIStore((s) => s.drafts)
-  const localReviews = useUIStore((s) => s.reviews)
+  const [ratings, setRatings] = useState<{ rating: number }[]>([])
   const [editing, setEditing] = useState(false)
+  const access = useAccess(username)
 
   const isMe = hydrated && currentUser === username
-  const samplePosts = useMemo(() => MOCK_POSTS.filter((p) => p.author.username === username && p.status === "PUBLISHED"), [username])
   const mine = useMemo(
     () =>
       hydrated
@@ -51,11 +55,26 @@ export function ProfileHub({ username }: { username: string }) {
   )
   const liveLocal = mine.filter((d) => d.live)
 
-  // Ratings across everything this author has published
-  const rating = useMemo(() => {
-    const ids = [...samplePosts.map((p) => p.id), ...liveLocal.map((d) => d.id)]
-    return summarize(ids.flatMap((id) => mergeReviews(id, hydrated ? localReviews : {})))
-  }, [samplePosts, liveLocal, localReviews, hydrated])
+  // Ratings across everything this author has published (Firestore reviews where postAuthor == handle)
+  useEffect(() => {
+    let stop: (() => void) | undefined
+    let cancelled = false
+    Promise.all([import("firebase/firestore"), import("@/lib/firebase")])
+      .then(([{ collection, query, where, onSnapshot }, { db }]) => {
+        if (cancelled) return
+        stop = onSnapshot(
+          query(collection(db, "reviews"), where("postAuthor", "==", username)),
+          (snap) => setRatings(snap.docs.map((d) => ({ rating: Number(d.data().rating) || 0 }))),
+          () => setRatings([])
+        )
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+      stop?.()
+    }
+  }, [username])
+  const rating = useMemo(() => summarize(ratings), [ratings])
 
   if (!identity) return null
   const counts = Object.fromEntries(TRACKED.map((s) => [s, mine.filter((d) => d.status === s).length])) as Record<ArticleStatus, number>
@@ -74,6 +93,7 @@ export function ProfileHub({ username }: { username: string }) {
                     {identity.displayName}
                   </h1>
                   <RoleBadge role={identity.role} verified={identity.base?.isVerifiedHuman} />
+                  {hydrated && access.isElite && <EliteNameBadge className="h-6 px-2 text-xs" />}
                 </div>
                 <UserBadges username={identity.username} className="mt-2.5" />
                 <p className="mt-1.5 text-sm text-[var(--fg-muted)]">@{identity.username}</p>
@@ -108,7 +128,7 @@ export function ProfileHub({ username }: { username: string }) {
             <SocialLinks handles={identity.handles} className="mt-4" />
 
             <dl className="mt-6 pt-5 border-t border-[var(--border)] grid grid-cols-3 gap-4 max-w-md">
-              <Stat label="Published" value={String(samplePosts.length + liveLocal.length)} />
+              <Stat label="Published" value={String(liveLocal.length)} />
               <Stat
                 label="Avg rating"
                 value={
@@ -127,6 +147,9 @@ export function ProfileHub({ username }: { username: string }) {
           </div>
         </div>
       </section>
+
+      {/* What this account can do; every card unlocks in place as the role changes */}
+      {isMe && <Capabilities username={username} />}
 
       {/* Author tracker (own profile only) */}
       {isMe && (
@@ -180,7 +203,7 @@ export function ProfileHub({ username }: { username: string }) {
         <h2 id="published-title" className="display text-[1.75rem]">
           Published articles
         </h2>
-        {samplePosts.length + liveLocal.length === 0 ? (
+        {liveLocal.length === 0 ? (
           <p className="mt-4 text-sm text-[var(--fg-muted)]">
             {isMe ? "Stories appear here once a reviewer approves them." : `${identity.displayName} hasn't published yet.`}
           </p>
@@ -189,15 +212,115 @@ export function ProfileHub({ username }: { username: string }) {
             {liveLocal.map((d) => (
               <LiveStoryRow key={d.id} draft={d} />
             ))}
-            {samplePosts.map((p) => (
-              <PostCard key={p.id} post={p} showAuthor={false} />
-            ))}
           </div>
         )}
       </section>
 
       {isMe && <EditProfileDialog open={editing} onOpenChange={setEditing} />}
     </div>
+  )
+}
+
+function Capabilities({ username }: { username: string }) {
+  const access = useAccess(username)
+  const { subscription } = useSubscription(username)
+  const wallet = useWallet(username)
+  const inbox = usePanelInbox(access.isPanelMember ? username : null)
+  const card = "panel p-5 sm:p-6 flex flex-col"
+
+  return (
+    <section id="capabilities" className="mt-10 scroll-mt-24" aria-labelledby="capabilities-title">
+      <h2 id="capabilities-title" className="display text-[1.75rem]">
+        Capabilities
+      </h2>
+      <p className="mt-1 text-sm text-[var(--fg-muted)]">One account. Each step unlocks more of Prism, right here.</p>
+
+      <div className="mt-5 grid gap-4 md:grid-cols-3">
+        {/* Membership */}
+        <article className={cn(card, access.isElite && "border-[var(--elite-line)] bg-[var(--elite-wash)]")}>
+          <p className="meta">Membership</p>
+          {access.isElite ? (
+            <>
+              <h3 className="mt-2 flex items-center gap-2 font-display text-lg font-semibold">
+                Prism Elite <EliteNameBadge />
+              </h3>
+              <p className="mt-2 text-sm text-[var(--fg-muted)] leading-relaxed flex-1">
+                Full Advanced Papers, Elite publishing, per-view earnings and the peer panel.
+                {subscription.subscribedAt && ` Member since ${formatDate(subscription.subscribedAt)}.`}
+              </p>
+            </>
+          ) : (
+            <>
+              <h3 className="mt-2 font-display text-lg font-semibold">Free</h3>
+              <p className="mt-2 text-sm text-[var(--fg-muted)] leading-relaxed flex-1">
+                Elite opens every Advanced Paper, Elite-only publishing and panel review, and earnings.
+              </p>
+              <button
+                type="button"
+                onClick={openUpgrade}
+                className="mt-4 inline-flex items-center justify-center gap-2 h-10 px-4 rounded-full text-sm font-medium bg-[var(--fg)] text-[var(--bg)] hover:opacity-90"
+              >
+                <Sparkles className="w-4 h-4 text-[var(--gold)]" /> Upgrade to Prism Elite
+              </button>
+            </>
+          )}
+        </article>
+
+        {/* Earnings & View Monetization */}
+        <article className={card} aria-disabled={!access.isElite}>
+          <p className="meta flex items-center gap-1.5">
+            {!access.isElite && <Lock className="w-3 h-3" />} Earnings &amp; view monetization
+          </p>
+          {access.isElite ? (
+            <>
+              <p className="mt-2 display text-[2rem] leading-none tabular-nums">${wallet.availableBalance.toFixed(2)}</p>
+              <p className="mt-2 text-sm text-[var(--fg-muted)] flex-1">
+                {wallet.totalViews.toLocaleString("en-US")} views counted · ${PAYOUT_RPM_USD.toFixed(2)} per 1,000 unique readers
+              </p>
+              <Link
+                href="/dashboard/earnings"
+                className="mt-4 inline-flex items-center justify-center gap-2 h-10 px-4 rounded-full text-sm font-medium border border-[var(--border-strong)] hover:border-[var(--fg)]"
+              >
+                <Wallet className="w-4 h-4" /> Open earnings
+              </Link>
+            </>
+          ) : (
+            <>
+              <p className="mt-2 font-display text-lg font-semibold text-[var(--fg-muted)]">Locked</p>
+              <p className="mt-2 text-sm text-[var(--fg-muted)] leading-relaxed flex-1">
+                Elite writers earn ${PAYOUT_RPM_USD.toFixed(2)} for every 1,000 unique readers, with payouts from this card.
+              </p>
+            </>
+          )}
+        </article>
+
+        {/* Peer Review Panel */}
+        <article className={cn(card, access.isPanelMember && "border-[var(--fg)]")}>
+          <p className="meta flex items-center gap-1.5">
+            {!access.isElite && <Lock className="w-3 h-3" />} Peer review panel
+          </p>
+          <h3 className="mt-2 font-display text-lg font-semibold">
+            {access.isPanelMember
+              ? inbox.total
+                ? `${inbox.total} waiting on you`
+                : "You're on the panel"
+              : access.panelApplicationStatus === "pending"
+                ? "Application under review"
+                : access.panelApplicationStatus === "rejected"
+                  ? "Not approved yet"
+                  : `${PANEL_SIZE} reviewers, ${PANEL_PASS_THRESHOLD} to pass`}
+          </h3>
+          <p className="mt-2 text-sm text-[var(--fg-muted)] leading-relaxed flex-1">
+            {access.isPanelMember
+              ? "Vote PASS or FAIL on Elite papers with a structured reason, and rule on writers' counter-rebuttals."
+              : access.isElite
+                ? "Review Elite submissions in your domains. An admin reads every application."
+                : "Panel members are Elite writers who review Elite papers in their domains."}
+          </p>
+          <PanelApplyButton className="mt-4 justify-center" />
+        </article>
+      </div>
+    </section>
   )
 }
 

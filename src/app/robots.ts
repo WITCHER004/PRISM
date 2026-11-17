@@ -2,6 +2,8 @@ import type { MetadataRoute } from "next"
 import { absoluteUrl } from "@/lib/seo"
 
 const PRIVATE = [
+  "/admin",
+  "/panel",
   "/auth",
   "/login",
   "/signup",

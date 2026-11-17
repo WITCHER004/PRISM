@@ -2,28 +2,16 @@
 
 import { useEffect, useMemo, useRef, useState } from "react"
 import { AnimatePresence, motion } from "motion/react"
-import { CircleCheck, Download, Loader2, Mail, MailOpen, MousePointerClick, Search, Send, Upload, UserPlus, Users } from "lucide-react"
+import { CircleCheck, Download, FileText, Loader2, Mail, MailOpen, Search, Send, Upload, UserPlus, Users } from "lucide-react"
 import { useUIStore, toast } from "@/lib/store"
 import { Button } from "@/components/ui/Button"
 import { Reveal } from "@/components/motion/Reveal"
 import { StudioDialog, DialogActions } from "@/components/studio/StudioDialog"
-import { PageHead, SampleBadge, StatTile, inputClass, samplePostsFor, useWriter } from "@/components/studio/studio-ui"
+import { PageHead, StatTile, inputClass, useWriter } from "@/components/studio/studio-ui"
 import { dur, ease } from "@/lib/motion"
 import { cn, numberWithCommas } from "@/lib/utils"
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-const SAMPLE_COUNT = 14290
-const SAMPLE_SUBSCRIBERS = [
-  "maya.okafor@hey.com",
-  "dev.patel@fastmail.com",
-  "j.lindqvist@proton.me",
-  "hello@ritasato.dev",
-  "tom.becker@gmail.com",
-  "ana.ruiz@outlook.com",
-  "k.mensah@icloud.com",
-  "sam@builders.club",
-]
-
 interface Issue {
   id: string
   subject: string
@@ -31,12 +19,6 @@ interface Issue {
   recipients: number
   openRate: number | null
 }
-
-const SAMPLE_ISSUES: Issue[] = [
-  { id: "i3", subject: "Issue #41 — Sagas, not two-phase commit", sentAt: "Oct 24", recipients: 14102, openRate: 56.2 },
-  { id: "i2", subject: "Issue #40 — The cost of being eventually right", sentAt: "Oct 10", recipients: 13870, openRate: 53.9 },
-  { id: "i1", subject: "Issue #39 — Software that lasts 20 years", sentAt: "Sep 26", recipients: 13544, openRate: 55.1 },
-]
 
 export default function NewsletterPage() {
   const subscribers = useUIStore((s) => s.newsletterSubscribers)
@@ -48,7 +30,7 @@ export default function NewsletterPage() {
   const [emailError, setEmailError] = useState("")
   const [query, setQuery] = useState("")
   const [showAll, setShowAll] = useState(false)
-  const [issues, setIssues] = useState<Issue[]>(SAMPLE_ISSUES)
+  const [issues, setIssues] = useState<Issue[]>([])
   const fileRef = useRef<HTMLInputElement>(null)
 
   // Compose
@@ -66,18 +48,11 @@ export default function NewsletterPage() {
     const local = Object.values(drafts)
       .filter((d) => d.live && d.authorUsername === user.username)
       .map((d) => ({ key: `local:${d.id}`, title: d.live!.title }))
-    const sample = samplePostsFor(user.username).map((p) => ({ key: `sample:${p.id}`, title: p.title }))
-    return [...local, ...sample]
+    return local
   }, [drafts, user.username])
 
-  const total = SAMPLE_COUNT + subscribers.length
-  const everyone = useMemo(
-    () => [
-      ...[...subscribers].reverse().map((e) => ({ email: e, sample: false })),
-      ...SAMPLE_SUBSCRIBERS.map((e) => ({ email: e, sample: true })),
-    ],
-    [subscribers]
-  )
+  const total = subscribers.length
+  const everyone = useMemo(() => [...subscribers].reverse().map((e) => ({ email: e })), [subscribers])
   const filtered = everyone.filter((s) => s.email.includes(query.trim().toLowerCase()))
   const shown = showAll ? filtered : filtered.slice(0, 8)
 
@@ -88,7 +63,7 @@ export default function NewsletterPage() {
       setEmailError("Enter a valid email, like name@example.com")
       return
     }
-    if (subscribers.includes(v) || SAMPLE_SUBSCRIBERS.includes(v)) {
+    if (subscribers.includes(v)) {
       setEmailError("That address is already subscribed")
       return
     }
@@ -107,7 +82,7 @@ export default function NewsletterPage() {
       return
     }
     let added = 0
-    for (const e of found) if (!SAMPLE_SUBSCRIBERS.includes(e) && addSubscriber(e)) added++
+    for (const e of found) if (addSubscriber(e)) added++
     const skipped = found.length - added
     toast(
       added
@@ -118,7 +93,7 @@ export default function NewsletterPage() {
   }
 
   const exportList = () => {
-    const rows = ["email,source", ...everyone.map((s) => `${s.email},${s.sample ? "sample" : "added"}`)]
+    const rows = ["email", ...everyone.map((s) => s.email)]
     const url = URL.createObjectURL(new Blob([rows.join("\n")], { type: "text/csv;charset=utf-8" }))
     const a = document.createElement("a")
     a.href = url
@@ -135,7 +110,7 @@ export default function NewsletterPage() {
     setComposeError("")
     if (!storyKey && stories[0]) {
       setStoryKey(stories[0].key)
-      if (!subject) setSubject(`Issue #${42 + issues.length - SAMPLE_ISSUES.length} — ${stories[0].title}`)
+      if (!subject) setSubject(`Issue #${issues.length + 1} — ${stories[0].title}`)
     }
     setComposeOpen(true)
   }
@@ -210,15 +185,9 @@ export default function NewsletterPage() {
       />
 
       <section aria-label="Audience" className="mt-10 grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
-        <StatTile
-          label="Subscribers"
-          icon={Users}
-          value={total.toLocaleString("en-US")}
-          sub={<span>{subscribers.length ? `+${subscribers.length} added here` : "Includes sample list"}</span>}
-          sample
-        />
-        <StatTile label="Avg. open rate" icon={MailOpen} value="54.8%" sub={<span>Industry avg. 21%</span>} sample />
-        <StatTile label="Click-through" icon={MousePointerClick} value="18.2%" sub={<span>Last 3 issues</span>} sample />
+        <StatTile label="Subscribers" icon={Users} value={total.toLocaleString("en-US")} sub={<span>{total ? "On your list" : "Add or import readers"}</span>} />
+        <StatTile label="Issues sent" icon={MailOpen} value={issues.length} sub={<span>This session</span>} />
+        <StatTile label="Stories to share" icon={FileText} value={stories.length} sub={<span>Published</span>} />
       </section>
 
       <div className="mt-6 grid lg:grid-cols-5 gap-6">
@@ -292,11 +261,7 @@ export default function NewsletterPage() {
                     </span>
                     <span className="text-sm truncate">{s.email}</span>
                   </span>
-                  {s.sample ? (
-                    <SampleBadge label="Sample" />
-                  ) : (
-                    <span className="inline-flex items-center h-6 px-2.5 rounded-full bg-[var(--accent-subtle)] text-[var(--accent)] text-xs font-medium">Added here</span>
-                  )}
+                  <span className="inline-flex items-center h-6 px-2.5 rounded-full bg-[var(--accent-subtle)] text-[var(--accent)] text-xs font-medium">Subscribed</span>
                 </motion.li>
               ))}
             </AnimatePresence>
@@ -313,9 +278,9 @@ export default function NewsletterPage() {
               {showAll ? "Show fewer" : `Show all ${filtered.length}`}
             </button>
           )}
-          <p className="mt-4 meta normal-case tracking-normal">
-            Showing the addresses in this browser plus a few sample readers — the other {numberWithCommas(SAMPLE_COUNT - SAMPLE_SUBSCRIBERS.length)} are sample data.
-          </p>
+          {total === 0 && (
+            <p className="mt-4 text-sm text-[var(--fg-muted)]">No subscribers yet. Add readers by email or import a CSV.</p>
+          )}
         </Reveal>
 
         {/* Issues */}
@@ -333,7 +298,7 @@ export default function NewsletterPage() {
                 >
                   <p className="text-sm font-medium line-clamp-2">{i.subject}</p>
                   <p className="meta mt-2">
-                    {i.sentAt} · {i.recipients.toLocaleString("en-US")} sent · {i.openRate === null ? "opens arriving" : `${i.openRate}% opened`}
+                    {i.sentAt} · {i.recipients.toLocaleString("en-US")} sent · {i.openRate === null ? "sending simulated" : `${i.openRate}% opened`}
                   </p>
                 </motion.li>
               ))}

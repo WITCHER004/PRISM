@@ -66,11 +66,6 @@ export function isPeerReviewer(role: string | null | undefined) {
   return role === "PEER_REVIEWER"
 }
 
-/** Anyone who gets the review dashboard */
-export function canOpenReviewDashboard(role: string | null | undefined) {
-  return canReview(role) || isPeerReviewer(role)
-}
-
 /** Author-facing labels for the tracker */
 export const STATUS_META: Record<ArticleStatus, { label: string; tracker: string; tone: "neutral" | "warn" | "info" | "ok" | "error" }> = {
   DRAFT: { label: "Draft", tracker: "Draft", tone: "neutral" },

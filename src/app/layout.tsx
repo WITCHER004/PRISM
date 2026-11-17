@@ -3,6 +3,7 @@ import { Bricolage_Grotesque, Source_Serif_4, Geist, Geist_Mono } from "next/fon
 import "./globals.css"
 import { ThemeProvider } from "@/components/providers/ThemeProvider"
 import { AuthProvider } from "@/components/providers/AuthProvider"
+import { RoleLayer } from "@/components/providers/RoleLayer"
 import { SITE_URL, socialImageUrl } from "@/lib/seo"
 
 const bricolage = Bricolage_Grotesque({
@@ -87,7 +88,10 @@ export default function RootLayout({
       </head>
       <body className="min-h-screen flex flex-col antialiased">
         <ThemeProvider>
-          <AuthProvider>{children}</AuthProvider>
+          <AuthProvider>
+            {children}
+            <RoleLayer />
+          </AuthProvider>
         </ThemeProvider>
       </body>
     </html>

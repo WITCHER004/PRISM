@@ -5,9 +5,8 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { ArrowRight, BadgeCheck, LogIn } from "lucide-react"
 import { useViewer } from "@/components/providers/useViewer"
-import { DEV_TOOLS } from "@/lib/devtools"
+import { openUpgrade } from "@/components/elite/UpgradeDialog"
 import { depthLabel, type AdvancedPaper } from "@/lib/papers"
-import { useUIStore, toast } from "@/lib/store"
 import { cn } from "@/lib/utils"
 
 /* ── Mark & badge ──────────────────────────────────────────────────────────── */
@@ -48,19 +47,19 @@ const PaperScopeContext = createContext<Scope | null>(null)
 
 /**
  * Wrap an Advanced Paper's page in this. Inside it, the paywall hooks (usePostUnlocked and the
- * components built on it) switch to Elite rules: Elite members, the author, or the dev demo view.
+ * components built on it) switch to Elite rules: Elite members or the author.
  */
 export function PaperScope({ author, paper, children }: Scope & { children: React.ReactNode }) {
   return <PaperScopeContext.Provider value={{ author, paper }}>{children}</PaperScopeContext.Provider>
 }
 
-export type PaperAccess = { scoped: boolean; canRead: boolean; via: "elite" | "author" | "demo" | null }
+export type PaperAccess = { scoped: boolean; canRead: boolean; via: "elite" | "author" | null }
 
 export function usePaperAccess(): PaperAccess {
   const scope = useContext(PaperScopeContext)
-  const { viewer, isElite, demoElite } = useViewer()
+  const { viewer, isElite } = useViewer()
   if (!scope) return { scoped: false, canRead: true, via: null }
-  const via = isElite ? "elite" : viewer && viewer.username === scope.author ? "author" : demoElite ? "demo" : null
+  const via = isElite ? "elite" : viewer && viewer.username === scope.author ? "author" : null
   return { scoped: true, canRead: via !== null, via }
 }
 
@@ -96,7 +95,6 @@ export function PaperAbstract({ paper, className }: { paper: AdvancedPaper; clas
 /** Shown above the body once the reader has access */
 export function PaperRibbon({ paper, className }: { paper: AdvancedPaper; className?: string }) {
   const { scoped, canRead, via } = usePaperAccess()
-  const setDemoEliteView = useUIStore((s) => s.setDemoEliteView)
   if (!scoped || !canRead) return null
   return (
     <div
@@ -114,18 +112,6 @@ export function PaperRibbon({ paper, className }: { paper: AdvancedPaper; classN
           · {via === "author" ? "readers need Elite past the opening" : depthLabel(paper.depth)}
         </span>
       </span>
-      {via === "demo" && (
-        <button
-          type="button"
-          onClick={() => {
-            setDemoEliteView(false)
-            toast("Back to the free reader's view")
-          }}
-          className="shrink-0 h-8 px-3 rounded-full text-xs font-medium bg-[var(--panel)] border border-[var(--elite-line)] hover:bg-[var(--bg)] transition-colors"
-        >
-          Exit demo view
-        </button>
-      )}
     </div>
   )
 }
@@ -141,8 +127,6 @@ interface PaperGateProps {
 export function PaperGate({ wordCount, deepReadMin, review }: PaperGateProps) {
   const pathname = usePathname()
   const { viewer } = useViewer()
-  const demoEliteView = useUIStore((s) => s.demoEliteView)
-  const setDemoEliteView = useUIStore((s) => s.setDemoEliteView)
 
   return (
     <section
@@ -187,14 +171,16 @@ export function PaperGate({ wordCount, deepReadMin, review }: PaperGateProps) {
         </dl>
 
         <div className="mt-7 flex flex-wrap items-center gap-2.5">
-          <Link
-            href="/elite"
+          {/* Upgrades in place: the gate disappears and the full paper renders without leaving the page */}
+          <button
+            type="button"
+            onClick={openUpgrade}
             className="inline-flex items-center gap-2 h-12 px-6 rounded-full bg-[var(--nav-cta)] hover:bg-[var(--nav-cta-hover)] text-[var(--nav-cta-fg)] text-[0.9375rem] font-medium tracking-tight shadow-xs hover:shadow transition-all"
           >
             <EliteSpark className="w-3.5 h-3.5 text-[var(--gold)]" />
-            Unlock with Prism Elite
+            Upgrade to Prism Elite
             <ArrowRight className="w-4 h-4" />
-          </Link>
+          </button>
           {!viewer && (
             <Link
               href={`/auth/login?redirectTo=${encodeURIComponent(pathname)}`}
@@ -205,33 +191,6 @@ export function PaperGate({ wordCount, deepReadMin, review }: PaperGateProps) {
           )}
         </div>
 
-        {DEV_TOOLS && (
-          <label className="mt-6 pt-5 border-t border-dashed border-[var(--border-strong)] flex items-center justify-between gap-4 cursor-pointer">
-            <span>
-              <span className="block text-sm font-medium">Demo: Switch to Elite View</span>
-              <span className="block text-xs text-[var(--fg-muted)] mt-0.5">
-                Development builds only. Reads this paper as an Elite member would.
-              </span>
-            </span>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={demoEliteView}
-              onClick={() => setDemoEliteView(!demoEliteView)}
-              className={cn(
-                "relative shrink-0 w-11 h-6 rounded-full border transition-colors",
-                demoEliteView ? "bg-[var(--gold)] border-[var(--gold)]" : "bg-[var(--surface)] border-[var(--border-strong)]"
-              )}
-            >
-              <span
-                className={cn(
-                  "absolute top-0.5 left-0.5 w-[18px] h-[18px] rounded-full bg-white shadow-xs transition-transform",
-                  demoEliteView && "translate-x-5"
-                )}
-              />
-            </button>
-          </label>
-        )}
       </div>
     </section>
   )

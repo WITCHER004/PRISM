@@ -1,22 +1,50 @@
 "use client"
 
-import { findAccount, MOCK_POSTS, MOCK_USERS, type Post } from "@/lib/data"
+import { useMemo } from "react"
+import type { Post, User } from "@/lib/data"
+import { DEFAULT_AVATAR, postFromArticle, userFromDoc } from "@/lib/live/schema"
 import { useUIStore } from "@/lib/store"
 import { cn } from "@/lib/utils"
 
-/** The signed-in writer (demo: one of the sample users, defaulting to the first) */
+/** The signed-in writer, from their users/{uid} document (profile edits apply instantly) */
 export function useWriter() {
-  const currentUser = useUIStore((s) => s.currentUser)
+  const currentUser = useUIStore((s) => s.currentUser) ?? ""
+  const doc = useUIStore((s) => (s.currentUser ? s.users[s.currentUser] : undefined))
   const displayName = useUIStore((s) => s.profile.displayName)
   const avatarUrl = useUIStore((s) => s.profile.avatarUrl)
-  const base = findAccount(currentUser) ?? MOCK_USERS[0]
-  // An uploaded profile photo replaces the sample avatar everywhere the writer appears
-  const user = avatarUrl ? { ...base, avatarUrl } : base
+  const user: User = useMemo(() => {
+    const base: User = doc
+      ? userFromDoc(doc)
+      : {
+          id: currentUser,
+          username: currentUser,
+          displayName: displayName || currentUser,
+          bio: "",
+          avatarUrl: DEFAULT_AVATAR(currentUser),
+          role: "WRITER",
+          isVerifiedHuman: false,
+          followerCount: 0,
+          followingCount: 0,
+          postCount: 0,
+          createdAt: new Date(0).toISOString(),
+        }
+    return avatarUrl ? { ...base, avatarUrl } : base
+  }, [doc, currentUser, displayName, avatarUrl])
   return { user, displayName: displayName || user.displayName }
 }
 
-export function samplePostsFor(username: string): Post[] {
-  return MOCK_POSTS.filter((p) => p.author.username === username)
+/** The writer's published stories, live from Firestore (with view and like counters) */
+export function usePublishedBy(username: string | null | undefined): Post[] {
+  const drafts = useUIStore((s) => s.drafts)
+  return useMemo(
+    () =>
+      Object.values(drafts)
+        .filter((d) => d.authorUsername === username && d.live && d.publishedAt)
+        .map((d) => postFromArticle(d))
+        .filter((p): p is Post => !!p)
+        .sort((a, b) => b.publishedAt.localeCompare(a.publishedAt)),
+    [drafts, username]
+  )
 }
 
 /** Strip tags so word counts and excerpts work from stored HTML */
@@ -47,15 +75,6 @@ export function hasBody(html: string) {
 export const money = (n: number) =>
   n.toLocaleString("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2 })
 
-/** Deterministic pseudo-random numbers so sample charts look the same on every visit */
-export function seeded(seed: number) {
-  let s = seed >>> 0
-  return () => {
-    s = (s * 1664525 + 1013904223) >>> 0
-    return s / 4294967296
-  }
-}
-
 export function PageHead({
   title,
   lede,
@@ -77,34 +96,17 @@ export function PageHead({
   )
 }
 
-/** Small mono pill marking numbers that come from the demo data set */
-export function SampleBadge({ className, label = "Sample data" }: { className?: string; label?: string }) {
-  return (
-    <span
-      className={cn(
-        "meta inline-flex items-center gap-1.5 h-6 px-2.5 rounded-full border border-dashed border-[var(--border-strong)] text-[var(--fg-muted)] normal-case tracking-normal",
-        className
-      )}
-    >
-      <span aria-hidden className="w-1.5 h-1.5 rounded-full bg-[var(--fg-subtle)]" />
-      {label}
-    </span>
-  )
-}
-
 export function StatTile({
   label,
   value,
   sub,
   icon: Icon,
-  sample,
   className,
 }: {
   label: string
   value: React.ReactNode
   sub?: React.ReactNode
   icon?: React.ComponentType<{ className?: string }>
-  sample?: boolean
   className?: string
 }) {
   return (
@@ -116,7 +118,6 @@ export function StatTile({
       <p className="display mt-4 text-[2rem] tabular-nums">{value}</p>
       <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-[var(--fg-muted)]">
         {sub}
-        {sample && <SampleBadge label="Sample" />}
       </div>
     </div>
   )

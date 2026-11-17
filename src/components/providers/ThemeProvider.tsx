@@ -5,7 +5,6 @@ import { MotionConfig } from "motion/react"
 import { useUIStore } from "@/lib/store"
 import { Toaster } from "@/components/ui/Toaster"
 import { PublishCelebration } from "@/components/share/PublishCelebration"
-import { DevRoleSwitcher } from "@/components/dev/DevRoleSwitcher"
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const { theme, fontSize, focusMode } = useUIStore()
@@ -38,7 +37,6 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       {children}
       <Toaster />
       <PublishCelebration />
-      <DevRoleSwitcher />
     </MotionConfig>
   )
 }

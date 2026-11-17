@@ -18,7 +18,6 @@ import {
   Compass,
 } from "lucide-react"
 import { useUIStore, type Plan } from "@/lib/store"
-import { MOCK_USERS } from "@/lib/data"
 import { dur, ease, spring } from "@/lib/motion"
 import { cn } from "@/lib/utils"
 import { Avatar } from "@/components/ui/Avatar"
@@ -77,9 +76,7 @@ export function SignupForm({
 }) {
   const router = useRouter()
   const currentUser = useUIStore((s) => s.currentUser)
-  const signIn = useUIStore((s) => s.signIn)
   const signOut = useUIStore((s) => s.signOut)
-  const setCurrentUser = useUIStore((s) => s.setCurrentUser)
   const updateProfile = useUIStore((s) => s.updateProfile)
   const toast = useUIStore((s) => s.toast)
   const { hydrated, settled } = useSettled()
@@ -268,21 +265,37 @@ export function SignupForm({
     const finalHandle = (useDefaults ? username : username.trim().toLowerCase().replace(/^@/, "")) || "member"
     const finalBio = bio.trim()
 
+    const fbUser = auth.currentUser
+    if (!fbUser) {
+      setErrors({ name: "Your sign-in didn't complete. Please try again." })
+      return
+    }
     setStatus("creating")
-    await wait(800)
 
-    // Register user in store
-    signIn(email || `${finalHandle}@prism.pub`, finalDisplayName)
-    setCurrentUser(finalHandle)
-    updateProfile({
-      displayName: finalDisplayName,
-      bio: finalBio,
-    })
+    // Claim the handle on users/{uid} (the doc itself was created on sign-in by AuthProvider)
+    try {
+      const [{ collection, doc, getDocs, query, setDoc, where }, { db }] = await Promise.all([
+        import("firebase/firestore"),
+        import("@/lib/firebase"),
+      ])
+      const taken = await getDocs(query(collection(db, "users"), where("handle", "==", finalHandle)))
+      if (taken.docs.some((d) => d.id !== fbUser.uid)) {
+        setStatus("idle")
+        setErrors({ username: `@${finalHandle} is taken. Try another.` })
+        usernameRef.current?.focus()
+        return
+      }
+      await setDoc(doc(db, "users", fbUser.uid), { handle: finalHandle, displayName: finalDisplayName, bio: finalBio }, { merge: true })
+    } catch (err) {
+      console.warn("[signup] couldn't save profile:", err)
+      setStatus("idle")
+      setErrors({ username: "Couldn't save your profile. Check your connection and try again." })
+      return
+    }
+    updateProfile({ displayName: finalDisplayName, bio: finalBio })
+    firebaseUpdateProfile(fbUser, { displayName: finalDisplayName }).catch(() => {})
 
     setFinalIdentity({ name: finalDisplayName, handle: finalHandle })
-    if (auth.currentUser && finalDisplayName) {
-      firebaseUpdateProfile(auth.currentUser, { displayName: finalDisplayName }).catch(() => {})
-    }
     setStatus("done")
     toast(`Welcome to Prism, @${finalHandle}!`, { tone: "success" })
     await wait(1200)

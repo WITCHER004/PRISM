@@ -119,3 +119,38 @@ export function earningsByDay(username: string, events: readonly ViewEvent[], da
   }
   return rows
 }
+
+/**
+ * The wallet from live Firestore counters: each published article's `views` (unique readers, the
+ * author's own reads excluded) earns PAYOUT_PER_VIEW_USD while the writer is Elite.
+ */
+export function walletFromArticles(
+  username: string,
+  articles: readonly { id: string; authorUsername: string; views?: number; live?: unknown }[],
+  payouts: readonly PayoutRecord[],
+  elite: boolean
+): Wallet & { rows: PostEarnings[] } {
+  const rows: PostEarnings[] = articles
+    .filter((a) => a.authorUsername === username && a.live)
+    .map((a) => {
+      const views = a.views ?? 0
+      const monetizedViews = elite ? views : 0
+      return { postId: a.id, views, monetizedViews, earnings: roundMoney(monetizedViews * PAYOUT_PER_VIEW_USD) }
+    })
+    .sort((a, b) => b.views - a.views)
+  const totalViews = rows.reduce((n, r) => n + r.views, 0)
+  const monetizedViews = rows.reduce((n, r) => n + r.monetizedViews, 0)
+  const totalEarnings = rows.reduce((n, r) => n + r.earnings, 0)
+  const mine = payouts.filter((p) => p.username === username)
+  const pendingPayout = mine.filter((p) => p.status === "PENDING").reduce((a, p) => a + p.amount, 0)
+  const paidOut = mine.filter((p) => p.status === "PAID").reduce((a, p) => a + p.amount, 0)
+  return {
+    rows,
+    totalViews,
+    monetizedViews,
+    totalEarnings: roundMoney(totalEarnings),
+    availableBalance: Math.max(0, roundMoney(totalEarnings - pendingPayout - paidOut)),
+    pendingPayout: roundMoney(pendingPayout),
+    paidOut: roundMoney(paidOut),
+  }
+}

@@ -27,7 +27,6 @@ import { SiteHeader } from "@/components/layout/SiteHeader"
 import { SiteFooter } from "@/components/layout/SiteFooter"
 import { Avatar } from "@/components/ui/Avatar"
 import { useUIStore, type Profile } from "@/lib/store"
-import { MOCK_USERS } from "@/lib/data"
 import { dur, ease, spring } from "@/lib/motion"
 import { cn } from "@/lib/utils"
 import { Dialog } from "@/app/membership/_components/Dialog"
@@ -104,7 +103,7 @@ export function SettingsClient() {
           <p className="meta">Settings</p>
           <h1 className="display mt-3 text-[2.5rem] sm:text-[3.5rem]">Make Prism yours.</h1>
           <p className="mt-4 max-w-xl text-lg leading-relaxed text-[var(--fg-muted)]">
-            Your profile, how stories look and sound, and what we email you. Changes are saved in this browser.
+            Your profile, how stories look and sound, and what we email you. Profile changes are saved to your account.
           </p>
 
           <div className="mt-10 grid md:grid-cols-[200px_minmax(0,1fr)] gap-6 md:gap-10 items-start">
@@ -312,7 +311,7 @@ type ProfileFields = Pick<
   Profile,
   "displayName" | "bio" | "websiteUrl" | "twitterHandle" | "linkedinHandle" | "instagramHandle" | "githubHandle" | "avatarUrl"
 >
-const BIO_MAX = 200 // fits every sample bio (longest is 175), still short enough to read as a bio
+const BIO_MAX = 200 // short enough to read as a bio
 
 const profileErrors = (d: ProfileFields): Partial<Record<keyof ProfileFields, string>> => profileFieldErrors(d)
 
@@ -371,7 +370,7 @@ function ProfileForm({ username }: { username: string | null }) {
     savedTimer.current = setTimeout(() => setStatus("idle"), 2200)
   }
 
-  const user = MOCK_USERS.find((u) => u.username === username)
+  const user = useUIStore((s) => (username ? s.users[username] : undefined))
   const name = draft.displayName.trim() || "Your name"
 
   return (
@@ -381,7 +380,7 @@ function ProfileForm({ username }: { username: string | null }) {
           <div className="space-y-5">
             <AvatarUploader
               value={draft.avatarUrl}
-              fallbackSrc={MOCK_USERS.find((u) => u.username === username)?.avatarUrl}
+              fallbackSrc={user?.photoURL ?? undefined}
               name={draft.displayName || "You"}
               onChange={(url) => {
                 setDraft((d) => ({ ...d, avatarUrl: url }))
@@ -435,7 +434,7 @@ function ProfileForm({ username }: { username: string | null }) {
           <div>
             <p className="meta mb-2">Preview</p>
             <div className="rounded-[16px] bg-[var(--bg)] border border-[var(--border)] p-5">
-              <Avatar src={draft.avatarUrl || user?.avatarUrl} alt={name} size="lg" />
+              <Avatar src={draft.avatarUrl || user?.photoURL || undefined} alt={name} size="lg" />
               <p className="mt-4 font-display text-lg font-semibold tracking-tight leading-tight break-words">{name}</p>
               {username && <p className="text-sm text-[var(--fg-muted)]">@{username}</p>}
               <p className="mt-3 text-sm text-[var(--fg-secondary)] leading-relaxed break-words">
@@ -921,9 +920,9 @@ function AccountPanel() {
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [resetting, setResetting] = useState(false)
   const titleId = useId()
+  const avatarUrl = useUIStore((s) => s.profile.avatarUrl)
 
   if (signedOut) return <SignInPrompt what="your account" />
-  const user = MOCK_USERS.find((u) => u.username === currentUser)
 
   const doSignOut = () => {
     signOut()
@@ -934,21 +933,33 @@ function AccountPanel() {
   const reset = async () => {
     setResetting(true)
     await wait(600)
-    // Back to the store's first-run state (persist then saves that over the old data)
-    const { toasts: _t, ...initial } = useUIStore.getInitialState()
-    useUIStore.setState(initial)
-    document.documentElement.setAttribute("data-theme", initial.theme)
+    // Only this device's preferences: shared data (stories, profile, notifications) lives in Firestore
+    // and must never be touched by a local reset
+    const i = useUIStore.getInitialState()
+    useUIStore.setState({
+      theme: i.theme,
+      fontSize: i.fontSize,
+      focusMode: i.focusMode,
+      ttsEnabled: i.ttsEnabled,
+      interestedTopics: i.interestedTopics,
+      clappedPosts: {},
+      bookmarkedPosts: new Set(),
+      followedUsers: new Set(),
+      unlockedPosts: new Set(),
+      pollVotes: {},
+      likedComments: new Set(),
+    })
+    document.documentElement.setAttribute("data-theme", i.theme)
     setResetting(false)
     setDeleteOpen(false)
-    toast("Demo data reset", { tone: "success" })
-    router.push("/")
+    toast("Preferences on this device were reset", { tone: "success" })
   }
 
   return (
     <div className="space-y-4">
       <Section title="Session">
         <div className="flex flex-wrap items-center gap-4">
-          <Avatar src={user?.avatarUrl} alt={displayName} size="lg" />
+          <Avatar src={avatarUrl || undefined} alt={displayName} size="lg" />
           <div className="flex-1 min-w-[160px]">
             <p className="font-medium">{displayName}</p>
             <p className="text-sm text-[var(--fg-muted)]">@{currentUser}</p>
@@ -999,15 +1010,14 @@ function AccountPanel() {
           <AlertTriangle className="w-5 h-5" />
         </span>
         <h2 id={titleId} className="display mt-4 text-[1.75rem] pr-10">
-          There&apos;s no account to delete.
+          Deleting your account
         </h2>
         <p className="mt-3 text-sm text-[var(--fg-muted)] leading-relaxed">
-          Prism is running in demo mode: nothing about you is stored on a server. Your profile, drafts, bookmarks and
-          settings live only in this browser.
+          Your profile and stories are stored in Prism&apos;s database, so deleting them is done by Prism staff to make
+          sure published work, panel votes and notifications are removed cleanly. Ask a Prism admin to close your account.
         </p>
         <p className="mt-3 text-sm text-[var(--fg-muted)] leading-relaxed">
-          If you want a clean slate, you can reset the demo. That clears everything saved here and starts over as the
-          sample writer.
+          You can reset this device&apos;s preferences (theme, bookmarks, followed writers) right now.
         </p>
         <div className="mt-7 grid sm:grid-cols-2 gap-2">
           <button
@@ -1026,7 +1036,7 @@ function AccountPanel() {
             className="h-11 px-6 rounded-full bg-[var(--panel)] border border-[var(--border-strong)] text-[var(--error)] font-medium hover:border-[var(--error)] transition-colors inline-flex items-center justify-center gap-2 disabled:cursor-wait"
           >
             {resetting && <Loader2 className="w-4 h-4 animate-spin" />}
-            {resetting ? "Resetting…" : "Reset demo data"}
+            {resetting ? "Resetting…" : "Reset this device"}
           </button>
         </div>
       </Dialog>

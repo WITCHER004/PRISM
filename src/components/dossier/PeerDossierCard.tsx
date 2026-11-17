@@ -4,7 +4,8 @@ import { useId, useState } from "react"
 import { AnimatePresence, motion } from "motion/react"
 import { ChevronDown, CircleCheck, CircleHelp, MessageSquareReply, Scale } from "lucide-react"
 import { Avatar } from "@/components/ui/Avatar"
-import { consensusPercent, PASS_THRESHOLD, reviewerInfo, type PeerDossier } from "@/lib/dossier"
+import { consensusPercent, reviewerInfo, type PeerDossier } from "@/lib/dossier"
+import { passThreshold } from "@/lib/elite/panel"
 import { dur, ease } from "@/lib/motion"
 import { cn, formatDate } from "@/lib/utils"
 
@@ -157,7 +158,7 @@ export function PeerDossierCard({
               )}
 
               <p className="text-xs text-[var(--fg-muted)]">
-                {d.panelSize} independent specialists vote; {PASS_THRESHOLD} approvals publish an Elite article. Dissenting
+                {d.panelSize} independent specialists vote; {passThreshold(d.panelSize)} approvals publish an Elite article. Dissenting
                 votes and the author&apos;s replies stay on the public record.
               </p>
             </div>

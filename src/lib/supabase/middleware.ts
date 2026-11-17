@@ -42,7 +42,7 @@ export async function updateSession(request: NextRequest) {
   const isProtected =
     request.nextUrl.pathname.startsWith("/editor") ||
     request.nextUrl.pathname.startsWith("/dashboard") ||
-    request.nextUrl.pathname.startsWith("/review-dashboard") ||
+    request.nextUrl.pathname.startsWith("/panel") ||
     request.nextUrl.pathname === "/profile"
 
   if (isProtected && !user && process.env.NODE_ENV === "production") {
