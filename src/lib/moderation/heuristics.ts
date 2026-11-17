@@ -77,7 +77,12 @@ const clamp01 = (n: number) => Math.max(0, Math.min(1, n))
 const round = (n: number, d = 2) => Math.round(n * 10 ** d) / 10 ** d
 
 function words(text: string) {
-  return text.toLowerCase().match(/[a-z0-9’']+(?:-[a-z0-9]+)*/g) ?? []
+  return text.toLowerCase().match(/[\p{L}\p{M}\p{N}’']+(?:-[\p{L}\p{M}\p{N}]+)*/gu) ?? []
+}
+
+/** The word count the 150-word gate uses. The editor shows this same number, so client and server agree. */
+export function countWords(text: string) {
+  return words(text).length
 }
 
 export function splitSentences(text: string) {

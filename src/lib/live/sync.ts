@@ -44,7 +44,7 @@ import {
   userFromDoc,
   type NotificationDoc,
 } from "@/lib/live/schema"
-import { setCounterHooks, useUIStore, type AppNotification, type Draft } from "@/lib/store"
+import { setCounterHooks, toast, useUIStore, type AppNotification, type Draft } from "@/lib/store"
 
 type State = ReturnType<typeof useUIStore.getState>
 
@@ -111,7 +111,19 @@ function notificationFromDoc(id: string, raw: DocumentData, handle: string): App
 const ARTICLE_DEBOUNCE_MS = 900
 const articleTimers = new Map<string, ReturnType<typeof setTimeout>>()
 
-function flushArticle(id: string) {
+/** Workflow moves (submit, approve, reject…) must not fail silently: they'd vanish from the other side */
+function reportWorkflowFailure(id: string, err: unknown) {
+  const code = (err as { code?: string })?.code
+  const title = useUIStore.getState().drafts[id]?.title || "this story"
+  toast(
+    code === "permission-denied"
+      ? `Couldn't sync “${title}”: the database refused the change (permission denied). Check that the Firestore rules are deployed.`
+      : `Couldn't sync “${title}” to the server${code ? ` (${code})` : ""}. Check your connection and try again.`,
+    { tone: "error" }
+  )
+}
+
+function flushArticle(id: string, loud = false) {
   articleTimers.delete(id)
   const d = useUIStore.getState().drafts[id]
   if (!d) {
@@ -127,7 +139,10 @@ function flushArticle(id: string) {
   // mergeFields replaces each listed field wholesale (no stale nested keys) and never touches the
   // views/likes counters, which readers increment
   setDoc(doc(db, COL.articles, id), data, { mergeFields: Object.keys(data) })
-    .catch((err) => warn(`couldn't save articles/${id}`, err))
+    .catch((err) => {
+      warn(`couldn't save articles/${id}`, err)
+      if (loud) reportWorkflowFailure(id, err)
+    })
     .finally(() => {
       if (!articleTimers.has(id)) pendingArticles.delete(id)
     })
@@ -137,7 +152,7 @@ function scheduleArticle(id: string, immediate: boolean) {
   pendingArticles.add(id)
   const t = articleTimers.get(id)
   if (t) clearTimeout(t)
-  if (immediate) flushArticle(id)
+  if (immediate) flushArticle(id, true)
   else articleTimers.set(id, setTimeout(() => flushArticle(id), ARTICLE_DEBOUNCE_MS))
 }
 

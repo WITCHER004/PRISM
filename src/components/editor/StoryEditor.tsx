@@ -30,6 +30,7 @@ import { tallyPanel } from "@/lib/elite/panel"
 import { useSubscription } from "@/components/elite/hooks"
 import { EliteTag } from "@/components/elite/EliteBadges"
 import { requestPhase1 } from "@/lib/moderation/client"
+import { countWords } from "@/lib/moderation/heuristics"
 import { AIHumanGauge, Phase1Breakdown, StatusPill } from "@/components/moderation/Phase1Report"
 import { PaperSettings, PanelReviewSetting } from "@/components/papers/PaperSettings"
 import { CoverImageField } from "@/components/editor/CoverImageField"
@@ -140,6 +141,9 @@ function EditorWorkspace({ initial }: { initial?: Draft }) {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [publishPhase, setPublishPhase] = useState<null | "confirm" | "checking" | "failed" | "queued">(null)
   const [report, setReport] = useState<Phase1Report | null>(null)
+  // Why the last check didn't go through, shown inside the dialog (a toast would sit behind it)
+  const [submitError, setSubmitError] = useState<string | null>(null)
+  const checking = useRef(false)
   // While a submission is in review the editor shows the submitted version, read-only
   const showPreview = preview || inReview
   const [, tick] = useState(0)
@@ -284,7 +288,7 @@ function EditorWorkspace({ initial }: { initial?: Draft }) {
   const onEditorChange = useCallback(
     (nextHtml: string, text: string) => {
       setHtml(nextHtml)
-      const n = text.trim() ? text.trim().split(/\s+/).length : 0
+      const n = countWords(text)
       setWords(n)
       touch()
       craft.noteWords(n)
@@ -295,8 +299,7 @@ function EditorWorkspace({ initial }: { initial?: Draft }) {
     editorRef.current = editor
     detachCraft.current?.()
     detachCraft.current = craft.attach(editor)
-    const text = editor.getText().trim()
-    setWords(text ? text.split(/\s+/).length : 0)
+    setWords(countWords(editor.getText()))
   }, [])
 
   const addTag = (raw: string) => {
@@ -346,20 +349,30 @@ function EditorWorkspace({ initial }: { initial?: Draft }) {
       toast("No changes since the published version")
       return
     }
+    setSubmitError(null)
     setPublishPhase("confirm")
   }
 
   // Phase 1: save, run the AI-content check, then queue for employee review (or bounce back)
   const confirmPublish = async () => {
+    // One check at a time: the confirm button stays clickable while it animates out
+    if (checking.current) return
     const saved = save({ quiet: true })
     if (!saved || !canSubmit(saved.status)) {
       setPublishPhase(null)
       return
     }
+    checking.current = true
+    setSubmitError(null)
     setPublishPhase("checking")
-    const result = await requestPhase1({ title: saved.title, contentHtml: saved.contentHtml })
+    let result: Awaited<ReturnType<typeof requestPhase1>>
+    try {
+      result = await requestPhase1({ title: saved.title, contentHtml: saved.contentHtml })
+    } finally {
+      checking.current = false
+    }
     if ("error" in result) {
-      toast(result.error, { tone: "error" })
+      setSubmitError(result.error)
       setPublishPhase("confirm")
       return
     }
@@ -952,6 +965,12 @@ function EditorWorkspace({ initial }: { initial?: Draft }) {
               </ol>
               {isLive && (
                 <p className="mt-3 text-xs text-[var(--fg-muted)]">Readers keep seeing the published version until this update is approved.</p>
+              )}
+              {submitError && (
+                <p role="alert" className="mt-4 flex items-start gap-2 p-3 rounded-[12px] border border-[var(--error)]/30 text-sm">
+                  <CircleAlert className="w-4 h-4 mt-0.5 shrink-0 text-[var(--error)]" />
+                  {submitError}
+                </p>
               )}
               {tags.length === 0 && (
                 <p className="mt-3 text-xs text-[var(--fg-muted)]">
