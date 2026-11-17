@@ -20,7 +20,7 @@ export const SPECTRUM_BANDS = [
 type Band = (typeof SPECTRUM_BANDS)[number] & { pct: number }
 
 /* ── Geometry (viewBox 440×230) ────────────────────────────────────────────────
-   The prism is a photo (public/prism-3d.png: studio backdrop flattened to pure white, colour
+   The prism is a photo (public/prism-3d.webp: studio backdrop flattened to pure white, colour
    neutralised, edges sharpened, cropped tight, exported at 3× its drawn size). Every anchor
    below was measured on its silhouette: left face x = 595.25 − 0.526·y, right face
    x = 479.15 + 0.461·y in source pixels, mapped through the crop and IMG. */
@@ -167,7 +167,7 @@ export function SpectrumCard({ tags, activeTopic }: { tags: Tag[]; activeTopic?:
         {/* 2 · The glass. Multiply drops its white backdrop into the card and lays its edges over the
             light; on dark, the inverted photo screens in (black backdrop vanishes, edges glow). */}
         <img
-          src="/prism-3d.png"
+          src="/prism-3d.webp"
           alt="Prism"
           width={519}
           height={501}

@@ -4,62 +4,44 @@ import { SiteHeader } from "@/components/layout/SiteHeader"
 import { SiteFooter } from "@/components/layout/SiteFooter"
 import { ProfileClient } from "@/components/discovery/ProfileClient"
 import { getFeedPosts } from "@/actions/posts"
-import { MOCK_USERS, type Tag } from "@/lib/data"
+import { MOCK_USERS, type Tag, type User } from "@/lib/data"
 import { hueStyle } from "@/lib/topics"
-import { socialImageUrl, truncateDescription } from "@/lib/seo"
+import { JsonLd } from "@/components/seo/JsonLd"
+import { absoluteUrl, breadcrumbList, pageMetadata, truncateDescription } from "@/lib/seo"
 
 interface ProfilePageProps {
   params: Promise<{ username: string }>
 }
 
+/**
+ * A profile exists if it's a known writer or someone with published stories. Anything else is a
+ * 404: this route catches every top-level path, so inventing a profile for unknown names would
+ * turn any typo (or /manifest.webmanifest) into an indexable "verified" page.
+ */
+async function findWriter(username: string): Promise<User | null> {
+  const known = MOCK_USERS.find((u) => u.username === username)
+  if (known) return known
+  const posts = await getFeedPosts(30)
+  return posts.find((p) => p.author.username === username && p.status === "PUBLISHED")?.author ?? null
+}
+
 export async function generateMetadata({ params }: ProfilePageProps): Promise<Metadata> {
   const { username } = await params
-  const user = MOCK_USERS.find((u) => u.username === username)
-  if (!user) {
-    return {
-      title: `@${username} — Prism`,
-      description: `Read articles and essays by @${username} on Prism.`,
-      alternates: { canonical: `/${username}` },
-    }
-  }
-  const description = truncateDescription(user.bio)
-  return {
-    title: user.displayName,
-    description,
-    alternates: { canonical: `/${user.username}` },
-    openGraph: {
-      title: `${user.displayName} on Prism`,
-      description,
-      images: [socialImageUrl(user.displayName, description)],
-    },
-    twitter: {
-      card: "summary_large_image",
-      title: `${user.displayName} on Prism`,
-      description,
-      images: [socialImageUrl(user.displayName, description)],
-    },
-  }
+  const user = await findWriter(username)
+  if (!user) return { title: "Page not found", robots: { index: false } }
+  return pageMetadata({
+    title: `${user.displayName}: essays and stories`,
+    description: truncateDescription(user.bio),
+    path: `/${user.username}`,
+    socialTitle: `${user.displayName} on Prism`,
+    type: "profile",
+  })
 }
 
 export default async function ProfilePage({ params }: ProfilePageProps) {
   const { username } = await params
-  let user = MOCK_USERS.find((u) => u.username === username)
-  if (!user) {
-    // Dynamic user profile fallback for newly registered authors/readers
-    user = {
-      id: `u-${username}`,
-      username,
-      displayName: username.charAt(0).toUpperCase() + username.slice(1),
-      bio: "Curious thinker and reader on Prism.",
-      avatarUrl: `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(username)}&backgroundColor=d1d4f9`,
-      role: "WRITER",
-      isVerifiedHuman: true,
-      followerCount: 0,
-      followingCount: 0,
-      postCount: 0,
-      createdAt: new Date().toISOString(),
-    }
-  }
+  const user = await findWriter(username)
+  if (!user) notFound()
 
   const posts = (await getFeedPosts(30))
     .filter((p) => p.author.username === username && p.status === "PUBLISHED")
@@ -75,6 +57,36 @@ export default async function ProfilePage({ params }: ProfilePageProps) {
 
   return (
     <div className="relative min-h-screen flex flex-col bg-[var(--bg)]" style={hueStyle(primary)}>
+      <JsonLd
+        data={{
+          "@context": "https://schema.org",
+          "@graph": [
+            {
+              "@type": "ProfilePage",
+              url: absoluteUrl(`/${user.username}`),
+              dateCreated: user.createdAt,
+              mainEntity: {
+                "@type": "Person",
+                "@id": `${absoluteUrl(`/${user.username}`)}#person`,
+                name: user.displayName,
+                alternateName: `@${user.username}`,
+                description: truncateDescription(user.bio),
+                image: user.avatarUrl,
+                url: absoluteUrl(`/${user.username}`),
+                interactionStatistic: {
+                  "@type": "InteractionCounter",
+                  interactionType: "https://schema.org/FollowAction",
+                  userInteractionCount: user.followerCount,
+                },
+              },
+            },
+            breadcrumbList([
+              { name: "Home", path: "/" },
+              { name: user.displayName, path: `/${user.username}` },
+            ]),
+          ],
+        }}
+      />
       <SiteHeader />
       <main className="flex-1">
         {/* Cover, washed in the writer's main topic */}

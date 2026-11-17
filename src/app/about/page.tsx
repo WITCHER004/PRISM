@@ -6,24 +6,14 @@ import { SiteFooter } from "@/components/layout/SiteFooter"
 import { Reveal } from "@/components/motion/Reveal"
 import { RevealText } from "@/components/motion/RevealText"
 import { hueStyle } from "@/lib/topics"
-import { socialImageUrl } from "@/lib/seo"
+import { pageMetadata } from "@/lib/seo"
 
-export const metadata: Metadata = {
-  title: "About",
-  description: "Why Prism exists, how writers get paid, and what we will and won't do.",
-  alternates: { canonical: "/about" },
-  openGraph: {
-    title: "About Prism",
-    description: "Why Prism exists, how writers get paid, and what we will and won't do.",
-    images: [socialImageUrl("About Prism", "Why Prism exists, how writers get paid, and what we will and won't do.")],
-  },
-  twitter: {
-    card: "summary_large_image",
-    title: "About Prism",
-    description: "Why Prism exists, how writers get paid, and what we will and won't do.",
-    images: [socialImageUrl("About Prism", "Why Prism exists, how writers get paid, and what we will and won't do.")],
-  },
-}
+export const metadata: Metadata = pageMetadata({
+  title: "About: independent publishing, read by humans",
+  description: "Why Prism exists, how independent writers get paid, and what we will and won't do with your reading, your data and your attention.",
+  path: "/about",
+  socialTitle: "About Prism",
+})
 
 const STEPS = [
   {

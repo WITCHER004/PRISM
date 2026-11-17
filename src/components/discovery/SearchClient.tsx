@@ -428,7 +428,7 @@ function StoryResult({ post, terms, active, ...rest }: { post: Post; terms: stri
       </div>
       {post.coverImageUrl && (
         <div className="relative hidden sm:block w-24 h-24 shrink-0 rounded-[14px] overflow-hidden bg-[var(--surface)]">
-          <Image src={post.coverImageUrl} alt="" fill className="object-cover" unoptimized />
+          <Image src={post.coverImageUrl} alt="" fill sizes="160px" className="object-cover" />
         </div>
       )}
       <ArrowRight

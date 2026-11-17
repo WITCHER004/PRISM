@@ -1,7 +1,8 @@
 import { SiteHeader } from "@/components/layout/SiteHeader"
 import { SiteFooter } from "@/components/layout/SiteFooter"
-import { PostCard } from "@/components/posts/PostCard"
+import { Suspense } from "react"
 import { SpectrumCard } from "@/components/home/SpectrumCard"
+import { HomeFeed, HomeFeedWithTopic, SectionTitle, SpectrumCardWithTopic } from "@/components/home/HomeFeed"
 import { Reveal } from "@/components/motion/Reveal"
 import { RevealText } from "@/components/motion/RevealText"
 import { Avatar } from "@/components/ui/Avatar"
@@ -11,7 +12,7 @@ import { getFeedPosts } from "@/actions/posts"
 import { hueStyle } from "@/lib/topics"
 import { numberWithCommas } from "@/lib/utils"
 import Link from "next/link"
-import { ArrowRight, BadgeCheck, Timer, X } from "lucide-react"
+import { ArrowRight, BadgeCheck } from "lucide-react"
 import type { Metadata } from "next"
 import { JsonLd } from "@/components/seo/JsonLd"
 import { SITE_URL } from "@/lib/seo"
@@ -26,18 +27,12 @@ export const metadata: Metadata = {
   alternates: { canonical: "/" },
 }
 
-export default async function HomePage({
-  searchParams,
-}: {
-  searchParams: Promise<{ [key: string]: string | string[] | undefined }>
-}) {
-  // ?topic=<slug> (set by the spectrum card) narrows the feed to one topic
-  const { topic: topicParam } = await searchParams
-  const topic = MOCK_TAGS.find((t) => t.slug === topicParam)
-  const feed = await getFeedPosts(topic ? 50 : 10)
-  const posts = topic ? feed.filter((p) => p.tags.some((t) => t.slug === topic.slug)) : feed
-  const [lead, second, ...rest] = posts
-  const quickReads = [...posts.slice(1)].sort((a, b) => a.readingTimeMin - b.readingTimeMin).slice(0, 4)
+// Static, refreshed every 5 minutes. The `?topic=` filter runs in the browser (HomeFeed), so the page
+// is cacheable and crawlers always get the full, unfiltered feed.
+export const revalidate = 300
+
+export default async function HomePage() {
+  const feed = await getFeedPosts(50)
 
   return (
     <div className="min-h-screen flex flex-col bg-[var(--bg)]">
@@ -61,7 +56,7 @@ export default async function HomePage({
               publisher: { "@id": `${SITE_URL}#organization` },
               potentialAction: {
                 "@type": "SearchAction",
-                target: `${SITE_URL}/search?q={search_term_string}`,
+                target: `${SITE_URL}search?q={search_term_string}`,
                 "query-input": "required name=search_term_string",
               },
             },
@@ -101,7 +96,9 @@ export default async function HomePage({
           </Reveal>
 
           <Reveal index={2} className="lg:col-span-5">
-            <SpectrumCard tags={MOCK_TAGS} activeTopic={topic?.slug} />
+            <Suspense fallback={<SpectrumCard tags={MOCK_TAGS} />}>
+              <SpectrumCardWithTopic tags={MOCK_TAGS} />
+            </Suspense>
           </Reveal>
         </section>
 
@@ -132,79 +129,9 @@ export default async function HomePage({
         {/* Short-lived ideas, above the feed */}
         <InstantIdeasTray className="pt-8" />
 
-        {/* Bento */}
-        <section id="feed" className="max-w-7xl mx-auto px-4 sm:px-6 pt-6 pb-16 scroll-mt-20">
-          {topic && (
-            <div className="mb-4 flex items-center gap-2 text-sm" style={hueStyle(topic.slug)}>
-              <span className="text-[var(--fg-muted)]">Showing</span>
-              <Link
-                href="/"
-                scroll={false}
-                aria-label={`Clear ${topic.name} filter`}
-                className="group inline-flex items-center gap-1.5 h-8 pl-3 pr-2 rounded-full hue-wash hue-ink font-medium"
-              >
-                <span className="w-2 h-2 rounded-full hue-dot" />
-                {topic.name}
-                <X className="w-3.5 h-3.5 opacity-60 group-hover:opacity-100" />
-              </Link>
-              <span className="text-[var(--fg-muted)]">
-                · {posts.length} {posts.length === 1 ? "story" : "stories"}
-              </span>
-            </div>
-          )}
-
-          {!lead ? (
-            <div className="panel p-10 text-center text-[var(--fg-muted)]">
-              No {topic?.name} stories in the feed yet.{" "}
-              <Link href={`/explore/${topic?.slug}`} className="underline underline-offset-4 text-[var(--fg)]">
-                Browse the topic
-              </Link>
-            </div>
-          ) : (
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 lg:auto-rows-[minmax(260px,auto)]">
-            <Reveal className="md:col-span-2 lg:row-span-2">
-              <PostCard post={lead} variant="hero" />
-            </Reveal>
-
-            {second && (
-              <Reveal index={1} className="lg:row-span-2">
-                <PostCard post={second} variant="tile" />
-              </Reveal>
-            )}
-
-            {quickReads.length > 0 && (
-            <Reveal index={2} className="lg:row-span-2">
-              <div className="panel h-full p-5 shadow-[var(--shadow)]">
-                <div className="flex items-center justify-between">
-                  <h2 className="font-display font-semibold text-lg tracking-tight">Quick reads</h2>
-                  <Timer className="w-4 h-4 text-[var(--fg-muted)]" />
-                </div>
-                <p className="meta mt-1">Under a coffee break</p>
-                <div className="mt-2 divide-y divide-[var(--border)]">
-                  {quickReads.map((post, i) => (
-                    <PostCard key={post.id} post={post} variant="compact" index={i + 1} />
-                  ))}
-                </div>
-              </div>
-            </Reveal>
-            )}
-          </div>
-          )}
-        </section>
-
-        {/* Fresh */}
-        {rest.length > 0 && (
-          <section className="max-w-7xl mx-auto px-4 sm:px-6 pb-16">
-            <SectionTitle title="Fresh from writers" href="/explore" />
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-              {rest.map((post, i) => (
-                <Reveal key={post.id} index={i}>
-                  <PostCard post={post} variant="tile" className="h-full" />
-                </Reveal>
-              ))}
-            </div>
-          </section>
-        )}
+        <Suspense fallback={<HomeFeed posts={feed} />}>
+          <HomeFeedWithTopic posts={feed} />
+        </Suspense>
 
         {/* Writers */}
         <section className="pb-16">
@@ -254,22 +181,6 @@ export default async function HomePage({
       </main>
 
       <SiteFooter />
-    </div>
-  )
-}
-
-function SectionTitle({ title, href }: { title: string; href?: string }) {
-  return (
-    <div className="flex items-end justify-between gap-4 mb-5">
-      <h2 className="display text-[1.75rem] sm:text-[2.25rem]">{title}</h2>
-      {href && (
-        <Link
-          href={href}
-          className="shrink-0 inline-flex items-center gap-1 h-9 px-4 rounded-full border border-[var(--border)] bg-[var(--panel)] text-sm hover:border-[var(--border-strong)] transition-colors"
-        >
-          See all <ArrowRight className="w-3.5 h-3.5" />
-        </Link>
-      )}
     </div>
   )
 }

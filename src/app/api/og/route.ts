@@ -1,5 +1,6 @@
 import { ImageResponse } from "next/og"
 import { createElement as h } from "react"
+import { SITE_HOST } from "@/lib/seo"
 
 export function GET(request: Request) {
   const { searchParams } = new URL(request.url)
@@ -98,7 +99,7 @@ export function GET(request: Request) {
             key: "url",
             style: { display: "flex", color: "#62626b", fontSize: 20 },
           },
-          "prism.pub"
+          SITE_HOST
         ),
       ]
     ),

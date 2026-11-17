@@ -57,7 +57,6 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    site: "@prism_pub",
     images: [
       {
         url: socialImageUrl("Prism — Ideas, refracted", "Independent writing, read by humans."),

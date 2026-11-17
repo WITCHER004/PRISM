@@ -1,12 +1,13 @@
 import Link from "next/link"
 import type { Metadata } from "next"
 import { LegalPage, type LegalSection } from "@/components/legal/LegalPage"
+import { pageMetadata } from "@/lib/seo"
 
-export const metadata: Metadata = {
+export const metadata: Metadata = pageMetadata({
   title: "Terms of Service",
   description: "Illustrative terms for Prism's demo. Placeholder text, not a binding agreement or legal advice.",
-  alternates: { canonical: "/terms" },
-}
+  path: "/terms",
+})
 
 const sections: LegalSection[] = [
   {

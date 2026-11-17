@@ -14,34 +14,26 @@ import { getFeedPosts } from "@/actions/posts"
 import { MOCK_TAGS, type Tag, type User } from "@/lib/data"
 import { hueStyle } from "@/lib/topics"
 import { numberWithCommas } from "@/lib/utils"
-import { socialImageUrl } from "@/lib/seo"
+import { JsonLd } from "@/components/seo/JsonLd"
+import { absoluteUrl, breadcrumbList, pageMetadata, SITE_URL, TOPIC_DESCRIPTIONS } from "@/lib/seo"
 
 interface TagPageProps {
   params: Promise<{ tag: string }>
 }
 
+const topicDescription = (tag: Tag) =>
+  TOPIC_DESCRIPTIONS[tag.slug] ?? `Independent ${tag.name} essays and stories on Prism, from writers you can follow.`
+
 export async function generateMetadata({ params }: TagPageProps): Promise<Metadata> {
   const { tag: tagSlug } = await params
   const tag = MOCK_TAGS.find((t) => t.slug === tagSlug)
-  if (!tag) return { title: "Topic not found — Prism" }
-  const title = `${tag.name} stories`
-  const description = `Discover the best ${tag.name} stories on Prism.`
-  return {
-    title: tag.name,
-    description,
-    alternates: { canonical: `/explore/${tag.slug}` },
-    openGraph: {
-      title,
-      description,
-      images: [socialImageUrl(title, description)],
-    },
-    twitter: {
-      card: "summary_large_image",
-      title,
-      description,
-      images: [socialImageUrl(title, description)],
-    },
-  }
+  if (!tag) return { title: "Topic not found", robots: { index: false } }
+  return pageMetadata({
+    title: `${tag.name} essays and stories`,
+    description: topicDescription(tag),
+    path: `/explore/${tag.slug}`,
+    socialTitle: `${tag.name} on Prism`,
+  })
 }
 
 export default async function TagPage({ params }: TagPageProps) {
@@ -66,6 +58,37 @@ export default async function TagPage({ params }: TagPageProps) {
 
   return (
     <div className="relative min-h-screen flex flex-col bg-[var(--bg)]" style={hueStyle(tag.slug)}>
+      <JsonLd
+        data={{
+          "@context": "https://schema.org",
+          "@graph": [
+            {
+              "@type": "CollectionPage",
+              "@id": `${absoluteUrl(`/explore/${tag.slug}`)}#page`,
+              url: absoluteUrl(`/explore/${tag.slug}`),
+              name: `${tag.name} essays and stories`,
+              description: topicDescription(tag),
+              inLanguage: "en",
+              isPartOf: { "@id": `${SITE_URL.origin}/#website` },
+              about: { "@type": "Thing", name: tag.name },
+              mainEntity: {
+                "@type": "ItemList",
+                itemListElement: tagPosts.map((p, i) => ({
+                  "@type": "ListItem",
+                  position: i + 1,
+                  url: absoluteUrl(`/${p.author.username}/${p.slug}`),
+                  name: p.title,
+                })),
+              },
+            },
+            breadcrumbList([
+              { name: "Home", path: "/" },
+              { name: "Explore", path: "/explore" },
+              { name: tag.name, path: `/explore/${tag.slug}` },
+            ]),
+          ],
+        }}
+      />
       <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-[560px] hue-glow" />
       <SiteHeader />
       <main className="relative flex-1">

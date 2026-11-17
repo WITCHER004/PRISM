@@ -22,6 +22,8 @@ interface PostCardProps {
   /** Renders an ordinal beside compact cards */
   index?: number
   className?: string
+  /** Only for a card that is visible on first paint (its image is the page's LCP) */
+  priority?: boolean
 }
 
 // Motion handles the lift; the shadow change is a CSS transition (see liftShadow)
@@ -56,7 +58,7 @@ function Spotlight({ under }: { under?: boolean }) {
   )
 }
 
-export function PostCard({ post, variant = "default", showAuthor = true, index, className }: PostCardProps) {
+export function PostCard({ post, variant = "default", showAuthor = true, index, className, priority = false }: PostCardProps) {
   const href = `/${post.author.username}/${post.slug}`
   const topic = post.tags[0]
   const style = hueStyle(topic?.slug)
@@ -98,7 +100,14 @@ export function PostCard({ post, variant = "default", showAuthor = true, index, 
       >
         {post.coverImageUrl && (
           <motion.div className="absolute inset-0" variants={{ rest: { scale: 1 }, hover: { scale: 1.04 } }} transition={{ duration: 0.8, ease: [0.2, 0.7, 0.2, 1] }}>
-            <Image src={post.coverImageUrl} alt="" fill className="object-cover" priority unoptimized />
+            <Image
+              src={post.coverImageUrl}
+              alt=""
+              fill
+              sizes="(min-width: 1024px) 66vw, 100vw"
+              className="object-cover"
+              priority={priority}
+            />
           </motion.div>
         )}
         <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/45 to-black/5" />
@@ -119,7 +128,7 @@ export function PostCard({ post, variant = "default", showAuthor = true, index, 
           )}
           <div className="mt-6 flex items-center justify-between gap-4">
             <div className="pointer-events-none flex items-center gap-2.5 text-sm">
-              <Avatar src={post.author.avatarUrl} alt={post.author.displayName} size="sm" priority className="ring-2 ring-white/30" />
+              <Avatar src={post.author.avatarUrl} alt={post.author.displayName} size="sm" className="ring-2 ring-white/30" />
               <span className="font-medium">{post.author.displayName}</span>
               <span className="text-white/60 font-mono text-xs uppercase tracking-wide">
                 {post.readingTimeMin} min · {numberWithCommas(post.clapCount)} claps
@@ -152,7 +161,13 @@ export function PostCard({ post, variant = "default", showAuthor = true, index, 
         {post.coverImageUrl && !washed && (
           <div className="relative aspect-[16/10] overflow-hidden bg-[var(--surface)]">
             <motion.div className="absolute inset-0" variants={{ rest: { scale: 1 }, hover: { scale: 1.05 } }} transition={{ duration: 0.7 }}>
-              <Image src={post.coverImageUrl} alt="" fill className="object-cover" unoptimized />
+              <Image
+                src={post.coverImageUrl}
+                alt=""
+                fill
+                sizes="(min-width: 1024px) 25vw, (min-width: 768px) 50vw, 100vw"
+                className="object-cover"
+              />
             </motion.div>
           </div>
         )}
@@ -223,7 +238,7 @@ export function PostCard({ post, variant = "default", showAuthor = true, index, 
       {post.coverImageUrl && (
         <div aria-hidden className="pointer-events-none relative w-24 h-24 sm:w-36 sm:h-36 rounded-[14px] overflow-hidden bg-[var(--surface)]">
           <motion.div className="absolute inset-0" variants={{ rest: { scale: 1 }, hover: { scale: 1.06 } }} transition={{ duration: 0.7 }}>
-            <Image src={post.coverImageUrl} alt="" fill className="object-cover" unoptimized />
+            <Image src={post.coverImageUrl} alt="" fill sizes="(min-width: 640px) 144px, 96px" className="object-cover" />
           </motion.div>
           <span className="absolute right-2 bottom-2 grid place-items-center w-7 h-7 rounded-full bg-[var(--panel)]/90 text-[var(--fg)] opacity-0 group-hover:opacity-100 transition-opacity">
             <ArrowUpRight className="w-4 h-4" />

@@ -36,7 +36,7 @@ import { UserBadges } from "@/components/elite/EliteBadges"
 import { ViewTracker } from "@/components/elite/ViewTracker"
 import { AuthorShareBar } from "@/components/share/ShareArticle"
 import { RatingChip, ReviewsSection } from "@/components/reviews/ArticleReviews"
-import { absoluteUrl, SITE_URL, socialImageUrl, truncateDescription } from "@/lib/seo"
+import { absoluteUrl, breadcrumbList, SITE_URL, socialImageUrl, truncateDescription } from "@/lib/seo"
 import { ArticleInteractiveWrapper } from "@/components/reader/ArticleInteractiveWrapper"
 
 interface PostPageProps {
@@ -114,6 +114,9 @@ export async function generateMetadata({ params }: PostPageProps): Promise<Metad
       type: "article",
       authors: [post.author.displayName],
       publishedTime: post.publishedAt,
+      modifiedTime: post.publishedAt,
+      section: post.tags[0]?.name,
+      tags: post.tags.map((t) => t.name),
     },
     twitter: {
       card: "summary_large_image",
@@ -161,24 +164,40 @@ export default async function PostPage({ params }: PostPageProps) {
       <JsonLd
         data={{
           "@context": "https://schema.org",
-          "@type": "BlogPosting",
-          headline: post.title,
-          description: truncateDescription(post.excerpt),
-          datePublished: post.publishedAt,
-          inLanguage: "en",
-          isAccessibleForFree: !isPaywalled,
-          mainEntityOfPage: absoluteUrl(`/${post.author.username}/${post.slug}`),
-          image: post.coverImageUrl ?? socialImageUrl(post.title, truncateDescription(post.excerpt)),
-          author: {
-            "@type": "Person",
-            name: post.author.displayName,
-            url: absoluteUrl(`/${post.author.username}`),
-          },
-          publisher: {
-            "@type": "Organization",
-            name: "Prism",
-            url: SITE_URL.toString(),
-          },
+          "@graph": [
+            {
+              "@type": "BlogPosting",
+              headline: post.title,
+              description: truncateDescription(post.excerpt),
+              datePublished: post.publishedAt,
+              // No edit history in the data yet: an unedited article's modified date is its publish date
+              dateModified: post.publishedAt,
+              inLanguage: "en",
+              wordCount: post.wordCount,
+              articleSection: topic?.name,
+              keywords: post.tags.map((t) => t.name).join(", "),
+              isAccessibleForFree: !isPaywalled,
+              mainEntityOfPage: absoluteUrl(`/${post.author.username}/${post.slug}`),
+              image: post.coverImageUrl ?? socialImageUrl(post.title, truncateDescription(post.excerpt)),
+              author: {
+                "@type": "Person",
+                "@id": `${absoluteUrl(`/${post.author.username}`)}#person`,
+                name: post.author.displayName,
+                url: absoluteUrl(`/${post.author.username}`),
+              },
+              publisher: {
+                "@type": "Organization",
+                "@id": `${SITE_URL.origin}/#organization`,
+                name: "Prism",
+                url: SITE_URL.toString(),
+              },
+            },
+            breadcrumbList([
+              { name: "Home", path: "/" },
+              ...(topic ? [{ name: topic.name, path: `/explore/${topic.slug}` }] : []),
+              { name: post.title, path: `/${post.author.username}/${post.slug}` },
+            ]),
+          ],
         }}
       />
       <ReadingProgress />

@@ -22,6 +22,7 @@ import { MOCK_USERS } from "@/lib/data"
 import { dur, ease, spring } from "@/lib/motion"
 import { cn } from "@/lib/utils"
 import { Avatar } from "@/components/ui/Avatar"
+import { SITE_HOST } from "@/lib/seo"
 import {
   signInWithGoogle,
   signInWithGithub,
@@ -379,7 +380,7 @@ export function SignupForm({
               <p className="text-xs text-[var(--error)] mt-1.5">{errors.username}</p>
             ) : (
               <p className="text-[11px] text-[var(--fg-muted)] mt-1 font-mono">
-                Your profile URL: prism.pub/@{username || "yourhandle"}
+                Your profile URL: {SITE_HOST}/{username || "yourhandle"}
               </p>
             )}
           </div>
@@ -677,7 +678,7 @@ function Aside({
             </p>
 
             <div className="pt-2 border-t border-white/10 flex items-center justify-between text-[11px] font-mono opacity-75">
-              <span>prism.pub/@{displayHandle}</span>
+              <span>{SITE_HOST}/{displayHandle}</span>
               <span className="text-emerald-300">✓ Verified Profile</span>
             </div>
           </div>

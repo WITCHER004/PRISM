@@ -1,12 +1,14 @@
 import type { Metadata } from "next"
 import type { Plan } from "@/lib/store"
+import { pageMetadata } from "@/lib/seo"
 import { MembershipClient } from "./MembershipClient"
 
-export const metadata: Metadata = {
-  title: "Membership",
-  description: "Explore Prism's demo membership plans. Checkout is simulated and no payment is taken.",
-  alternates: { canonical: "/membership" },
-}
+export const metadata: Metadata = pageMetadata({
+  title: "Membership plans for readers",
+  description: "Explore Prism's demo membership plans for readers who want to support independent writers. Checkout is simulated and no payment is taken.",
+  path: "/membership",
+  socialTitle: "Prism membership",
+})
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>
 

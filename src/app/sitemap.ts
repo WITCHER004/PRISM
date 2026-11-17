@@ -6,7 +6,7 @@ import { absoluteUrl } from "@/lib/seo"
 export const revalidate = 3600
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const staticPages = ["/", "/about", "/explore", "/membership", "/terms", "/privacy", "/content-policy"]
+  const staticPages = ["/", "/about", "/explore", "/elite", "/membership", "/terms", "/privacy", "/content-policy"]
   const posts = await getFeedPosts(1000)
 
   return [

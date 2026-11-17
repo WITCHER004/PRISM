@@ -37,6 +37,7 @@ import { certificateFrom } from "@/lib/craft"
 import { mirrorRecord } from "@/lib/records"
 import { depthLabel, paperIsComplete, type AdvancedPaper } from "@/lib/papers"
 import { clearPromotedIdeaSeed, clearQuoteSeed, readPromotedIdeaSeed, readQuoteSeed } from "@/lib/ideas"
+import { SITE_HOST } from "@/lib/seo"
 
 const RichEditor = dynamic(() => import("@/components/editor/RichEditor"), {
   ssr: false,
@@ -693,7 +694,7 @@ function EditorWorkspace({ initial }: { initial?: Draft }) {
             <section>
               <p className="meta mb-2">Story address</p>
               <p className="px-4 py-3 rounded-[12px] bg-[var(--bg)] border border-[var(--border)] text-sm break-all">
-                <span className="text-[var(--fg-muted)]">prism.pub/{user.username}/</span>
+                <span className="text-[var(--fg-muted)]">{SITE_HOST}/{user.username}/</span>
                 <span className="font-mono text-xs text-[var(--fg)]">{slug}</span>
               </p>
               {isLive && <p className="mt-2 text-xs text-[var(--fg-muted)]">The address stays fixed once a story is published.</p>}

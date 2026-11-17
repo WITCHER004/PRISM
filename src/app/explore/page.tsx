@@ -10,24 +10,14 @@ import { getFeedPosts } from "@/actions/posts"
 import { MOCK_TAGS } from "@/lib/data"
 import { hueStyle } from "@/lib/topics"
 import { numberWithCommas } from "@/lib/utils"
-import { socialImageUrl } from "@/lib/seo"
+import { pageMetadata } from "@/lib/seo"
 
-export const metadata: Metadata = {
-  title: "Explore",
-  description: "Discover the best stories across every topic.",
-  alternates: { canonical: "/explore" },
-  openGraph: {
-    title: "Explore Prism",
-    description: "Discover the best stories across every topic.",
-    images: [socialImageUrl("Explore Prism", "Discover the best stories across every topic.")],
-  },
-  twitter: {
-    card: "summary_large_image",
-    title: "Explore Prism",
-    description: "Discover the best stories across every topic.",
-    images: [socialImageUrl("Explore Prism", "Discover the best stories across every topic.")],
-  },
-}
+export const metadata: Metadata = pageMetadata({
+  title: "Explore essays and stories by topic",
+  description: "Browse independent essays and stories across programming, design, science, policy, climate, culture and more, from writers you can follow.",
+  path: "/explore",
+  socialTitle: "Explore Prism",
+})
 
 export default async function ExplorePage({
   searchParams,
