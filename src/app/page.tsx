@@ -88,7 +88,7 @@ export default async function HomePage() {
                 Start reading <ArrowRight className="w-4 h-4" />
               </Link>
               <Link
-                href="/auth/signup?writer=true"
+                href="/editor/new"
                 className="inline-flex items-center h-12 px-6 rounded-full border border-[var(--border-strong)] bg-[var(--panel)] font-medium hover:border-[var(--fg)] transition-colors"
               >
                 Publish on Prism
@@ -171,7 +171,7 @@ export default async function HomePage() {
                     Custom domains, portable subscriber lists, and payouts based on real read time, not clicks.
                   </p>
                   <Link
-                    href="/auth/signup?writer=true"
+                    href="/editor/new"
                     className="mt-6 inline-flex items-center gap-2 h-12 px-6 rounded-full bg-[var(--bg)] text-[var(--fg)] font-medium hover:opacity-90 transition-opacity"
                   >
                     Start your publication <ArrowRight className="w-4 h-4" />

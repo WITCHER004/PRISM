@@ -192,7 +192,7 @@ export default function AboutPage() {
                     Start reading <ArrowRight className="w-4 h-4" />
                   </Link>
                   <Link
-                    href="/auth/signup?writer=true"
+                    href="/editor/new"
                     className="inline-flex items-center h-12 px-6 rounded-full border border-[var(--bg)]/30 font-medium hover:border-[var(--bg)] transition-colors"
                   >
                     Start writing
