@@ -201,8 +201,20 @@
   --hue-ink-l:  0.45;  --hue-ink-c:  0.14;
 }
 
+/* App-theme dark variant: follows the data-theme toggle, not the OS setting */
+@custom-variant theme-dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
 /* ── Base ───────────────────────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; }
+
+/* Tailwind v4 made the default border color `currentColor`, so every bare `border`
+   (and any border whose color utility doesn't apply) drew in the text color —
+   near-black. Restore a soft hairline default; color utilities still win. */
+@layer base {
+  *, ::after, ::before, ::backdrop, ::file-selector-button {
+    border-color: var(--border, rgba(20, 20, 19, 0.10));
+  }
+}
 
 html {
   font-size: 16px;
@@ -294,6 +306,12 @@ body {
   background-size: 250% 100%;
   background-position: 0% 0;
   animation: spectrum-sweep 1.6s cubic-bezier(0.2, 0.7, 0.2, 1) 0.35s both;
+}
+
+/* Spectrum card: the "Your idea" beam pulses on hover */
+@keyframes prism-breathe {
+  0%, 100% { opacity: 0.5; }
+  50%      { opacity: 0.95; }
 }
 
 /* Cursor spotlight for cards: the card sets --mx/--my on pointer move */

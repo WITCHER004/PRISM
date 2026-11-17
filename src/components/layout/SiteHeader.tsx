@@ -8,7 +8,6 @@ import { dur, ease } from "@/lib/motion"
 import { useUIStore, toast } from "@/lib/store"
 import { useAuth } from "@/components/providers/AuthProvider"
 import { NotificationsMenu } from "@/components/layout/NotificationsMenu"
-import { Avatar } from "@/components/ui/Avatar"
 import { Wordmark } from "@/components/ui/Wordmark"
 import { useViewer } from "@/components/providers/useViewer"
 import { canOpenReviewDashboard } from "@/lib/moderation/workflow"
@@ -25,7 +24,6 @@ import {
   Settings,
   LogOut,
   FileText,
-  Compass,
   MessageSquareReply,
   Wallet,
   Sparkles,
@@ -41,6 +39,10 @@ const THEMES = [
 
 const iconButton =
   "grid place-items-center w-8 h-8 rounded-full text-[var(--nav-link)] hover:text-[var(--fg)] hover:bg-[var(--nav-control-hover)] transition-colors"
+
+// Primary CTA: solid obsidian in light/reading, paper in dark. Literal values + `!` so nothing can wash it out.
+const ctaButton =
+  "items-center gap-1.5 h-9 px-4 rounded-full border-0 text-[13.5px] font-medium tracking-tight bg-[#141413]! text-[#FAF8F5]! theme-dark:bg-[#FAF8F5]! theme-dark:text-[#141413]! shadow-[0_1px_2px_rgba(0,0,0,0.12)] hover:opacity-90 transition-opacity"
 
 const menuItem =
   "flex items-center gap-2.5 h-9 px-2.5 rounded-[10px] text-[13.5px] text-[var(--fg-secondary)] hover:bg-[var(--surface)] hover:text-[var(--fg)] transition-colors"
@@ -60,7 +62,7 @@ export function SiteHeader() {
 
   const navLinks = [
     { href: "/", label: "Feed", active: pathname === "/" },
-    { href: "/explore", label: "Explore", icon: Compass, active: !!pathname?.startsWith("/explore") },
+    { href: "/explore", label: "Explore", active: !!pathname?.startsWith("/explore") },
     isReviewer
       ? { href: "/review-dashboard", label: "Review Queue", active: !!pathname?.startsWith("/review-dashboard") }
       : { href: "/elite", label: "Elite", gold: true, active: !!pathname?.startsWith("/elite") },
@@ -129,7 +131,7 @@ export function SiteHeader() {
 
   return (
     <motion.header
-      className="site-header sticky top-0 z-50 h-16 w-full bg-[var(--nav-bg)] backdrop-blur-md border-b border-[var(--nav-border)]"
+      className="site-header sticky top-0 z-50 h-16 w-full bg-[var(--nav-bg)] backdrop-blur-md border-b border-[rgba(20,20,19,0.08)] theme-dark:border-white/[0.08]"
       animate={{ y: hidden ? "-110%" : "0%" }}
       transition={{ duration: hidden ? dur.fast * 1.5 : dur.base, ease: hidden ? ease.in : ease.out }}
     >
@@ -138,30 +140,21 @@ export function SiteHeader() {
         <div className="flex items-center gap-3 min-w-0">
           <Wordmark />
           <span aria-hidden className="hidden md:block h-4 w-px bg-[var(--nav-divider)] mx-1" />
-          <nav aria-label="Primary" className="hidden md:flex items-center gap-0.5">
-            {navLinks.map(({ href, label, icon: Icon, gold, active }) => (
+          <nav aria-label="Primary" className="hidden md:flex items-center gap-1">
+            {navLinks.map(({ href, label, gold, active }) => (
               <Link
                 key={href}
                 href={href}
                 aria-current={active ? "page" : undefined}
                 className={cn(
-                  "relative inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium whitespace-nowrap transition-all",
+                  "inline-flex items-center gap-1 px-[14px] py-[6px] rounded-full text-sm leading-5 whitespace-nowrap transition-colors",
                   active
-                    ? "text-[var(--fg)]"
-                    : "text-[var(--nav-link)] hover:text-[var(--fg)] hover:bg-[var(--nav-control)]"
+                    ? "bg-[rgba(20,20,19,0.06)] text-[#141413] font-semibold theme-dark:bg-white/[0.08] theme-dark:text-[#F1F0EC]"
+                    : "text-[#686662] font-medium hover:bg-black/[0.04] hover:text-[#141413] theme-dark:text-[#A1A1AA] theme-dark:hover:bg-white/[0.06] theme-dark:hover:text-[#F1F0EC]"
                 )}
               >
-                {Icon && <Icon className="w-[15px] h-[15px]" strokeWidth={1.75} />}
+                {gold && <span aria-hidden className="text-[10px] text-[#C27C0E] theme-dark:text-[#E0A53A]">✦</span>}
                 {label}
-                {gold && <span aria-hidden className="w-1 h-1 rounded-full bg-[var(--gold)]" />}
-                {active && (
-                  <motion.span
-                    layoutId="nav-active"
-                    aria-hidden
-                    className="absolute left-1/2 -bottom-[5px] -ml-[2px] w-1 h-1 rounded-full bg-[var(--fg)]"
-                    transition={{ type: "spring", stiffness: 520, damping: 38 }}
-                  />
-                )}
               </Link>
             ))}
           </nav>
@@ -171,7 +164,7 @@ export function SiteHeader() {
         <form
           role="search"
           onSubmit={submitSearch}
-          className="hidden lg:flex flex-1 min-w-0 max-w-[380px] h-9 px-3.5 items-center justify-between gap-2.5 rounded-full bg-[var(--nav-control)] hover:bg-[var(--nav-control-hover)] focus-within:bg-[var(--nav-control-focus)] focus-within:ring-2 focus-within:ring-[var(--nav-ring)] border border-[var(--nav-control-border)] transition-all"
+          className="hidden lg:flex w-[340px] min-w-0 shrink h-[38px] px-[14px] items-center justify-between gap-2.5 rounded-full bg-[rgba(20,20,19,0.045)] border border-[rgba(20,20,19,0.08)] focus-within:bg-[#FFFFFF] focus-within:border-[rgba(20,20,19,0.22)] focus-within:shadow-[0_2px_8px_rgba(0,0,0,0.04)] theme-dark:bg-white/[0.05] theme-dark:border-white/[0.08] theme-dark:focus-within:bg-[#18181B] theme-dark:focus-within:border-white/[0.22] transition-all"
         >
           <Search aria-hidden className="w-3.5 h-3.5 shrink-0 text-[var(--nav-placeholder)]" strokeWidth={2} />
           <input
@@ -183,7 +176,7 @@ export function SiteHeader() {
             aria-label="Search essays, authors, topics"
             className="w-full min-w-0 bg-transparent outline-none focus-visible:outline-none text-[13.5px] text-[var(--fg-secondary)] placeholder:text-[var(--nav-placeholder)] [&::-webkit-search-cancel-button]:hidden"
           />
-          <kbd className="shrink-0 px-1.5 py-0.5 text-[10px] font-mono font-medium leading-none text-[var(--nav-placeholder)] bg-[var(--nav-kbd)] rounded border border-[var(--nav-kbd-border)] shadow-[0_1px_0_rgba(0,0,0,0.04)]">
+          <kbd className="shrink-0 px-[6px] py-[1px] text-[11px] font-mono font-medium text-[#78756F] bg-[rgba(255,255,255,0.85)] rounded-[6px] border border-[rgba(20,20,19,0.10)] theme-dark:bg-white/[0.06] theme-dark:border-white/10 theme-dark:text-[#8B8B94]">
             ⌘K
           </kbd>
         </form>
@@ -197,7 +190,7 @@ export function SiteHeader() {
           <div
             role="radiogroup"
             aria-label="Theme"
-            className="hidden md:flex items-center h-8 p-0.5 rounded-full bg-[var(--nav-control)] border border-[var(--nav-control-border)]"
+            className="hidden md:flex items-center p-[2px] rounded-full bg-[rgba(20,20,19,0.05)] border border-[rgba(20,20,19,0.06)] theme-dark:bg-white/[0.05] theme-dark:border-white/[0.06]"
           >
             {THEMES.map(({ value, icon: Icon, label }) => (
               <button
@@ -215,7 +208,7 @@ export function SiteHeader() {
                 {theme === value && (
                   <motion.span
                     layoutId="theme-pill"
-                    className="absolute inset-0 rounded-full bg-[var(--nav-control-focus)] shadow-xs"
+                    className="absolute inset-0 rounded-full bg-[#FFFFFF] shadow-[0_1px_2px_rgba(0,0,0,0.08)] theme-dark:bg-[#27272A]"
                     transition={{ type: "spring", stiffness: 500, damping: 35 }}
                   />
                 )}
@@ -230,7 +223,7 @@ export function SiteHeader() {
 
               <Link
                 href="/editor/new"
-                className="hidden sm:flex h-9 px-4 items-center gap-1.5 rounded-full bg-[var(--nav-cta)] hover:bg-[var(--nav-cta-hover)] text-[var(--nav-cta-fg)] text-[13.5px] font-medium tracking-tight shadow-xs hover:shadow transition-all"
+                className={cn(ctaButton, "hidden sm:flex")}
               >
                 <Feather className="w-3.5 h-3.5" strokeWidth={1.75} />
                 Write
@@ -242,14 +235,15 @@ export function SiteHeader() {
                   aria-haspopup="menu"
                   aria-expanded={userMenuOpen}
                   aria-label={`Account menu for ${user.displayName}`}
-                  className="h-9 pl-1.5 pr-2 xl:pr-3 rounded-full bg-[var(--nav-pill)] hover:bg-[var(--nav-pill-hover)] border border-[var(--nav-pill-border)] hover:border-[var(--nav-pill-border-hover)] shadow-2xs flex items-center gap-2 transition-all"
+                  className="h-9 py-[3px] pl-1 pr-3 rounded-full bg-[#FFFFFF] border border-[rgba(20,20,19,0.09)] hover:border-[rgba(20,20,19,0.16)] shadow-[0_1px_2px_rgba(0,0,0,0.03)] theme-dark:bg-[#18181B] theme-dark:border-white/10 theme-dark:hover:border-white/20 flex items-center gap-2 transition-colors"
                 >
-                  <Avatar
-                    src={user.avatarUrl}
-                    alt={user.displayName}
-                    size="xs"
-                    className="bg-[var(--fg)] text-[var(--bg)] font-serif font-medium text-[10.5px] tracking-[0.02em]"
-                  />
+                  {/* Editorial monogram, not the provider photo (Google's default is a bright letter tile) */}
+                  <span
+                    aria-hidden
+                    className="grid place-items-center w-7 h-7 shrink-0 rounded-full bg-[#1C1B18] text-[#FAF8F5] font-serif font-semibold text-[12.5px] leading-none theme-dark:bg-[#FAF8F5] theme-dark:text-[#141413]"
+                  >
+                    {(user.displayName?.trim()[0] || "?").toUpperCase()}
+                  </span>
                   <span className="hidden xl:block text-[13px] font-medium text-[var(--fg-secondary)] truncate max-w-[110px]">
                     {user.displayName}
                   </span>
@@ -341,7 +335,7 @@ export function SiteHeader() {
               </Link>
               <Link
                 href="/auth/signup"
-                className="flex h-9 px-4 items-center rounded-full bg-[var(--nav-cta)] hover:bg-[var(--nav-cta-hover)] text-[var(--nav-cta-fg)] text-[13.5px] font-medium tracking-tight shadow-xs hover:shadow transition-all"
+                className={cn(ctaButton, "flex")}
               >
                 Join Prism
               </Link>
@@ -403,7 +397,7 @@ export function SiteHeader() {
                 <Link
                   href="/editor/new"
                   onClick={() => setMobileOpen(false)}
-                  className="inline-flex items-center gap-1.5 h-10 px-4 rounded-full bg-[var(--nav-cta)] text-[var(--nav-cta-fg)] text-sm font-medium"
+                  className={cn(ctaButton, "inline-flex h-10")}
                 >
                   <Feather className="w-3.5 h-3.5" strokeWidth={1.75} />
                   Write
