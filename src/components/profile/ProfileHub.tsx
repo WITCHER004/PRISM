@@ -23,6 +23,7 @@ import { RoleBadge, useIdentity } from "./identity"
 import { UserBadges } from "@/components/elite/EliteBadges"
 import { SocialLinks } from "./SocialLinks"
 import { EditProfileDialog } from "./EditProfileDialog"
+import { ReadingVault } from "./ReadingVault"
 import { cn, formatDate, formatRelativeDate } from "@/lib/utils"
 
 const TRACKED: ArticleStatus[] = [
@@ -150,6 +151,9 @@ export function ProfileHub({ username }: { username: string }) {
 
       {/* What this account can do; every card unlocks in place as the role changes */}
       {isMe && <Capabilities username={username} />}
+
+      {/* Private highlights + reading history (owner-only Firestore data) */}
+      {isMe && <ReadingVault />}
 
       {/* Author tracker (own profile only) */}
       {isMe && (

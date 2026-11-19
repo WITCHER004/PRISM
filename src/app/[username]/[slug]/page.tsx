@@ -7,7 +7,8 @@ import { PeerDossierCard } from "@/components/dossier/PeerDossierCard"
 import { ElitePaperBadge, MaybePaperScope, PaperAbstract, PaperGate, PaperRibbon } from "@/components/papers/ElitePaper"
 import { getPostBySlug } from "@/actions/posts"
 
-export const revalidate = 60
+// Live Firestore data, rendered fresh on every request
+export const dynamic = "force-dynamic"
 import { notFound } from "next/navigation"
 import { SiteHeader } from "@/components/layout/SiteHeader"
 import { SiteFooter } from "@/components/layout/SiteFooter"
@@ -16,7 +17,6 @@ import { PaywallGate } from "@/components/posts/PaywallGate"
 import { PaywalledBody, UnlockedOnly, LockedOnly } from "@/components/posts/PaywallContent"
 import { FollowButton } from "@/components/ui/FollowButton"
 import { ReadingProgress } from "@/components/posts/ReadingProgress"
-import { PostCard } from "@/components/posts/PostCard"
 import { ArticleDock } from "@/components/posts/ArticleDock"
 import { ListenMode } from "@/components/posts/ListenMode"
 import { TableOfContents, type TocItem } from "@/components/posts/TableOfContents"
@@ -37,6 +37,8 @@ import { AuthorShareBar } from "@/components/share/ShareArticle"
 import { RatingChip, ReviewsSection } from "@/components/reviews/ArticleReviews"
 import { absoluteUrl, breadcrumbList, SITE_URL, socialImageUrl, truncateDescription } from "@/lib/seo"
 import { ArticleInteractiveWrapper } from "@/components/reader/ArticleInteractiveWrapper"
+import { ExportMenu } from "@/components/reader/ExportMenu"
+import { MoreLikeThis } from "@/components/reader/MoreLikeThis"
 
 interface PostPageProps {
   params: Promise<{ username: string; slug: string }>
@@ -144,13 +146,9 @@ export default async function PostPage({ params }: PostPageProps) {
   const certificate = article?.craft ? certificateFrom(article.craft, post.wordCount, article.liveAiPercent ?? article.phase1?.aiPercent) : null
   const dossier = article?.panelPassed ? dossierFromPanel(article.id, article.panel, article.publishedAt) : null
 
-  const relatedPosts = published.filter(
-    (p) =>
-      p.id !== post.id &&
-      p.tags.some((t) => post.tags.some((pt) => pt.id === t.id))
-  ).slice(0, 3)
-
   const topic = post.tags[0]
+  const path = `/${post.author.username}/${post.slug}`
+  const aiScore = article?.liveAiPercent ?? article?.phase1?.aiPercent ?? null
   const { html, toc } = withHeadingIds(post.contentHtml)
   const dockProps = {
     postId: post.id,
@@ -292,6 +290,22 @@ export default async function PostPage({ params }: PostPageProps) {
                     minutes={post.readingTimeMin}
                   />
                 </UnlockedOnly>
+                <ExportMenu
+                  postId={post.id}
+                  html={post.contentHtml}
+                  isAdvancedPaper={!!paper}
+                  paywalled={isPaywalled}
+                  meta={{
+                    title: post.title,
+                    subtitle: post.subtitle,
+                    authorName: post.author.displayName,
+                    authorHandle: post.author.username,
+                    topic: topic?.name,
+                    publishedAt: post.publishedAt,
+                    aiVerificationScore: aiScore,
+                    path,
+                  }}
+                />
               </div>
             </Reveal>
           </header>
@@ -332,6 +346,13 @@ export default async function PostPage({ params }: PostPageProps) {
                 articleTitle={post.title}
                 authorName={post.author.displayName}
                 authorHandle={post.author.username}
+                reading={{
+                  articleSubtitle: post.subtitle ?? "",
+                  topic: topic?.name ?? "",
+                  authorAvatar: post.author.avatarUrl,
+                  isAdvancedPaper: !!paper,
+                  href: path,
+                }}
               >
               <div id="article-body" className="relative">
                 {paper && (
@@ -440,19 +461,8 @@ export default async function PostPage({ params }: PostPageProps) {
           </div>
         </UnlockedOnly>
 
-        {/* Related */}
-        {relatedPosts.length > 0 && (
-          <section className="max-w-7xl mx-auto px-4 sm:px-6 pt-20 pb-24">
-            <h2 className="display text-[1.75rem] sm:text-[2.25rem] mb-5">Keep reading</h2>
-            <div className="grid gap-4 md:grid-cols-3">
-              {relatedPosts.map((p, i) => (
-                <Reveal key={p.id} index={i}>
-                  <PostCard post={p} variant="tile" className="h-full" />
-                </Reveal>
-              ))}
-            </div>
-          </section>
-        )}
+        {/* More like this: ranked from the live published set */}
+        <MoreLikeThis current={post} pool={published} className="max-w-7xl mx-auto px-4 sm:px-6 pt-20 pb-24" />
       </main>
       </MaybePaperScope>
 

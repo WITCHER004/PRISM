@@ -1,23 +1,19 @@
 "use client"
 
-import { useState, useRef } from "react"
 import Link from "next/link"
 import { BadgeCheck, Gem, Lock } from "lucide-react"
 import { Avatar } from "@/components/ui/Avatar"
 import type { User } from "@/lib/data"
 import { TOPICS } from "@/lib/topics"
 import type { PaywallChoice } from "@/lib/store"
-import { toast } from "@/lib/store"
 import { formatDate, numberWithCommas } from "@/lib/utils"
 import { hasBody, wordCount } from "@/components/studio/studio-ui"
 import { UserBadges } from "@/components/elite/EliteBadges"
 import { ElitePaperBadge, MaybePaperScope, PaperAbstract, PaperGate, PaperRibbon } from "@/components/papers/ElitePaper"
 import { LockedOnly, PaywalledBody } from "@/components/posts/PaywallContent"
 import { deepReadMinutes, PAPER_MASK, PAPER_PREVIEW_FRACTION, type AdvancedPaper } from "@/lib/papers"
-import { SelectionPopover, type SelectionPayload } from "@/components/reader/SelectionPopover"
-import { MarginNotesDrawer } from "@/components/reader/MarginNotesDrawer"
-import { QuoteCardModal } from "@/components/reader/QuoteCardModal"
-import { useMarginNotes } from "@/lib/marginNotes"
+import { ArticleInteractiveWrapper } from "@/components/reader/ArticleInteractiveWrapper"
+import { ExportMenu } from "@/components/reader/ExportMenu"
 
 export function topicLabel(tag: string) {
   const known = TOPICS.find((t) => t.slug === tag)
@@ -50,73 +46,44 @@ interface StoryArticleProps {
   paperReview?: string
   /** Rendered between the header and the body (e.g. the peer review dossier) */
   afterHeader?: React.ReactNode
+  /**
+   * Published stories only: turns on private highlights, resume/progress sync, reading history and
+   * export. `href` is the path readers reopen it at.
+   */
+  reader?: { href: string; aiScore?: number | null }
 }
 
 // The reader's view of a story written in Prism — same structure and type as the article page.
-export function StoryArticle({ title, subtitle, html, tags, paywall, date, author, authorName, meta, paper, postId, paperReview = "Editor-reviewed", afterHeader }: StoryArticleProps) {
+export function StoryArticle({ title, subtitle, html, tags, paywall, date, author, authorName, meta, paper, postId, paperReview = "Editor-reviewed", afterHeader, reader }: StoryArticleProps) {
   const topic = tags[0]
   const known = topic ? TOPICS.find((t) => t.slug === topic) : undefined
   const minutes = Math.max(1, Math.ceil(wordCount(html) / 238))
   const gate = PAYWALL_LABEL[paywall]
   const words = wordCount(html)
 
-  const articleContainerRef = useRef<HTMLDivElement | null>(null)
-  const [marginNotesOpen, setMarginNotesOpen] = useState(false)
-  const [quoteModalOpen, setQuoteModalOpen] = useState(false)
-  const [selectedQuote, setSelectedQuote] = useState("")
-  const [activeSelection, setActiveSelection] = useState<SelectionPayload | null>(null)
   const effectiveArticleId = postId ?? `article_${author.username}_${title.slice(0, 15)}`
-  const { notes, add, remove, currentUser, displayName } = useMarginNotes(effectiveArticleId)
-
-  const handleAddMarginNote = (payload: SelectionPayload) => {
-    setActiveSelection(payload)
-    setMarginNotesOpen(true)
-  }
-
-  const handleCreateQuoteCard = (payload: SelectionPayload) => {
-    setSelectedQuote(payload.text)
-    setQuoteModalOpen(true)
-  }
-
-  const handleSaveNote = (noteText: string, payload: SelectionPayload) => {
-    if (add(noteText, payload)) toast("Margin note added to paragraph!")
-    setActiveSelection(null)
-  }
-
-  const handleDeleteNote = (noteId: string) => {
-    remove(noteId)
-    toast("Margin note removed")
-  }
+  const topicName = topic ? topicLabel(topic) : ""
 
   return (
     <MaybePaperScope paper={paper} author={author.username}>
-    <article ref={articleContainerRef} className="relative">
-      <SelectionPopover
-        containerRef={articleContainerRef}
-        onAddMarginNote={handleAddMarginNote}
-        onCreateQuoteCard={handleCreateQuoteCard}
-      />
-
-      <MarginNotesDrawer
-        open={marginNotesOpen}
-        onClose={() => setMarginNotesOpen(false)}
-        articleId={effectiveArticleId}
-        notes={notes}
-        onAddNote={handleSaveNote}
-        onDeleteNote={handleDeleteNote}
-        activeSelection={activeSelection}
-        currentUsername={currentUser}
-        currentDisplayName={displayName}
-      />
-
-      <QuoteCardModal
-        open={quoteModalOpen}
-        onClose={() => setQuoteModalOpen(false)}
-        quote={selectedQuote}
-        articleTitle={title}
-        authorName={authorName}
-        authorHandle={author.username}
-      />
+    <ArticleInteractiveWrapper
+      articleId={effectiveArticleId}
+      articleTitle={title.trim() || "Untitled story"}
+      authorName={authorName}
+      authorHandle={author.username}
+      reading={
+        reader && postId
+          ? {
+              articleSubtitle: subtitle ?? "",
+              topic: topicName,
+              authorAvatar: author.avatarUrl,
+              isAdvancedPaper: !!paper,
+              href: reader.href,
+            }
+          : undefined
+      }
+    >
+    <article className="relative">
       <header>
         {(topic || gate || paper) && (
           <div className="flex flex-wrap items-center gap-2">
@@ -180,6 +147,24 @@ export function StoryArticle({ title, subtitle, html, tags, paywall, date, autho
             </div>
           </dl>
           {meta}
+          {reader && postId && (
+            <ExportMenu
+              postId={postId}
+              html={html}
+              isAdvancedPaper={!!paper}
+              paywalled={paywall !== "FREE"}
+              meta={{
+                title: title.trim() || "Untitled story",
+                subtitle,
+                authorName,
+                authorHandle: author.username,
+                topic: topicName,
+                publishedAt: date,
+                aiVerificationScore: reader.aiScore,
+                path: reader.href,
+              }}
+            />
+          )}
         </div>
       </header>
 
@@ -206,6 +191,7 @@ export function StoryArticle({ title, subtitle, html, tags, paywall, date, autho
         )}
       </div>
     </article>
+    </ArticleInteractiveWrapper>
     </MaybePaperScope>
   )
 }

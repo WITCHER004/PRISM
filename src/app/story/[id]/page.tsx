@@ -23,6 +23,8 @@ import { wordCount } from "@/components/studio/studio-ui"
 import { certificateFrom } from "@/lib/craft"
 import { dossierFromPanel } from "@/lib/dossier"
 import { mirrorRecord } from "@/lib/records"
+import { usePublishedPosts } from "@/lib/live/hooks"
+import { MoreLikeThis } from "@/components/reader/MoreLikeThis"
 
 const pill = "inline-flex items-center gap-1.5 h-10 px-4 rounded-full text-sm font-medium transition-colors"
 
@@ -35,6 +37,8 @@ export default function LocalStoryPage() {
   const draft = useUIStore((s) => s.drafts[id])
   const currentUser = useUIStore((s) => s.currentUser)
   const author = useIdentity(draft?.authorUsername)
+  const published = usePublishedPosts()
+  const current = useMemo(() => published.find((p) => p.id === id), [published, id])
 
   const isAuthor = !!draft && draft.authorUsername === currentUser
   const live = draft?.live
@@ -146,6 +150,7 @@ export default function LocalStoryPage() {
                   </>
                 ) : undefined
               }
+              reader={live ? { href: `/story/${draft.id}`, aiScore: draft.liveAiPercent ?? draft.phase1?.aiPercent ?? null } : undefined}
               afterHeader={
                 dossier ? <PeerDossierCard dossier={dossier} authorName={author.displayName} authorAvatar={author.avatarUrl} /> : undefined
               }
@@ -166,6 +171,7 @@ export default function LocalStoryPage() {
                 <ReviewsSection postId={draft.id} postAuthor={draft.authorUsername} className="mt-16" />
               </>
             )}
+            {live && current && <MoreLikeThis current={current} pool={published} className="mt-20" />}
           </div>
         )}
       </main>

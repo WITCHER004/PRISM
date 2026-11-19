@@ -19,6 +19,7 @@ import { SITE_URL } from "@/lib/seo"
 import { ScrollRail } from "@/components/ui/ScrollRail"
 import { InstantIdeasTray } from "@/components/ideas/InstantIdeasTray"
 import { EliteSpark } from "@/components/papers/ElitePaper"
+import { ContinueReading } from "@/components/home/ContinueReading"
 
 export const metadata: Metadata = {
   title: { absolute: "Prism — Ideas, refracted" },
@@ -27,9 +28,9 @@ export const metadata: Metadata = {
   alternates: { canonical: "/" },
 }
 
-// Static, refreshed every minute from Firestore. The `?topic=` filter runs in the browser (HomeFeed), so
-// the page is cacheable and crawlers always get the full, unfiltered feed.
-export const revalidate = 60
+// Rendered on every request from live Firestore data. The `?topic=` filter runs in the browser
+// (HomeFeed), so crawlers always get the full, unfiltered feed.
+export const dynamic = "force-dynamic"
 
 export default async function HomePage() {
   const [feed, writers, counts] = await Promise.all([getPublishedPosts(), getActiveWriters(12), getTopicCounts()])
@@ -126,6 +127,9 @@ export default async function HomePage() {
             ))}
           </ScrollRail>
         </nav>
+
+        {/* The signed-in reader's unfinished stories (Firestore reading_progress) */}
+        <ContinueReading className="pt-8" />
 
         {/* Short-lived ideas, above the feed */}
         <InstantIdeasTray className="pt-8" />

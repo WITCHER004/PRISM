@@ -489,3 +489,42 @@ body.focus-mode .post-footer-nav {
     scroll-behavior: auto !important;
   }
 }
+
+/* ── Private highlights (painted only in the owner's browser) ──────────────── */
+:root {
+  --hl-amber: rgb(233 180 76 / 0.42);
+  --hl-sage:  rgb(143 180 138 / 0.42);
+  --hl-sky:   rgb(127 176 220 / 0.40);
+}
+:root[data-theme="dark"] {
+  --hl-amber: rgb(224 165 58 / 0.32);
+  --hl-sage:  rgb(143 180 138 / 0.30);
+  --hl-sky:   rgb(127 176 220 / 0.30);
+}
+mark.prism-hl {
+  --hl: var(--hl-amber);
+  color: inherit;
+  background: linear-gradient(to bottom, transparent 0.18em, var(--hl) 0.18em, var(--hl) calc(100% - 0.08em), transparent calc(100% - 0.08em));
+  border-radius: 0.2em;
+  padding: 0 0.06em;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+mark.prism-hl[data-color="sage"] { --hl: var(--hl-sage); }
+mark.prism-hl[data-color="sky"]  { --hl: var(--hl-sky); }
+mark.prism-hl:hover { filter: saturate(1.25); }
+[data-hl-para] { box-shadow: inset 3px 0 0 var(--hl-amber); padding-left: 0.9em; cursor: pointer; }
+[data-hl-para="sage"] { box-shadow: inset 3px 0 0 var(--hl-sage); }
+[data-hl-para="sky"]  { box-shadow: inset 3px 0 0 var(--hl-sky); }
+
+/* ── Print: when the print edition can't open its own window, the article prints clean ── */
+@media print {
+  .site-header, footer, aside, nav, button, [role="dialog"], [role="status"], .post-footer-nav, .hue-glow { display: none !important; }
+  html, body { background: #fff !important; color: #111 !important; }
+  .prose-prism { font-family: var(--font-serif); font-size: 11.5pt; line-height: 1.6; max-width: none; }
+  mark.prism-hl { background: none; }
+  a { color: inherit !important; text-decoration: none !important; }
+  main::after { content: "✦ Prism"; display: block; margin-top: 2rem; text-align: center; font: 8pt var(--font-sans); letter-spacing: 0.2em; text-transform: uppercase; color: #9a9aa1; }
+}

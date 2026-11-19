@@ -30,6 +30,8 @@ import {
   Wallet,
   Sparkles,
   ChevronDown,
+  History,
+  Highlighter,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -68,6 +70,7 @@ export function SiteHeader() {
   const navLinks: { href: string; label: string; active: boolean; gold?: boolean; count?: number }[] = [
     { href: "/", label: "Feed", active: pathname === "/" },
     { href: "/explore", label: "Explore", active: !!pathname?.startsWith("/explore") },
+    { href: "/forum", label: "Discussions", active: !!pathname?.startsWith("/forum") },
     { href: "/elite", label: "Elite", gold: true, active: !!pathname?.startsWith("/elite") },
     ...(user && access.isPanelMember
       ? [{ href: "/panel", label: "Review Panel", active: !!pathname?.startsWith("/panel"), count: inbox.total }]
@@ -298,6 +301,8 @@ export function SiteHeader() {
                           { href: "/profile", icon: User, label: "Profile Hub" },
                           { href: "/dashboard", icon: FileText, label: "My Articles" },
                           { href: "/bookmarks", icon: Bookmark, label: "Library" },
+                          { href: "/profile#history", icon: History, label: "Reading History" },
+                          { href: "/profile#highlights", icon: Highlighter, label: "Private Highlights" },
                           ...(isElite ? [{ href: "/dashboard/earnings", icon: Wallet, label: "Earnings" }] : []),
                           { href: "/settings", icon: Settings, label: "Settings" },
                         ].map(({ href, icon: Icon, label }) => (

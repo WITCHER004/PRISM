@@ -2,9 +2,11 @@
 
 import { useEffect, useRef, useState, useCallback } from "react"
 import { createPortal } from "react-dom"
-import { MessageSquarePlus, Sparkles } from "lucide-react"
+import { Highlighter, MessageSquarePlus, Sparkles } from "lucide-react"
 import { motion, AnimatePresence } from "motion/react"
 import { dur, ease } from "@/lib/motion"
+import { HIGHLIGHT_COLORS, type HighlightColor } from "@/lib/highlights"
+import { paragraphIndexOf } from "@/lib/reader/paragraphs"
 
 export interface SelectionPayload {
   text: string
@@ -16,13 +18,15 @@ interface SelectionPopoverProps {
   containerRef: React.RefObject<HTMLElement | null>
   onAddMarginNote: (payload: SelectionPayload) => void
   onCreateQuoteCard: (payload: SelectionPayload) => void
+  /** Omit to hide the private-highlight action */
+  onPrivateHighlight?: (payload: SelectionPayload, color: HighlightColor) => void
 }
 
 /**
  * Floating #141413 obsidian popover pill that appears whenever text is highlighted
  * inside an article body.
  */
-export function SelectionPopover({ containerRef, onAddMarginNote, onCreateQuoteCard }: SelectionPopoverProps) {
+export function SelectionPopover({ containerRef, onAddMarginNote, onCreateQuoteCard, onPrivateHighlight }: SelectionPopoverProps) {
   const [selectionPayload, setSelectionPayload] = useState<SelectionPayload | null>(null)
   const [popoverPos, setPopoverPos] = useState<{ top: number; left: number } | null>(null)
   const [mounted, setMounted] = useState(false)
@@ -56,15 +60,8 @@ export function SelectionPopover({ containerRef, onAddMarginNote, onCreateQuoteC
       return
     }
 
-    // Determine nearest paragraph index within container
-    let node: Node | null = range.startContainer
-    if (node.nodeType === Node.TEXT_NODE) {
-      node = node.parentElement
-    }
-
-    const paragraphs = Array.from(container.querySelectorAll("p, h1, h2, h3, blockquote, li"))
-    const pElem = (node as Element)?.closest("p, h1, h2, h3, blockquote, li")
-    const paragraphIndex = pElem ? paragraphs.indexOf(pElem) : 0
+    // Nearest paragraph index within container (same counting as highlights and reading progress)
+    const paragraphIndex = paragraphIndexOf(container, range.startContainer)
 
     const rect = range.getBoundingClientRect()
     if (rect.width === 0 && rect.height === 0) return
@@ -143,6 +140,41 @@ export function SelectionPopover({ containerRef, onAddMarginNote, onCreateQuoteC
           <Sparkles className="w-3.5 h-3.5 fill-amber-300" />
           <span>Create Quote Card</span>
         </button>
+
+        {onPrivateHighlight && (
+          <>
+            <span className="w-px h-3.5 bg-white/15" aria-hidden />
+            <div className="inline-flex items-center gap-0.5 pr-1" role="group" aria-label="Private highlight">
+              <button
+                type="button"
+                onClick={() => {
+                  onPrivateHighlight(selectionPayload, "amber")
+                  setSelectionPayload(null)
+                }}
+                title="Only you can see your highlights"
+                className="inline-flex items-center gap-1.5 h-8 pl-3 pr-2 rounded-full text-xs font-medium text-[#f4f1ea] hover:bg-white/15 transition-colors"
+              >
+                <Highlighter className="w-3.5 h-3.5 text-amber-300" />
+                <span>Private Highlight</span>
+              </button>
+              {HIGHLIGHT_COLORS.map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  aria-label={`Highlight in ${c.label}`}
+                  title={c.label}
+                  onClick={() => {
+                    onPrivateHighlight(selectionPayload, c.id)
+                    setSelectionPayload(null)
+                  }}
+                  className="grid place-items-center w-6 h-6 rounded-full hover:bg-white/15 transition-colors"
+                >
+                  <span className="w-3 h-3 rounded-full ring-1 ring-white/25" style={{ background: c.swatch }} />
+                </button>
+              ))}
+            </div>
+          </>
+        )}
       </motion.div>
     </AnimatePresence>,
     document.body

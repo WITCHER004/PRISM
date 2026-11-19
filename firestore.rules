@@ -135,6 +135,71 @@ service cloud.firestore {
       allow update: if signedIn() && resource.data.recipientId == me() && changed().hasOnly(['read']);
     }
 
+    // ── private_highlights/{id} ───────────────────────────────────────────────────────────────
+    // A reader's own highlights: nobody else can list, read or change them
+    match /private_highlights/{id} {
+      allow read, delete: if signedIn() && resource.data.userId == me();
+      allow create: if signedIn() && request.resource.data.userId == me()
+        && request.resource.data.selectedText is string
+        && request.resource.data.selectedText.size() > 0 && request.resource.data.selectedText.size() <= 2000
+        && request.resource.data.color in ['amber', 'sage', 'sky'];
+      allow update: if signedIn() && resource.data.userId == me()
+        && changed().hasOnly(['color', 'personalNote'])
+        && request.resource.data.color in ['amber', 'sage', 'sky']
+        && request.resource.data.personalNote.size() <= 1000;
+    }
+
+    // ── reading_progress/{uid}_{articleId} · reading_history/{uid}_{articleId} ─────────────────
+    // Owner-only. `get` is keyed by the id prefix (the doc may not exist yet); `list` needs userId == me.
+    match /reading_progress/{id} {
+      allow get, delete: if signedIn() && id.split('_')[0] == me();
+      allow list: if signedIn() && resource.data.userId == me();
+      allow create, update: if signedIn() && request.resource.data.userId == me()
+        && id == me() + '_' + request.resource.data.articleId
+        && request.resource.data.progressPercent >= 0 && request.resource.data.progressPercent <= 100;
+    }
+    match /reading_history/{id} {
+      allow get, delete: if signedIn() && id.split('_')[0] == me();
+      allow list: if signedIn() && resource.data.userId == me();
+      allow create, update: if signedIn() && request.resource.data.userId == me()
+        && id == me() + '_' + request.resource.data.articleId;
+    }
+
+    // ── forum_threads/{id} · forum_replies/{id} ───────────────────────────────────────────────
+    function onlyMyVoteChanged() {
+      return changed().hasOnly(['upvoterIds'])
+        && request.resource.data.upvoterIds.toSet().difference(resource.data.upvoterIds.toSet())
+             .union(resource.data.upvoterIds.toSet().difference(request.resource.data.upvoterIds.toSet()))
+             .hasOnly([me()]);
+    }
+    match /forum_threads/{id} {
+      allow read: if true;
+      allow create: if signedIn() && request.resource.data.authorId == me()
+        && request.resource.data.title is string
+        && request.resource.data.title.size() > 0 && request.resource.data.title.size() <= 160
+        && request.resource.data.body is string && request.resource.data.body.size() <= 5000
+        && request.resource.data.replyCount == 0 && request.resource.data.upvoterIds.size() == 0;
+      // The reply counter moves by exactly one with each reply posted or deleted
+      allow update: if signedIn() && changed().hasOnly(['replyCount', 'lastActivityAt'])
+        && (request.resource.data.replyCount == resource.data.replyCount + 1
+            || request.resource.data.replyCount == resource.data.replyCount - 1);
+      allow update: if signedIn() && onlyMyVoteChanged();
+      allow delete: if (signedIn() && resource.data.authorId == me()) || isAdmin();
+    }
+    match /forum_replies/{id} {
+      allow read: if true;
+      allow create: if signedIn() && request.resource.data.authorId == me()
+        && request.resource.data.body is string
+        && request.resource.data.body.size() > 0 && request.resource.data.body.size() <= 5000
+        && request.resource.data.upvoterIds.size() == 0
+        && exists(/databases/$(database)/documents/forum_threads/$(request.resource.data.threadId));
+      allow update: if signedIn() && onlyMyVoteChanged();
+      // Its author, the thread's author (deleting the whole discussion), or an admin
+      allow delete: if (signedIn() && resource.data.authorId == me())
+        || (signedIn() && get(/databases/$(database)/documents/forum_threads/$(resource.data.threadId)).data.authorId == me())
+        || isAdmin();
+    }
+
     // ── craft_certificates/{id} · peer_dossiers/{id} (copies of an article's earned records) ──
     match /craft_certificates/{id} {
       allow read: if true;
