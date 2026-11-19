@@ -18,7 +18,8 @@ export const metadata: Metadata = pageMetadata({
   socialTitle: "Explore Prism",
 })
 
-export const revalidate = 60
+// Live Firestore data, rendered fresh on every request
+export const dynamic = "force-dynamic"
 
 export default async function ExplorePage({
   searchParams,

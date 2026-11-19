@@ -1,34 +1,120 @@
 import "server-only"
 
 // Server-side reads of published content from Firestore, for server components, the sitemap and
-// llms.txt. Uses the REST-based Firestore Lite SDK on its own app instance: no Auth, no listeners.
-// Only public data is read here (published articles, user profiles), which the rules allow anyone.
+// llms.txt. Talks to the Firestore v1 REST API with plain fetch(): no Firebase SDK on the server, so no
+// RPC transport, listeners or SDK logging. Only public data is read here (published articles, user
+// profiles), which the rules allow anyone, so the web API key is enough.
 //
 // Queries use single-field filters only, so no composite indexes need deploying; sorting happens here.
+// Every read fails soft: if Firestore is unreachable the pages render empty instead of throwing.
 
 import { cache } from "react"
-import { getApp, getApps, initializeApp } from "firebase/app"
-import { collection, doc, getDoc, getDocs, getFirestore, limit, query, where } from "firebase/firestore/lite"
+import { unstable_rethrow } from "next/navigation"
 import type { Post, User } from "@/lib/data"
 import { firebaseConfig } from "@/lib/firebase-config"
 import { articleFromDoc, COL, postFromArticle, readUserDoc, userFromDoc, type ArticleWorkflow } from "@/lib/live/schema"
 
-const APP_NAME = "prism-server"
-const app = getApps().some((a) => a.name === APP_NAME) ? getApp(APP_NAME) : initializeApp(firebaseConfig, APP_NAME)
-const db = getFirestore(app)
+const BASE = `https://firestore.googleapis.com/v1/projects/${firebaseConfig.projectId}/databases/(default)/documents`
+const TIMEOUT_MS = 8000
 
 const warn = (what: string, err: unknown) =>
-  console.warn(`[content] ${what}:`, (err as { code?: string })?.code ?? (err as Error)?.message ?? err)
+  console.warn(`[content] ${what}:`, (err as Error)?.message ?? err)
+
+/* ── Firestore REST ───────────────────────────────────────────────────────── */
+
+type RestValue = {
+  nullValue?: null
+  booleanValue?: boolean
+  integerValue?: string
+  doubleValue?: number
+  timestampValue?: string
+  stringValue?: string
+  bytesValue?: string
+  referenceValue?: string
+  geoPointValue?: { latitude: number; longitude: number }
+  arrayValue?: { values?: RestValue[] }
+  mapValue?: { fields?: Record<string, RestValue> }
+}
+type RestDoc = { name: string; fields?: Record<string, RestValue> }
+
+/** A REST value → plain JS (timestamps become ISO strings, which the schema readers accept) */
+function fromRest(v: RestValue): unknown {
+  if ("stringValue" in v) return v.stringValue
+  if ("integerValue" in v) return Number(v.integerValue)
+  if ("doubleValue" in v) return v.doubleValue
+  if ("booleanValue" in v) return v.booleanValue
+  if ("timestampValue" in v) return v.timestampValue
+  if ("nullValue" in v) return null
+  if ("arrayValue" in v) return (v.arrayValue?.values ?? []).map(fromRest)
+  if ("mapValue" in v) return fieldsToObject(v.mapValue?.fields)
+  if ("referenceValue" in v) return v.referenceValue
+  if ("geoPointValue" in v) return v.geoPointValue
+  if ("bytesValue" in v) return v.bytesValue
+  return undefined
+}
+
+function fieldsToObject(fields: Record<string, RestValue> | undefined): Record<string, unknown> {
+  const out: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(fields ?? {})) out[k] = fromRest(v)
+  return out
+}
+
+const docId = (d: RestDoc) => d.name.slice(d.name.lastIndexOf("/") + 1)
+
+async function rest<T>(url: string, init?: RequestInit): Promise<T> {
+  const sep = url.includes("?") ? "&" : "?"
+  const res = await fetch(`${url}${sep}key=${firebaseConfig.apiKey}`, {
+    ...init,
+    headers: { "Content-Type": "application/json", ...init?.headers },
+    cache: "no-store",
+    signal: AbortSignal.timeout(TIMEOUT_MS),
+  })
+  if (!res.ok) throw new Error(`HTTP ${res.status} ${(await res.text().catch(() => "")).slice(0, 200)}`)
+  return (await res.json()) as T
+}
+
+/** A structured query on one collection (optional equality filter) → [id, data] pairs */
+async function runQuery(
+  collectionId: string,
+  opts: { where?: { field: string; equals: string }; limit: number }
+): Promise<[string, Record<string, unknown>][]> {
+  const structuredQuery: Record<string, unknown> = { from: [{ collectionId }], limit: opts.limit }
+  if (opts.where) {
+    structuredQuery.where = {
+      fieldFilter: { field: { fieldPath: opts.where.field }, op: "EQUAL", value: { stringValue: opts.where.equals } },
+    }
+  }
+  const rows = await rest<{ document?: RestDoc }[]>(`${BASE}:runQuery`, {
+    method: "POST",
+    body: JSON.stringify({ structuredQuery }),
+  })
+  return rows.filter((r) => r.document).map((r) => [docId(r.document!), fieldsToObject(r.document!.fields)])
+}
+
+/** One document, or null when it doesn't exist */
+async function getDocument(collectionId: string, id: string): Promise<[string, Record<string, unknown>] | null> {
+  try {
+    const d = await rest<RestDoc>(`${BASE}/${collectionId}/${encodeURIComponent(id)}`)
+    return [docId(d), fieldsToObject(d.fields)]
+  } catch (err) {
+    unstable_rethrow(err)
+    if ((err as Error).message?.startsWith("HTTP 404")) return null
+    throw err
+  }
+}
+
+/* ── Reads ────────────────────────────────────────────────────────────────── */
 
 /** Every published article (newest first). Cached per request. */
 export const getPublishedArticles = cache(async (max = 500): Promise<ArticleWorkflow[]> => {
   try {
-    const snap = await getDocs(query(collection(db, COL.articles), where("verificationStatus", "==", "published"), limit(max)))
-    return snap.docs
-      .map((d) => articleFromDoc(d.id, d.data()))
+    const rows = await runQuery(COL.articles, { where: { field: "verificationStatus", equals: "published" }, limit: max })
+    return rows
+      .map(([id, data]) => articleFromDoc(id, data))
       .filter((a) => a.live && a.publishedAt)
       .sort((a, b) => Date.parse(b.publishedAt!) - Date.parse(a.publishedAt!))
   } catch (err) {
+    unstable_rethrow(err) // Next's own signals (e.g. dynamic rendering) must not be swallowed
     warn("couldn't load published articles", err)
     return []
   }
@@ -38,12 +124,12 @@ export const getPublishedArticles = cache(async (max = 500): Promise<ArticleWork
 export const getUsersByHandle = cache(async (): Promise<Map<string, User>> => {
   const map = new Map<string, User>()
   try {
-    const snap = await getDocs(query(collection(db, COL.users), limit(2000)))
-    for (const d of snap.docs) {
-      const u = readUserDoc(d.id, d.data())
+    for (const [id, data] of await runQuery(COL.users, { limit: 2000 })) {
+      const u = readUserDoc(id, data)
       if (!u.suspended) map.set(u.handle, userFromDoc(u))
     }
   } catch (err) {
+    unstable_rethrow(err) // Next's own signals (e.g. dynamic rendering) must not be swallowed
     warn("couldn't load users", err)
   }
   return map
@@ -75,12 +161,13 @@ export async function getPostBySlug(handle: string, slug: string): Promise<Post 
 
 export async function getPostById(id: string): Promise<Post | null> {
   try {
-    const snap = await getDoc(doc(db, COL.articles, id))
-    if (!snap.exists()) return null
-    const a = articleFromDoc(snap.id, snap.data())
+    const row = await getDocument(COL.articles, id)
+    if (!row) return null
+    const a = articleFromDoc(row[0], row[1])
     const users = await getUsersByHandle()
     return postFromArticle(a, users.get(a.authorUsername))
   } catch (err) {
+    unstable_rethrow(err) // Next's own signals (e.g. dynamic rendering) must not be swallowed
     warn(`couldn't load articles/${id}`, err)
     return null
   }

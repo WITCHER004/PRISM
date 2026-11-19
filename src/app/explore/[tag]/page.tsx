@@ -24,7 +24,8 @@ interface TagPageProps {
 const topicDescription = (tag: Tag) =>
   TOPIC_DESCRIPTIONS[tag.slug] ?? `Independent ${tag.name} essays and stories on Prism, from writers you can follow.`
 
-export const revalidate = 60
+// Live Firestore data, rendered fresh on every request
+export const dynamic = "force-dynamic"
 
 async function topicsWithCounts(): Promise<Tag[]> {
   const counts = await getTopicCounts()

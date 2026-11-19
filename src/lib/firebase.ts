@@ -41,7 +41,21 @@ function createDb(): Firestore {
   g.__prismFirestore = instance
   return instance
 }
-export const db: Firestore = createDb()
+/**
+ * Browser only. Client components also render on the server (SSR), and this module comes along with
+ * them, but nothing there may start Firestore's long-polling transport; server code reads Firestore over
+ * REST instead (src/lib/server/content.ts). Every use of `db` sits in an effect, a listener or an event
+ * handler, none of which run during SSR; touching it on the server throws a clear error.
+ */
+export const db: Firestore =
+  typeof window !== "undefined"
+    ? createDb()
+    : (new Proxy({} as Firestore, {
+        get(_t, prop) {
+          if (prop === "then" || typeof prop === "symbol") return undefined
+          throw new Error(`[firebase] Firestore is browser-only; read it on the server via src/lib/server/content.ts (tried db.${String(prop)})`)
+        },
+      }) as Firestore)
 
 export const storage: FirebaseStorage = getStorage(app)
 

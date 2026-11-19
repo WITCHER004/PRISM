@@ -2,7 +2,8 @@ import { getPublishedPosts } from "@/lib/server/content"
 import { TOPICS } from "@/lib/topics"
 import { absoluteUrl } from "@/lib/seo"
 
-export const revalidate = 3600
+// Reads live Firestore (uncached fetch), so it renders per request
+export const dynamic = "force-dynamic"
 
 // llms.txt (https://llmstxt.org): a plain-Markdown map of the site for AI agents and answer engines.
 // Built from the site URL so it can never point at another domain.

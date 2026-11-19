@@ -13,7 +13,8 @@ interface ProfilePageProps {
   params: Promise<{ username: string }>
 }
 
-export const revalidate = 60
+// Live Firestore data, rendered fresh on every request
+export const dynamic = "force-dynamic"
 
 /**
  * A profile exists if a users/{uid} document claims the handle. Anything else is a 404: this route
