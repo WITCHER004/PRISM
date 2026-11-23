@@ -148,12 +148,25 @@ service cloud.firestore {
               'liveAiPercent', 'panelPassed', 'phase1', 'aiScore', 'plagiarismScore', 'submitted', 'submittedAt',
               'track', 'views', 'likes'];
     }
+    // The author's narration must be a Storage file in their own audiobooks/ folder
+    function validAudiobook(d) {
+      return (d.get('audiobookUrl', null) == null
+          && d.get('audiobookDurationSec', null) == null
+          && d.get('audiobookSource', null) == null)
+        || (d.audiobookUrl is string && d.audiobookUrl.size() <= 2048
+          && d.audiobookUrl.matches('^https://firebasestorage[.]googleapis[.]com/v0/b/[^/]+/o/audiobooks%2F' + me() + '%2F[^/?]+[?].*')
+          && d.audiobookDurationSec is number && d.audiobookDurationSec >= 0 && d.audiobookDurationSec <= 14400
+          && d.audiobookSource in ['recorded', 'uploaded']);
+    }
     function validArticle(d) {
       return str(d.get('title', ''), 0, 300)
         && optStr(d.get('subtitle', null), 500)
         && d.get('content', '') is string
         && d.get('tags', []) is list && d.get('tags', []).size() <= 10
-        && d.get('voterIds', []) is list && d.get('voterIds', []).size() <= 100;
+        && d.get('voterIds', []) is list && d.get('voterIds', []).size() <= 100
+        && validAudiobook(d)
+        && d.get('postFormat', 'essay') in ['essay', 'voice']
+        && d.get('authorNarrated', false) is bool;
     }
 
     match /articles/{id} {
@@ -301,6 +314,14 @@ service cloud.firestore {
       allow create, update: if signedIn() && data().userId == me()
         && id == me() + '_' + data().articleId
         && data().progressPercent >= 0 && data().progressPercent <= 100;
+    }
+    // audio_progress/{uid}_{articleId}: where a reader is in an author-narrated audiobook (resume anywhere)
+    match /audio_progress/{id} {
+      allow get, delete: if signedIn() && id.split('_')[0] == me();
+      allow create, update: if signedIn() && data().userId == me()
+        && id == me() + '_' + data().articleId
+        && data().positionSec is number && data().positionSec >= 0 && data().positionSec <= 14400
+        && data().keys().hasOnly(['userId', 'articleId', 'positionSec', 'durationSec', 'updatedAt']);
     }
     match /reading_history/{id} {
       allow get, delete: if signedIn() && id.split('_')[0] == me();

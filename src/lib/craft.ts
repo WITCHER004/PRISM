@@ -19,6 +19,8 @@ export interface CraftTelemetry {
   sessions: number
   typedChars: number
   pastedChars: number
+  /** Characters spoken into the editor with Dictate (composed in Prism, so counted with typing) */
+  dictatedChars?: number
   /** Time of the last edit (0 = none yet) */
   lastAt: number
   /** Word count over active time, downsampled */
@@ -37,7 +39,7 @@ export interface CraftCertificate {
   writingDurationMinutes: number
   sessions: number
   revisionSnapshots: RevisionSnapshot[]
-  /** Typed share of all inserted characters, 0–1 (null when nothing was recorded) */
+  /** Typed (or dictated) share of all inserted characters, 0–1 (null when nothing was recorded) */
   typedVsPastedRatio: number | null
   /** Phase 1 AI share, 0–100 (null when the check hasn't run) */
   aiCheckScore: number | null
@@ -79,8 +81,10 @@ const MILESTONES: { label: RevisionSnapshot["label"]; share: number }[] = [
 export function certificateFrom(t: CraftTelemetry, finalWords: number, aiPercent: number | null | undefined): CraftCertificate {
   const minutes = Math.max(1, Math.round(t.activeMs / 60_000))
   const growth = t.growth.length ? t.growth : [{ ms: t.activeMs, words: finalWords }]
-  const inserted = t.typedChars + t.pastedChars
-  const typedRatio = inserted > 0 ? t.typedChars / inserted : null
+  // Dictation is composed live in the editor, so it counts as the author's own writing, like typing
+  const composed = t.typedChars + (t.dictatedChars ?? 0)
+  const inserted = composed + t.pastedChars
+  const typedRatio = inserted > 0 ? composed / inserted : null
 
   const toMinute = (ms: number) => Math.max(0, Math.round(ms / 60_000))
   const revisionSnapshots: RevisionSnapshot[] = MILESTONES.map(({ label, share }) => {

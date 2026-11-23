@@ -13,7 +13,8 @@ import { RatingChip } from "@/components/reviews/ArticleReviews"
 import { ElitePaperBadge } from "@/components/papers/ElitePaper"
 import { hueStyle } from "@/lib/topics"
 import { formatRelativeDate, numberWithCommas, cn } from "@/lib/utils"
-import { Bookmark, BookmarkCheck, Lock, BadgeCheck, ArrowUpRight, HandHeart } from "lucide-react"
+import { Bookmark, BookmarkCheck, Lock, BadgeCheck, ArrowUpRight, HandHeart, Mic } from "lucide-react"
+import { formatClock } from "@/lib/audioFormat"
 
 interface PostCardProps {
   post: Post
@@ -72,7 +73,10 @@ export function PostCard({ post, variant = "default", showAuthor = true, index, 
           </span>
         )}
         <div className="flex-1 min-w-0">
-          <TopicChip post={post} subtle />
+          <span className="flex flex-wrap items-center gap-2">
+            <TopicChip post={post} subtle />
+            <VoicePill post={post} />
+          </span>
           <Link href={href}>
             <h3 className="mt-1.5 font-display font-semibold text-[1.0625rem] leading-snug tracking-[-0.015em] text-[var(--fg)] line-clamp-3 group-hover:underline decoration-2 underline-offset-4 hue-decoration">
               {post.title}
@@ -119,6 +123,7 @@ export function PostCard({ post, variant = "default", showAuthor = true, index, 
               {topic?.name ?? "Story"}
             </span>
             <PaywallPill tier={post.paywallTier} paper={!!post.paper} onDark />
+            <VoicePill post={post} onDark />
           </div>
           <Link href={href} className={cn("mt-4", overlayLink)}>
             <h2 className="display text-[1.875rem] sm:text-[2.5rem] lg:text-[2.75rem] max-w-2xl">{post.title}</h2>
@@ -176,6 +181,7 @@ export function PostCard({ post, variant = "default", showAuthor = true, index, 
           <div className="flex flex-wrap items-center justify-between gap-2">
             <TopicChip post={post} />
             <PaywallPill tier={post.paywallTier} paper={!!post.paper} />
+            <VoicePill post={post} />
             <RatingChip postId={post.id} className="ml-auto text-xs whitespace-nowrap" />
           </div>
           <Link href={href} className={cn("mt-3", overlayLink)}>
@@ -216,6 +222,7 @@ export function PostCard({ post, variant = "default", showAuthor = true, index, 
         <div className="flex flex-wrap items-center gap-2">
           <TopicChip post={post} />
           <PaywallPill tier={post.paywallTier} paper={!!post.paper} />
+            <VoicePill post={post} />
           <RatingChip postId={post.id} className="ml-auto text-xs whitespace-nowrap" />
         </div>
         <Link href={href} className={cn("mt-2.5", overlayLink)}>
@@ -263,6 +270,22 @@ function TopicChip({ post, subtle }: { post: Post; subtle?: boolean }) {
       <span className="w-1.5 h-1.5 rounded-full hue-dot" />
       {topic.name}
     </Link>
+  )
+}
+
+/** Voice posts, and essays with the author's own pre-recorded audiobook */
+function VoicePill({ post, onDark }: { post: Post; onDark?: boolean }) {
+  if (!post.audiobook) return null
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1 h-6 px-2 rounded-full text-[0.6875rem] font-medium whitespace-nowrap",
+        onDark ? "bg-amber-400/20 text-amber-100 backdrop-blur" : "bg-[var(--elite-wash)] text-[var(--elite-ink)] border border-[var(--elite-line)]"
+      )}
+    >
+      <Mic className="w-3 h-3" />
+      {post.format === "voice" ? "Voice post" : "Author Audiobook"} · <span className="tabular-nums">{formatClock(post.audiobook.durationSec)}</span>
+    </span>
   )
 }
 

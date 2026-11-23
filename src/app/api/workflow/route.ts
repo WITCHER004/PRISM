@@ -118,7 +118,8 @@ export async function POST(request: Request) {
     })
 
     if (!outcome.result.ok) return json({ error: outcome.result.error }, outcome.status)
-    return json({ ok: true, status: outcome.result.draft.status, report: report ?? undefined })
+    // The stored report, which can differ from the raw one (voice posts with short notes skip the text gate)
+    return json({ ok: true, status: outcome.result.draft.status, report: (report && outcome.result.draft.phase1) ?? undefined })
   } catch (err) {
     console.error("[workflow]", body.action, body.articleId, err)
     return json({ error: "Something went wrong. Try again." }, 500)

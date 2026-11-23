@@ -8,7 +8,7 @@ const SAMPLE_EVERY_MS = 90_000
 const BIG_JUMP_WORDS = 120
 
 /**
- * Records how a story is written: active time, sittings, typed vs pasted characters and how the
+ * Records how a story is written: active time, sittings, typed/dictated vs pasted characters and how the
  * word count grows. Counts only — the text typed or pasted is never kept.
  */
 export function useCraftTracker(initial?: CraftTelemetry) {
@@ -60,9 +60,14 @@ export function useCraftTracker(initial?: CraftTelemetry) {
     }
   }, [])
 
+  /** Text spoken in with Dictate: composed inside Prism, so it counts with typing, never as a paste */
+  const noteDictated = useCallback((chars: number) => {
+    if (chars > 0) data.current.dictatedChars = (data.current.dictatedChars ?? 0) + chars
+  }, [])
+
   /** A copy safe to store */
   const snapshot = useCallback((): CraftTelemetry => ({ ...data.current, growth: [...data.current.growth] }), [])
 
   // Stable identity so callers can list it as a dependency
-  return useMemo(() => ({ noteActivity, noteWords, attach, snapshot }), [noteActivity, noteWords, attach, snapshot])
+  return useMemo(() => ({ noteActivity, noteWords, noteDictated, attach, snapshot }), [noteActivity, noteWords, noteDictated, attach, snapshot])
 }

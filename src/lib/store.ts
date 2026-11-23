@@ -6,7 +6,7 @@ import { reviewKey, REVIEW_BODY_MAX, type ArticleReview } from "@/lib/reviews"
 import { logOutFirebase } from "@/lib/firebase"
 import { callWorkflow, type WorkflowResult } from "@/lib/workflow/client"
 import { isAdminEmail, isAdminUser } from "@/lib/admin"
-import { handleFrom, type ArticleVersion, type ArticleWorkflow, type UserDoc } from "@/lib/live/schema"
+import { handleFrom, type ArticleVersion, type AudiobookFields, type ArticleWorkflow, type UserDoc } from "@/lib/live/schema"
 import {
   DEMO_PAYOUT_SETTLE_MS,
   MIN_PAYOUT_USD,
@@ -157,7 +157,8 @@ interface UIState {
   // writing
   drafts: Record<string, Draft>
   saveDraft: (
-    d: Pick<Draft, "id" | "title" | "subtitle" | "contentHtml" | "tags" | "paywall" | "paper" | "craft" | "panelReview"> & {
+    d: Pick<Draft, "id" | "title" | "subtitle" | "contentHtml" | "tags" | "paywall" | "paper" | "craft" | "panelReview"> &
+      AudiobookFields & {
       coverImageUrl?: string
       originIdeaId?: string
       originIdeaText?: string

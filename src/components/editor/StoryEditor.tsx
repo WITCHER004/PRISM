@@ -7,7 +7,7 @@ import { AnimatePresence, motion } from "motion/react"
 import type { Editor } from "@tiptap/react"
 import {
   ArrowLeft, Check, CircleCheck, Eye, FilePlus2, Gem, Globe, Loader2, Lock, Minus,
-  PenLine, Plus, Save, Send, Settings2, X, LayoutGrid, ShieldCheck, Undo2, CircleAlert, ScanSearch,
+  PenLine, Plus, Save, Send, Settings2, X, LayoutGrid, ShieldCheck, Undo2, CircleAlert, ScanSearch, UploadCloud, Mic,
   Users, Scale, ArrowRight,
 } from "lucide-react"
 import { useUIStore, toast, type Draft, type PaywallChoice } from "@/lib/store"
@@ -24,7 +24,7 @@ import { dur, ease } from "@/lib/motion"
 import { cn, formatRelativeDate } from "@/lib/utils"
 import { findAccount } from "@/lib/data"
 import type { ArticleStatus, Phase1Report } from "@/lib/moderation/types"
-import { AI_MAX_PERCENT, canSubmit, isUnderReview, MIN_WORDS_FOR_SUBMISSION } from "@/lib/moderation/workflow"
+import { AI_MAX_PERCENT, canSubmit, isUnderReview, MIN_WORDS_FOR_SUBMISSION, VOICE_SKIP_PROVIDER } from "@/lib/moderation/workflow"
 import { PANEL_PASS_THRESHOLD, PANEL_SIZE } from "@/lib/elite/config"
 import { tallyPanel } from "@/lib/elite/panel"
 import { useSubscription } from "@/components/elite/hooks"
@@ -33,6 +33,9 @@ import { countWords } from "@/lib/moderation/heuristics"
 import { AIHumanGauge, Phase1Breakdown, StatusPill } from "@/components/moderation/Phase1Report"
 import { PaperSettings, PanelReviewSetting } from "@/components/papers/PaperSettings"
 import { CoverImageField } from "@/components/editor/CoverImageField"
+import { AudiobookStudio, type AudiobookStudioHandle } from "@/components/editor/AudiobookStudio"
+import type { AudiobookFields, PostFormat } from "@/lib/live/schema"
+import { formatClock } from "@/lib/audioFormat"
 import { openUpgrade } from "@/components/elite/UpgradeDialog"
 import { useCraftTracker } from "@/components/craft/useCraftTracker"
 import { certificateFrom } from "@/lib/craft"
@@ -116,6 +119,16 @@ function EditorWorkspace({ initial }: { initial?: Draft }) {
   const [paywall, setPaywall] = useState<PaywallChoice>(initial?.paywall ?? "FREE")
   const [paper, setPaper] = useState<AdvancedPaper | undefined>(initial?.paper)
   const [coverImageUrl, setCoverImageUrl] = useState<string | undefined>(initial?.coverImageUrl)
+  const studioRef = useRef<AudiobookStudioHandle>(null)
+  // "essay": a written story (optionally with a pre-recorded audiobook). "voice": the recording is the piece.
+  const [postFormat, setPostFormat] = useState<PostFormat>(initial?.postFormat === "voice" ? "voice" : "essay")
+  const isVoice = postFormat === "voice"
+  const [uploadPct, setUploadPct] = useState(0)
+  const [audiobook, setAudiobook] = useState<AudiobookFields>(() => ({
+    audiobookUrl: initial?.audiobookUrl,
+    audiobookDurationSec: initial?.audiobookDurationSec,
+    audiobookSource: initial?.audiobookSource,
+  }))
   // Elite writers send stories to the peer panel unless they switch it off
   const [panelReview, setPanelReview] = useState<boolean>(initial?.panelReview ?? true)
   // Proof-of-craft telemetry: counts and timings only
@@ -131,14 +144,14 @@ function EditorWorkspace({ initial }: { initial?: Draft }) {
   // Edits to a live story wait for review; readers keep seeing the approved version
   const hasUnsubmittedEdits =
     !!live &&
-    (live.title !== title || live.subtitle !== subtitle || live.contentHtml !== html || live.paywall !== paywall || live.tags.join() !== tags.join() || JSON.stringify(live.paper) !== JSON.stringify(paper) || (live.coverImageUrl ?? "") !== (coverImageUrl ?? ""))
+    (live.title !== title || live.subtitle !== subtitle || live.contentHtml !== html || live.paywall !== paywall || live.tags.join() !== tags.join() || JSON.stringify(live.paper) !== JSON.stringify(paper) || (live.coverImageUrl ?? "") !== (coverImageUrl ?? "") || (live.audiobookUrl ?? "") !== (audiobook.audiobookUrl ?? "") || (live.postFormat ?? "essay") !== postFormat)
 
   const [saveState, setSaveState] = useState<SaveState>(initial ? "saved" : "idle")
   const [savedAt, setSavedAt] = useState<string | null>(initial?.updatedAt ?? null)
   const [version, setVersion] = useState(0) // bumps on every edit; drives autosave
   const [preview, setPreview] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
-  const [publishPhase, setPublishPhase] = useState<null | "confirm" | "checking" | "failed" | "queued">(null)
+  const [publishPhase, setPublishPhase] = useState<null | "confirm" | "uploading" | "checking" | "failed" | "queued">(null)
   const [report, setReport] = useState<Phase1Report | null>(null)
   // Why the last check didn't go through, shown inside the dialog (a toast would sit behind it)
   const [submitError, setSubmitError] = useState<string | null>(null)
@@ -163,8 +176,8 @@ function EditorWorkspace({ initial }: { initial?: Draft }) {
   }, [craft])
 
   // Latest values for the save function (used from timers, key handlers and unmount)
-  const latest = useRef({ title, subtitle, html, tags, paywall, paper, panelReview, coverImageUrl })
-  latest.current = { title, subtitle, html, tags, paywall, paper, panelReview, coverImageUrl }
+  const latest = useRef({ title, subtitle, html, tags, paywall, paper, panelReview, coverImageUrl, audiobook, postFormat })
+  latest.current = { title, subtitle, html, tags, paywall, paper, panelReview, coverImageUrl, audiobook, postFormat }
 
   const save = useCallback(
     (opts: { quiet?: boolean; manual?: boolean } = {}) => {
@@ -186,6 +199,10 @@ function EditorWorkspace({ initial }: { initial?: Draft }) {
         paper: v.paper,
         panelReview: v.panelReview,
         coverImageUrl: v.coverImageUrl,
+        postFormat: v.postFormat,
+        audiobookUrl: v.audiobook.audiobookUrl,
+        audiobookDurationSec: v.audiobook.audiobookDurationSec,
+        audiobookSource: v.audiobook.audiobookSource,
         craft: craft.snapshot(),
         originIdeaId: originIdeaMetadata?.originIdeaId,
         originIdeaText: originIdeaMetadata?.originIdeaText,
@@ -329,7 +346,16 @@ function EditorWorkspace({ initial }: { initial?: Draft }) {
       requestAnimationFrame(() => titleRef.current?.focus())
       return
     }
-    if (!hasBody(html)) {
+    if (studioRef.current?.isRecording()) {
+      toast("Stop the recording first, then submit", { tone: "error" })
+      return
+    }
+    if (isVoice && !audiobook.audiobookUrl && !studioRef.current?.hasPending()) {
+      toast("Record or upload your voice first — it's the heart of a voice post", { tone: "error" })
+      setPreview(false)
+      return
+    }
+    if (!isVoice && !hasBody(html)) {
       toast("Write a little of your story first", { tone: "error" })
       setPreview(false)
       requestAnimationFrame(() => editorRef.current?.commands.focus("end"))
@@ -340,11 +366,12 @@ function EditorWorkspace({ initial }: { initial?: Draft }) {
       setSettingsOpen(true)
       return
     }
-    if (words < MIN_WORDS_FOR_SUBMISSION) {
+    // Voice posts are judged on the recording: their show notes have no minimum
+    if (!isVoice && words < MIN_WORDS_FOR_SUBMISSION) {
       toast(`Articles need at least ${MIN_WORDS_FOR_SUBMISSION} words — you have ${words}`, { tone: "error" })
       return
     }
-    if (isLive && !hasUnsubmittedEdits) {
+    if (isLive && !hasUnsubmittedEdits && !studioRef.current?.hasPending()) {
       toast("No changes since the published version")
       return
     }
@@ -356,6 +383,22 @@ function EditorWorkspace({ initial }: { initial?: Draft }) {
   const confirmPublish = async () => {
     // One check at a time: the confirm button stays clickable while it animates out
     if (checking.current) return
+    // A recorded or chosen take that wasn't attached yet uploads now, with progress in this dialog
+    if (studioRef.current?.hasPending()) {
+      checking.current = true
+      setSubmitError(null)
+      setUploadPct(0)
+      setPublishPhase("uploading")
+      const fields = await studioRef.current.attachPending(setUploadPct)
+      checking.current = false
+      if (!fields) {
+        setSubmitError("Your recording didn't upload, so nothing was submitted. Check your connection and try again.")
+        setPublishPhase("confirm")
+        return
+      }
+      // The state update lands on the next render; save needs the fields now
+      latest.current = { ...latest.current, audiobook: fields }
+    }
     const saved = save({ quiet: true })
     if (!saved || !canSubmit(saved.status)) {
       setPublishPhase(null)
@@ -526,6 +569,13 @@ function EditorWorkspace({ initial }: { initial?: Draft }) {
               liveWithEdits={hasUnsubmittedEdits}
               onOpenReport={openLastReport}
             />
+            <FormatSwitch
+              value={postFormat}
+              onChange={(next) => {
+                setPostFormat(next)
+                touch()
+              }}
+            />
             {tags[0] && (
               <span className="inline-flex items-center gap-1.5 h-8 px-3 mb-5 rounded-full hue-wash hue-ink text-sm font-medium capitalize">
                 <span className="w-2 h-2 rounded-full hue-dot" />
@@ -570,14 +620,45 @@ function EditorWorkspace({ initial }: { initial?: Draft }) {
                   titleRef.current?.focus()
                 }
               }}
-              placeholder="Add a subtitle…"
+              placeholder={isVoice ? "One-line summary (optional)…" : "Add a subtitle…"}
               rows={1}
               maxLength={240}
               className="block w-full mt-4 text-xl sm:text-2xl leading-snug text-[var(--fg-muted)] bg-transparent border-none outline-none resize-none placeholder:text-[var(--fg-subtle)] overflow-hidden"
             />
             <div aria-hidden className="w-16 h-1 rounded-full spectrum-bg mt-8 mb-8" />
-            <RichEditor initialContent={initial?.contentHtml ?? seedHtml} onChange={onEditorChange} onReady={onEditorReady} />
-            <WordGoal words={words} />
+            {/* One tree for both formats (CSS order moves the parts), so the editor and a pending take survive a switch */}
+            <div className="flex flex-col">
+              <div className={isVoice ? "order-1" : "order-3"}>
+                <AudiobookStudio
+                  ref={studioRef}
+                  variant={isVoice ? "primary" : "attach"}
+                  value={audiobook}
+                  onChange={(next) => {
+                    setAudiobook(next)
+                    touch()
+                  }}
+                />
+              </div>
+              {isVoice && (
+                <div className="order-2 mt-8">
+                  <TopicsField tags={tags} onAdd={addTag} onRemove={removeTag} inputId="voice-topic-input" />
+                  <div className="mt-10 mb-4 flex items-baseline justify-between gap-3">
+                    <h2 className="meta">Show notes · summary</h2>
+                    <span className="meta normal-case tracking-normal">Optional · no word minimum</span>
+                  </div>
+                </div>
+              )}
+              <div className="order-2">
+                <RichEditor
+                  initialContent={initial?.contentHtml ?? seedHtml}
+                  onChange={onEditorChange}
+                  onReady={onEditorReady}
+                  onDictated={craft.noteDictated}
+                  placeholder={isVoice ? "What's this voice post about? Add notes, links or a transcript…" : undefined}
+                />
+              </div>
+            </div>
+            {!isVoice && <WordGoal words={words} />}
           </div>
 
           {showPreview && (
@@ -808,11 +889,13 @@ function EditorWorkspace({ initial }: { initial?: Draft }) {
       {/* Submit: confirm → Phase 1 check → failed (edit & resubmit) | queued for employee review */}
       <StudioDialog
         open={publishPhase !== null}
-        onOpenChange={(o) => !o && publishPhase !== "checking" && setPublishPhase(null)}
-        dismissable={publishPhase !== "checking"}
+        onOpenChange={(o) => !o && publishPhase !== "checking" && publishPhase !== "uploading" && setPublishPhase(null)}
+        dismissable={publishPhase !== "checking" && publishPhase !== "uploading"}
         className={publishPhase === "failed" ? "max-w-xl" : undefined}
         title={
-          publishPhase === "checking"
+          publishPhase === "uploading"
+            ? "Uploading your recording…"
+            : publishPhase === "checking"
             ? "Checking your story…"
             : publishPhase === "failed"
               ? "Too much reads as AI-generated"
@@ -823,8 +906,14 @@ function EditorWorkspace({ initial }: { initial?: Draft }) {
                   : "Submit for review?"
         }
         description={
-          publishPhase === "checking"
-            ? "Phase 1: measuring sentence rhythm, predictability, repetition and phrasing."
+          publishPhase === "uploading"
+            ? isVoice
+              ? "Saving your voice recording before it goes to review. Keep this tab open."
+              : "Saving your attached audiobook before the story goes to review. Keep this tab open."
+            : publishPhase === "checking"
+            ? isVoice
+              ? "Phase 1: checking your show notes, then queueing the recording for a reviewer to listen to."
+              : "Phase 1: measuring sentence rhythm, predictability, repetition and phrasing."
             : publishPhase === "failed"
               ? `Prism publishes stories that are at least ${100 - AI_MAX_PERCENT}% human-written. Revise the flagged passages, then resubmit.`
               : publishPhase === "queued"
@@ -837,7 +926,24 @@ function EditorWorkspace({ initial }: { initial?: Draft }) {
         }
       >
         <AnimatePresence mode="wait" initial={false}>
-          {publishPhase === "checking" ? (
+          {publishPhase === "uploading" ? (
+            <motion.div key="uploading" className="mt-8 mb-2" aria-busy="true">
+              <div className="flex items-center gap-3">
+                <span className="grid place-items-center w-11 h-11 shrink-0 rounded-full bg-[var(--elite-wash)] text-[var(--elite-ink)]">
+                  <UploadCloud className="w-5 h-5" />
+                </span>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="font-medium">Uploading</span>
+                    <span className="tabular-nums font-semibold">{uploadPct}%</span>
+                  </div>
+                  <div className="mt-1.5 h-2 rounded-full bg-[var(--surface)] overflow-hidden" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={uploadPct} aria-label="Upload progress">
+                    <div className="h-full rounded-full bg-[var(--elite-ink)] transition-[width] duration-300" style={{ width: `${uploadPct}%` }} />
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          ) : publishPhase === "checking" ? (
             <motion.div key="checking" className="mt-8 mb-2 flex flex-col items-center gap-4 text-center" aria-busy="true">
               <span className="grid place-items-center w-14 h-14 rounded-full bg-[var(--surface)]">
                 <ScanSearch className="w-6 h-6 text-[var(--fg-muted)] animate-pulse" />
@@ -864,12 +970,19 @@ function EditorWorkspace({ initial }: { initial?: Draft }) {
               initial={{ opacity: 0, scale: 0.98 }}
               animate={{ opacity: 1, scale: 1, transition: { duration: dur.base, ease: ease.out } }}
             >
-              <div className="mt-6 p-4 rounded-[14px] border border-[var(--border)]">
-                <AIHumanGauge aiPercent={report.aiPercent} threshold={report.threshold} />
-              </div>
+              {report.provider === VOICE_SKIP_PROVIDER ? (
+                <p className="mt-6 flex items-start gap-3 p-4 rounded-[14px] border border-[var(--elite-line)] bg-[var(--elite-wash)] text-sm">
+                  <Mic className="w-4 h-4 mt-0.5 shrink-0 text-[var(--elite-ink)]" />
+                  Your show notes are short, so the AI-content check was skipped. A Prism reviewer will listen to your recording instead.
+                </p>
+              ) : (
+                <div className="mt-6 p-4 rounded-[14px] border border-[var(--border)]">
+                  <AIHumanGauge aiPercent={report.aiPercent} threshold={report.threshold} />
+                </div>
+              )}
               <ol className="mt-4 space-y-2 text-sm">
                 <li className="flex items-center gap-2.5">
-                  <CircleCheck className="w-4 h-4 text-[var(--accent)]" /> Phase 1 · AI-content check passed
+                  <CircleCheck className="w-4 h-4 text-[var(--accent)]" /> Phase 1 · {report.provider === VOICE_SKIP_PROVIDER ? "Voice post accepted for review" : "AI-content check passed"}
                 </li>
                 <li className="flex items-center gap-2.5 text-[var(--fg-muted)]">
                   <ShieldCheck className="w-4 h-4" /> Phase 2 · Waiting for an employee review
@@ -910,8 +1023,21 @@ function EditorWorkspace({ initial }: { initial?: Draft }) {
                   <dd className="font-medium text-right capitalize">{tags.length ? tags.map(topicLabel).join(", ") : "None"}</dd>
                 </div>
                 <div className="flex justify-between gap-4 px-4 py-3">
-                  <dt className="text-[var(--fg-muted)]">Length</dt>
-                  <dd className="font-medium tabular-nums">{words} words · {minutes} min read</dd>
+                  <dt className="text-[var(--fg-muted)]">{isVoice ? "Recording" : "Length"}</dt>
+                  <dd className="font-medium tabular-nums text-right">
+                    {isVoice ? (
+                      <>
+                        Voice post
+                        {audiobook.audiobookUrl ? ` · ${formatClock(audiobook.audiobookDurationSec ?? 0)}` : " · uploads when you submit"}
+                        {words ? ` · ${words}-word notes` : ""}
+                      </>
+                    ) : (
+                      <>
+                        {words} words · {minutes} min read
+                        {audiobook.audiobookUrl ? ` · audiobook ${formatClock(audiobook.audiobookDurationSec ?? 0)}` : studioRef.current?.hasPending() ? " · audiobook uploads on submit" : ""}
+                      </>
+                    )}
+                  </dd>
                 </div>
               </dl>
               <ol className="mt-4 rounded-[14px] border border-[var(--border)] divide-y divide-[var(--border)] text-sm" aria-label="Review steps">
@@ -919,7 +1045,11 @@ function EditorWorkspace({ initial }: { initial?: Draft }) {
                   <ScanSearch className="w-4 h-4 mt-0.5 shrink-0 text-[var(--fg-muted)]" />
                   <span>
                     <span className="font-medium">1 · AI-content check</span>
-                    <span className="block text-xs text-[var(--fg-muted)]">At most {AI_MAX_PERCENT}% AI, checked instantly.</span>
+                    <span className="block text-xs text-[var(--fg-muted)]">
+                      {isVoice
+                        ? `Show notes of ${MIN_WORDS_FOR_SUBMISSION}+ words are checked (at most ${AI_MAX_PERCENT}% AI); shorter notes skip it and a reviewer listens instead.`
+                        : `At most ${AI_MAX_PERCENT}% AI, checked instantly.`}
+                    </span>
                   </span>
                 </li>
                 <li className="flex items-start gap-3 px-4 py-3">
@@ -1085,6 +1215,47 @@ function ModerationBanner({
   return null
 }
 
+/** Written Essay vs Voice Post */
+function FormatSwitch({ value, onChange }: { value: PostFormat; onChange: (next: PostFormat) => void }) {
+  const options = [
+    { id: "essay" as const, label: "Written Essay", hint: "Text first, optional audiobook", icon: PenLine },
+    { id: "voice" as const, label: "Voice Post", hint: "Audio first, short show notes", icon: Mic },
+  ]
+  return (
+    <div role="radiogroup" aria-label="Post format" className="mb-8 grid grid-cols-2 gap-1 p-1 rounded-[18px] bg-[var(--surface)] max-w-md">
+      {options.map((o) => {
+        const active = value === o.id
+        return (
+          <button
+            key={o.id}
+            type="button"
+            role="radio"
+            aria-checked={active}
+            onClick={() => !active && onChange(o.id)}
+            className={cn(
+              "flex items-center gap-2.5 px-3 py-2 rounded-[14px] text-left transition-colors",
+              active ? "bg-[var(--panel)] shadow-[var(--shadow)]" : "hover:bg-[var(--panel)]/60"
+            )}
+          >
+            <span
+              className={cn(
+                "grid place-items-center w-8 h-8 shrink-0 rounded-full",
+                active ? (o.id === "voice" ? "bg-[#141413] text-amber-300" : "bg-[var(--fg)] text-[var(--bg)]") : "text-[var(--fg-muted)]"
+              )}
+            >
+              <o.icon className="w-4 h-4" />
+            </span>
+            <span className="min-w-0">
+              <span className={cn("block text-sm font-medium", !active && "text-[var(--fg-muted)]")}>{o.label}</span>
+              <span className="hidden sm:block text-[11px] text-[var(--fg-muted)] truncate">{o.hint}</span>
+            </span>
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
 /** Live progress toward the 150-word minimum */
 function WordGoal({ words }: { words: number }) {
   const met = words >= MIN_WORDS_FOR_SUBMISSION
@@ -1120,7 +1291,17 @@ function latestDate(savedAt: string | null) {
 
 /* ── Topics ────────────────────────────────────────────────────────────────── */
 
-function TopicsField({ tags, onAdd, onRemove }: { tags: string[]; onAdd: (t: string) => boolean; onRemove: (t: string) => void }) {
+function TopicsField({
+  tags,
+  onAdd,
+  onRemove,
+  inputId = "topic-input",
+}: {
+  tags: string[]
+  onAdd: (t: string) => boolean
+  onRemove: (t: string) => void
+  inputId?: string
+}) {
   const [value, setValue] = useState("")
   const suggestions = TOPICS.filter((t) => !tags.includes(t.slug)).slice(0, 6)
   const full = tags.length >= 5
@@ -1128,7 +1309,7 @@ function TopicsField({ tags, onAdd, onRemove }: { tags: string[]; onAdd: (t: str
   return (
     <section>
       <div className="flex items-baseline justify-between mb-2">
-        <label htmlFor="topic-input" className="meta">Topics</label>
+        <label htmlFor={inputId} className="meta">Topics</label>
         <span className="meta tabular-nums">{tags.length}/5</span>
       </div>
       {tags.length > 0 && (
@@ -1166,7 +1347,7 @@ function TopicsField({ tags, onAdd, onRemove }: { tags: string[]; onAdd: (t: str
         }}
       >
         <input
-          id="topic-input"
+          id={inputId}
           value={value}
           onChange={(e) => setValue(e.target.value.replace(",", ""))}
           onKeyDown={(e) => {

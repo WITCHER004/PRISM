@@ -1,0 +1,8 @@
+[
+  {
+    "origin": ["https://prism0.netlify.app", "http://localhost:3000"],
+    "method": ["GET", "HEAD"],
+    "responseHeader": ["Content-Type", "Content-Length", "Content-Disposition"],
+    "maxAgeSeconds": 3600
+  }
+]

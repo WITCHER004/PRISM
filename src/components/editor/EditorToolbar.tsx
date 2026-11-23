@@ -5,11 +5,12 @@ import { type Editor, useEditorState } from "@tiptap/react"
 import { AnimatePresence, motion } from "motion/react"
 import {
   Bold, Italic, Underline, Link2, Heading2, Heading3, List, ListOrdered, Quote,
-  SquareCode, Code, Highlighter, Undo2, Redo2, Strikethrough, ImagePlus, Check, X, Unlink,
+  SquareCode, Code, Highlighter, Undo2, Redo2, Strikethrough, ImagePlus, Check, X, Unlink, Mic,
 } from "lucide-react"
 import { dur, ease } from "@/lib/motion"
 import { cn } from "@/lib/utils"
 import { InlineImageUpload } from "./CoverImageField"
+import { DICTATION_LANGS, type Dictation, type DictationLang } from "./Dictation"
 
 export type UrlMode = "link" | "image" | null
 
@@ -17,6 +18,7 @@ interface ToolbarProps {
   editor: Editor
   urlMode: UrlMode
   onUrlModeChange: (mode: UrlMode) => void
+  dictation?: Dictation
 }
 
 interface ToolbarBtn {
@@ -38,7 +40,7 @@ function normalizeUrl(raw: string) {
   return `https://${v}`
 }
 
-export function EditorToolbar({ editor, urlMode, onUrlModeChange }: ToolbarProps) {
+export function EditorToolbar({ editor, urlMode, onUrlModeChange, dictation }: ToolbarProps) {
   // TipTap v3 doesn't re-render on every transaction; subscribe to just what the buttons show
   const s = useEditorState({
     editor,
@@ -108,10 +110,13 @@ export function EditorToolbar({ editor, urlMode, onUrlModeChange }: ToolbarProps
 
   return (
     <div className="sticky top-[4.25rem] z-20 mb-10">
+      {/* Speak to Write is its own pill: beside the formatting pill when there's room, on the next line when not,
+          but never scrolled out of view inside it */}
+      <div className="flex flex-wrap items-center justify-center gap-2">
       <div
         role="toolbar"
         aria-label="Formatting"
-        className="flex items-center gap-0.5 p-1 rounded-full border border-[var(--border)] bg-[var(--panel)]/90 backdrop-blur-md shadow-[var(--shadow)] overflow-x-auto scrollbar-none w-max max-w-full mx-auto"
+        className="flex items-center gap-0.5 p-1 rounded-full border border-[var(--border)] bg-[var(--panel)]/90 backdrop-blur-md shadow-[var(--shadow)] overflow-x-auto scrollbar-none min-w-0"
       >
         {groups.map((group, gi) => (
           <div key={gi} className="flex items-center gap-0.5 shrink-0">
@@ -141,6 +146,49 @@ export function EditorToolbar({ editor, urlMode, onUrlModeChange }: ToolbarProps
             })}
           </div>
         ))}
+      </div>
+        {dictation && (
+          <div
+            role="group"
+            aria-label="Speak to Write"
+            className={cn(
+              "flex items-center gap-0.5 p-1 shrink-0 rounded-full border backdrop-blur-md shadow-[var(--shadow)]",
+              dictation.listening ? "border-red-500/40 bg-[var(--panel)]" : "border-[var(--elite-line)] bg-[var(--panel)]/90"
+            )}
+          >
+            <button
+              type="button"
+              onMouseDown={(e) => e.preventDefault() /* keep the caret: dictation writes there */}
+              onClick={dictation.toggle}
+              aria-pressed={dictation.listening}
+              title={dictation.supported ? (dictation.listening ? "Stop dictating" : "Speak to Write: talk and your words appear in the article") : "Speak to Write isn't available in this browser"}
+              className={cn(
+                "inline-flex items-center gap-1.5 h-10 px-3 rounded-full text-sm font-medium transition-colors",
+                dictation.listening
+                  ? "bg-red-600 text-white hover:bg-red-700"
+                  : "bg-[var(--elite-wash)] text-[var(--elite-ink)] hover:bg-[var(--elite-glow)]",
+                !dictation.supported && "opacity-50"
+              )}
+            >
+              <Mic className="w-4 h-4" />
+              <span className="whitespace-nowrap">{dictation.listening ? "Stop" : <><span className="sm:hidden">Speak</span><span className="hidden sm:inline">Speak to Write</span></>}</span>
+            </button>
+            <label className="relative">
+              <span className="sr-only">Dictation language</span>
+              <select
+                value={dictation.lang}
+                onChange={(e) => dictation.setLang(e.target.value as DictationLang)}
+                className="w-[4.75rem] sm:w-auto h-10 pl-2 pr-1 rounded-full bg-transparent text-xs text-[var(--fg-muted)] hover:text-[var(--fg)] hover:bg-[var(--surface)] outline-none cursor-pointer [&>option]:bg-[var(--panel)] [&>option]:text-[var(--fg)]"
+              >
+                {DICTATION_LANGS.map((l) => (
+                  <option key={l.code} value={l.code}>
+                    {l.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        )}
       </div>
 
       <AnimatePresence>

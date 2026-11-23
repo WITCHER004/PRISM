@@ -3,9 +3,11 @@ rules_version = '2';
 // Firebase Storage rules for Prism. Deploy with:  firebase deploy --only firestore:rules,storage
 //   avatars/{uid}/…    profile photos        (written by that user)
 //   articles/{uid}/…   cover + inline images (written by that user)
-// Both are publicly readable: these images appear on public profiles and stories.
-// Uploads: the owner's own folder only, ≤ 5 MB, JPEG/PNG/WebP with a matching extension.
-// Keep in step with MAX_IMAGE_BYTES / IMAGE_TYPES in src/lib/storage.ts.
+//   audiobooks/{uid}/… author-narrated audiobook editions (written by that user)
+// All are publicly readable: they appear on public profiles and stories.
+// Image uploads: the owner's own folder only, ≤ 5 MB, JPEG/PNG/WebP with a matching extension.
+// Audio uploads: the owner's own folder only, < 50 MB, MP3/WAV/M4A/OGG (plus WebM/MP4 from in-browser recording).
+// Keep in step with src/lib/storage.ts and src/lib/audiobook.ts.
 service firebase.storage {
   match /b/{bucket}/o {
     function isAdmin() {
@@ -20,6 +22,18 @@ service firebase.storage {
         && file.lower().matches('.+\\.(jpe?g|png|webp)$');
     }
 
+    function ownAudio(uid, file) {
+      return request.auth != null && request.auth.uid == uid
+        && request.resource.size < 50 * 1024 * 1024
+        && request.resource.contentType.matches('audio/(mpeg|mp3|wav|x-wav|wave|vnd[.]wave|mp4|x-m4a|m4a|aac|ogg|webm)')
+        && file.lower().matches('.+[.](mp3|wav|m4a|ogg|webm|mp4)$');
+    }
+
+    match /audiobooks/{uid}/{file} {
+      allow read: if true;
+      allow create, update: if ownAudio(uid, file);
+      allow delete: if (request.auth != null && request.auth.uid == uid) || isAdmin();
+    }
     match /avatars/{uid}/{file} {
       allow read: if true;
       allow create, update: if ownImage(uid, file);
