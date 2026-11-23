@@ -220,6 +220,7 @@ html {
   font-size: 16px;
   scroll-behavior: smooth;
   -webkit-text-size-adjust: 100%;
+  overflow-x: clip; /* nothing may widen the page sideways on phones; clip keeps sticky headers working */
 }
 
 body {
@@ -230,6 +231,7 @@ body {
   transition: background-color 0.25s ease, color 0.25s ease;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  overflow-x: clip;
 }
 
 :focus-visible {
@@ -342,6 +344,28 @@ body {
 }
 
 .prose-prism p { margin-bottom: 1.35em; }
+
+/* Long URLs, emails and unbroken words wrap instead of widening the page; media and tables stay inside */
+.prose-prism { overflow-wrap: break-word; }
+.prose-prism a { overflow-wrap: anywhere; }
+.prose-prism :is(img, video, iframe, svg) { max-width: 100%; height: auto; }
+.prose-prism table { display: block; max-width: 100%; overflow-x: auto; }
+
+/* Listen mode on phones: the mini-player owns the bottom edge, so the story gets room to finish
+   above it and the article's floating dock steps aside until the player closes */
+@media (max-width: 767.98px) {
+  body[data-audio-player] #article-body { padding-bottom: 6rem; }
+  body[data-audio-player] .post-footer-nav.fixed { visibility: hidden; pointer-events: none; }
+}
+
+/* Listen mode: the block being read aloud */
+.prose-prism [data-listening] {
+  background: var(--accent-subtle);
+  box-shadow: 0 0 0 0.4em var(--accent-subtle);
+  border-radius: 0.35em;
+  color: var(--fg);
+  transition: background-color 0.3s, box-shadow 0.3s, color 0.3s;
+}
 
 .prose-prism > p:first-of-type {
   font-size: 1.15em;

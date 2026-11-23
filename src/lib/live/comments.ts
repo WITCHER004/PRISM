@@ -6,6 +6,7 @@
 import { useCallback, useEffect, useState } from "react"
 import { COL } from "@/lib/live/schema"
 import { toast, useUIStore } from "@/lib/store"
+import { cooldownMessage, markPosted, stampRateLimit } from "@/lib/rateLimit"
 
 export interface LiveComment {
   id: string
@@ -77,9 +78,17 @@ export function useComments(articleId: string) {
     async (body: string, parentId?: string): Promise<string | null> => {
       const text = body.trim()
       if (!uid || !handle || !text) return null
+      const wait = cooldownMessage("comment")
+      if (wait) {
+        toast(wait)
+        return null
+      }
       try {
-        const [{ collection, addDoc }, { db }] = await fs()
-        const ref = await addDoc(collection(db, COL.comments), {
+        const [fsm, { db }] = await fs()
+        const ref = fsm.doc(fsm.collection(db, COL.comments))
+        const batch = fsm.writeBatch(db)
+        stampRateLimit(fsm, batch, db, uid, "comment")
+        batch.set(ref, {
           articleId,
           parentId: parentId ?? null,
           body: text,
@@ -90,6 +99,8 @@ export function useComments(articleId: string) {
           likerIds: [],
           createdAt: Date.now(),
         })
+        await batch.commit()
+        markPosted("comment")
         return ref.id
       } catch (err) {
         warn("couldn't post", err)

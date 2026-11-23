@@ -4,6 +4,7 @@ import { useMemo } from "react"
 import { resolveAccess, type UserAccess } from "@/lib/access"
 import { DEFAULT_AVATAR } from "@/lib/live/schema"
 import { useUIStore } from "@/lib/store"
+import { usePrivateEmails } from "@/lib/live/privateEmails"
 
 export interface DirectoryRow {
   username: string
@@ -21,6 +22,7 @@ export function useDirectory(): DirectoryRow[] {
   const users = useUIStore((s) => s.users)
   const subscriptions = useUIStore((s) => s.subscriptions)
   const access = useUIStore((s) => s.access)
+  const emails = usePrivateEmails((s) => s.byUid)
 
   return useMemo(
     () =>
@@ -30,7 +32,7 @@ export function useDirectory(): DirectoryRow[] {
         return {
           username: u.handle,
           uid: u.uid,
-          email: u.email,
+          email: u.email ?? emails[u.uid],
           displayName: u.displayName || u.handle,
           avatarUrl: u.photoURL || DEFAULT_AVATAR(u.handle),
           access: resolveAccess({ subscription: sub, record: access[u.handle] }),
@@ -38,6 +40,6 @@ export function useDirectory(): DirectoryRow[] {
           joinedAt: typeof created?.toMillis === "function" ? new Date(created.toMillis()).toISOString() : undefined,
         }
       }),
-    [users, subscriptions, access]
+    [users, subscriptions, access, emails]
   )
 }

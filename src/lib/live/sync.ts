@@ -45,6 +45,7 @@ import {
   type NotificationDoc,
 } from "@/lib/live/schema"
 import { setCounterHooks, toast, useUIStore, type AppNotification, type Draft } from "@/lib/store"
+import { usePrivateEmails } from "@/lib/live/privateEmails"
 
 type State = ReturnType<typeof useUIStore.getState>
 
@@ -123,22 +124,37 @@ function reportWorkflowFailure(id: string, err: unknown) {
   )
 }
 
-function flushArticle(id: string, loud = false) {
+/**
+ * Fields only the server (POST /api/workflow) may change: status, review outcomes, the live copy.
+ * Authors' saves leave them out entirely, so a stale local copy can never roll a review back, and the
+ * Firestore rules refuse them from anyone but staff. voterIds is set once, when the draft is created.
+ */
+const WORKFLOW_FIELDS = [
+  "verificationStatus", "workflowStatus", "peerVotes", "rebuttal", "review", "live", "publishedAt",
+  "liveAiPercent", "panelPassed", "phase1", "aiScore", "plagiarismScore", "submitted", "submittedAt", "track",
+] as const
+
+function flushArticle(id: string, loud = false): Promise<void> {
   articleTimers.delete(id)
-  const d = useUIStore.getState().drafts[id]
+  const s = useUIStore.getState()
+  const d = s.drafts[id]
   if (!d) {
     pendingArticles.delete(id)
-    return
+    return Promise.resolve()
   }
   if (!d.authorUid) {
     // Not signed in when it was written; nothing to attribute it to
     pendingArticles.delete(id)
-    return
+    return Promise.resolve()
   }
   const data = articleToDoc(d) as unknown as DocumentData
+  if (!s.authIsAdmin) {
+    for (const f of WORKFLOW_FIELDS) delete data[f]
+    if (d.status !== "DRAFT" || d.live) delete data.voterIds
+  }
   // mergeFields replaces each listed field wholesale (no stale nested keys) and never touches the
   // views/likes counters, which readers increment
-  setDoc(doc(db, COL.articles, id), data, { mergeFields: Object.keys(data) })
+  return setDoc(doc(db, COL.articles, id), data, { mergeFields: Object.keys(data) })
     .catch((err) => {
       warn(`couldn't save articles/${id}`, err)
       if (loud) reportWorkflowFailure(id, err)
@@ -146,6 +162,13 @@ function flushArticle(id: string, loud = false) {
     .finally(() => {
       if (!articleTimers.has(id)) pendingArticles.delete(id)
     })
+}
+
+/** Saves a story's pending edits right away and resolves once Firestore has them (before submitting) */
+export function flushArticleNow(id: string): Promise<void> {
+  const t = articleTimers.get(id)
+  if (t) clearTimeout(t)
+  return flushArticle(id, true)
 }
 
 function scheduleArticle(id: string, immediate: boolean) {
@@ -289,9 +312,18 @@ function onStoreChange(s: State, prev: State) {
   }
 }
 
-/** Readers' counters on an article (views, likes). Fire-and-forget. */
+/** Readers' counters on an article. Fire-and-forget. */
 export function bumpArticle(id: string, field: "views" | "likes", by = 1) {
   if (!id || !by) return
+  if (field === "views") {
+    // Views are counted by the server, once per reader per day; browsers can't write the counter
+    import("@/lib/workflow/client")
+      .then(({ optionalAuthHeaders }) => optionalAuthHeaders())
+      .catch(() => ({}))
+      .then((headers) => fetch(`/api/articles/${encodeURIComponent(id)}/views`, { method: "POST", headers, keepalive: true }))
+      .catch((err) => warn(`couldn't count a view on ${id}`, err))
+    return
+  }
   updateDoc(doc(db, COL.articles, id), { [field]: increment(by) }).catch((err) => warn(`couldn't count ${field} on ${id}`, err))
 }
 
@@ -347,6 +379,17 @@ export function startLiveSync(): () => void {
     scoped.push(listenArticles("mine", query(collection(db, COL.articles), where("authorId", "==", uid))))
     if (admin) scoped.push(listenArticles("all", query(collection(db, COL.articles), limit(1000))))
     else if (panel) scoped.push(listenArticles("panel", query(collection(db, COL.articles), where("verificationStatus", "==", "pending_panel"))))
+
+    // Staff see members' emails, which live in user_private (owner + staff only)
+    if (admin)
+      scoped.push(
+        onSnapshot(
+          collection(db, "user_private"),
+          (snap) => usePrivateEmails.getState().set(Object.fromEntries(snap.docs.map((d) => [d.id, String(d.data().email ?? "")]))),
+          (err) => warn("user_private listener stopped", err)
+        )
+      )
+    else usePrivateEmails.getState().set({})
 
     const apps = admin ? collection(db, COL.applications) : query(collection(db, COL.applications), where("userId", "==", uid))
     scoped.push(

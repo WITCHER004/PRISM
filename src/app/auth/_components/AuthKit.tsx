@@ -57,7 +57,7 @@ export const swap = {
 export function AuthShell({ children, aside }: { children: React.ReactNode; aside: React.ReactNode }) {
   return (
     <div className="min-h-screen flex flex-col bg-[var(--bg)]">
-      <div className="flex-1 grid lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)] gap-2.5 sm:gap-3 p-2 sm:p-3">
+      <div className="flex-1 grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)] gap-2.5 sm:gap-3 p-2 sm:p-3">
         {/* Form side */}
         <div className="flex flex-col px-2.5 sm:px-6 py-3 sm:py-4">
           <div className="flex items-center justify-between gap-2">

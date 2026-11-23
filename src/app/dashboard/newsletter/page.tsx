@@ -190,7 +190,7 @@ export default function NewsletterPage() {
         <StatTile label="Stories to share" icon={FileText} value={stories.length} sub={<span>Published</span>} />
       </section>
 
-      <div className="mt-6 grid lg:grid-cols-5 gap-6">
+      <div className="mt-6 grid grid-cols-1 lg:grid-cols-5 gap-6">
         {/* Subscribers */}
         <Reveal as="section" className="lg:col-span-3 panel p-5 sm:p-7">
           <h2 className="display text-[1.5rem]">Subscribers</h2>
@@ -259,7 +259,7 @@ export default function NewsletterPage() {
                     <span aria-hidden className="grid place-items-center w-8 h-8 shrink-0 rounded-full bg-[var(--surface)] text-xs font-semibold uppercase text-[var(--fg-muted)]">
                       {s.email[0]}
                     </span>
-                    <span className="text-sm truncate">{s.email}</span>
+                    <a href={`mailto:${s.email}`} className="text-sm truncate hover:underline underline-offset-2">{s.email}</a>
                   </span>
                   <span className="inline-flex items-center h-6 px-2.5 rounded-full bg-[var(--accent-subtle)] text-[var(--accent)] text-xs font-medium">Subscribed</span>
                 </motion.li>

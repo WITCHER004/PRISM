@@ -124,7 +124,7 @@ export default async function TagPage({ params }: TagPageProps) {
           </div>
         </section>
 
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 pb-20 grid lg:grid-cols-[minmax(0,1fr)_320px] gap-10">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 pb-20 grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_320px] gap-10">
           {/* Stories */}
           <section aria-labelledby="topic-stories">
             <h2 id="topic-stories" className="display text-[1.75rem] sm:text-[2.25rem] mb-5">

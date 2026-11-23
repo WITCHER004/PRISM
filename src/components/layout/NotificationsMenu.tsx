@@ -7,6 +7,10 @@ import { Bell, UserPlus, MessageCircle, Sparkles, CheckCheck, ShieldCheck } from
 import { useUIStore } from "@/lib/store"
 import { formatRelativeDate, cn } from "@/lib/utils"
 import { dur, ease } from "@/lib/motion"
+import { safeHref } from "@/lib/sanitize"
+
+// Notifications are written by other users' clients: only ever link inside the site
+const internalHref = (href: string | null | undefined) => (safeHref(href)?.startsWith("/") ? href!.trim() : undefined)
 
 const ICONS = { follow: UserPlus, comment: MessageCircle, clap: Sparkles, system: Bell, review: ShieldCheck, idea_published: Sparkles } as const
 
@@ -83,9 +87,9 @@ export function NotificationsMenu({ buttonClassName }: { buttonClassName: string
                   const cls = "flex items-start gap-3 p-2.5 rounded-[14px] hover:bg-[var(--surface)] transition-colors"
                   return (
                     <li key={n.id}>
-                      {n.href ? (
+                      {internalHref(n.href) ? (
                         <Link
-                          href={n.href}
+                          href={internalHref(n.href)!}
                           className={cls}
                           onClick={() => {
                             markRead(n.id)

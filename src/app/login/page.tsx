@@ -2,7 +2,7 @@ import type { Metadata } from "next"
 import { LoginForm } from "@/app/auth/login/LoginForm"
 
 export const metadata: Metadata = {
-  title: "Sign in · Prism",
+  title: "Sign in",
   description: "Sign in to Prism — return to your quiet reading and writing haven.",
 }
 

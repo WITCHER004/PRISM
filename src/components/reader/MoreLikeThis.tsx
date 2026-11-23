@@ -32,7 +32,7 @@ export function MoreLikeThis({
           </h2>
         </div>
       </div>
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
         {picks.map(({ post, reason }, i) => (
           <Reveal key={post.id} index={i} className="flex flex-col gap-2">
             <span className="self-start inline-flex items-center gap-1.5 h-6 px-2.5 rounded-full border border-[var(--border)] bg-[var(--panel)] text-[11.5px] font-medium text-[var(--fg-muted)]">

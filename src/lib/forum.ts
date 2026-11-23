@@ -20,12 +20,14 @@ import {
   limit,
   onSnapshot,
   query,
+  serverTimestamp,
   updateDoc,
   where,
   writeBatch,
 } from "firebase/firestore"
 import { db } from "@/lib/firebase"
 import { toast, useUIStore } from "@/lib/store"
+import { cooldownMessage, markPosted, stampRateLimit } from "@/lib/rateLimit"
 
 export const THREADS = "forum_threads"
 export const REPLIES = "forum_replies"
@@ -162,10 +164,16 @@ export function useForumActions() {
   const startThread = useCallback(
     async (input: { title: string; body: string; topicTag: string; linked?: { id: string; title: string; href: string } | null }) => {
       if (!me) return null
+      const wait = cooldownMessage("forum_thread")
+      if (wait) {
+        toast(wait)
+        return null
+      }
       const ref = doc(collection(db, THREADS))
       const now = Date.now()
       try {
         const batch = writeBatch(db)
+        stampRateLimit({ doc, serverTimestamp }, batch, db, me.uid, "forum_thread")
         batch.set(ref, {
           authorId: me.authorId,
           authorHandle: me.authorHandle,
@@ -183,6 +191,7 @@ export function useForumActions() {
           lastActivityAt: now,
         })
         await batch.commit()
+        markPosted("forum_thread")
         return ref.id
       } catch (err) {
         warn("couldn't start the thread", err)
@@ -196,9 +205,15 @@ export function useForumActions() {
   const reply = useCallback(
     async (threadId: string, body: string, parentId: string | null) => {
       if (!me) return false
+      const wait = cooldownMessage("forum_reply")
+      if (wait) {
+        toast(wait)
+        return false
+      }
       const now = Date.now()
       try {
         const batch = writeBatch(db)
+        stampRateLimit({ doc, serverTimestamp }, batch, db, me.uid, "forum_reply")
         batch.set(doc(collection(db, REPLIES)), {
           threadId,
           parentId,
@@ -212,6 +227,7 @@ export function useForumActions() {
         })
         batch.update(doc(db, THREADS, threadId), { replyCount: increment(1), lastActivityAt: now })
         await batch.commit()
+        markPosted("forum_reply")
         return true
       } catch (err) {
         warn("couldn't reply", err)

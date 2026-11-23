@@ -172,7 +172,7 @@ export function ReviewsSection({ postId, postAuthor, className }: { postId: stri
         {summary.count > 0 && <RatingChip postId={postId} />}
       </div>
 
-      <div className="mt-6 grid md:grid-cols-[220px_minmax(0,1fr)] gap-6 md:gap-10">
+      <div className="mt-6 grid grid-cols-1 md:grid-cols-[220px_minmax(0,1fr)] gap-6 md:gap-10">
         {/* Summary */}
         <div>
           <p className="display text-[3rem] leading-none tabular-nums">{summary.count ? summary.average.toFixed(1) : "–"}</p>

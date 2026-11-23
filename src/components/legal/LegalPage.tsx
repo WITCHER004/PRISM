@@ -53,7 +53,7 @@ export function LegalPage({ kicker, title, intro, updated, path, sections }: Leg
             </p>
           </div>
 
-          <div className="mt-10 grid lg:grid-cols-[220px_minmax(0,1fr)] gap-10 lg:gap-16">
+          <div className="mt-10 grid grid-cols-1 lg:grid-cols-[220px_minmax(0,1fr)] gap-10 lg:gap-16">
             <aside className="hidden lg:block">
               <div className="sticky top-24">
                 <LegalIndex items={items} />
@@ -81,7 +81,7 @@ export function LegalPage({ kicker, title, intro, updated, path, sections }: Leg
           {/* Other documents */}
           <nav aria-label="Other policies" className="mt-16 lg:ml-[calc(220px+4rem)] max-w-3xl">
             <p className="meta mb-3">Other policies</p>
-            <div className="grid sm:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {DOCS.filter((d) => d.href !== path).map((d) => (
                 <Link
                   key={d.href}

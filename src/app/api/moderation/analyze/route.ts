@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { z } from "zod"
 import { analyzeArticle } from "@/lib/moderation/analyzer"
 import { MIN_WORDS_FOR_SUBMISSION } from "@/lib/moderation/workflow"
+import { verifyAppCheck } from "@/lib/server/firebaseAdmin"
 
 // Phase 1: score an article for AI-generated content.
 // POST { title?, contentHtml } → Phase1Report
@@ -14,6 +15,8 @@ const Body = z.object({
 })
 
 export async function POST(request: Request) {
+  // The external AI-detection API costs money per call: only the Prism app may use it
+  if ((await verifyAppCheck(request)) === false) return NextResponse.json({ error: "This request didn't come from the Prism app." }, { status: 401 })
   let parsed
   try {
     parsed = Body.safeParse(await request.json())

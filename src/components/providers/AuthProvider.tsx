@@ -13,6 +13,7 @@ import {
 import { useUIStore } from "@/lib/store"
 import { isAdminUser } from "@/lib/admin"
 import { handleFrom } from "@/lib/live/schema"
+import { claimHandle, ensureHandleRegistered } from "@/lib/handles"
 
 export type UserProfile = {
   uid: string
@@ -53,17 +54,6 @@ const profileFromAuth = (u: FirebaseUser): UserProfile => ({
   photoURL: u.photoURL,
 })
 
-/** A handle nobody else has claimed: the name-derived base, then base2, base3… */
-async function claimHandle(base: string, uid: string): Promise<string> {
-  const [{ collection, getDocs, query, where }, { db }] = await Promise.all([import("firebase/firestore"), import("@/lib/firebase")])
-  for (let n = 1; n < 50; n++) {
-    const candidate = n === 1 ? base : `${base.slice(0, 17)}${n}`
-    const taken = await getDocs(query(collection(db, "users"), where("handle", "==", candidate)))
-    if (taken.docs.every((d) => d.id === uid)) return candidate
-  }
-  return `${base.slice(0, 12)}${uid.slice(0, 8).toLowerCase()}`
-}
-
 /**
  * Creates users/{uid} on first sign-in (uid, email, displayName, handle, photoURL, bio, tier,
  * isPanelMember, panelApplicationStatus, isAdmin, createdAt) and refreshes the login fields after.
@@ -72,18 +62,20 @@ async function claimHandle(base: string, uid: string): Promise<string> {
 async function syncUserProfile(u: FirebaseUser): Promise<UserProfile> {
   const base = profileFromAuth(u)
   try {
-    const [{ doc, getDoc, setDoc, serverTimestamp }, { db }] = await Promise.all([import("firebase/firestore"), import("@/lib/firebase")])
+    const [{ doc, getDoc, setDoc, serverTimestamp, deleteField }, { db }] = await Promise.all([import("firebase/firestore"), import("@/lib/firebase")])
     const ref = doc(db, "users", u.uid)
     const snap = await getDoc(ref)
     const admin = isAdminUser(u)
+    // users/{uid} is world-readable, so the email lives in user_private/{uid} (owner + staff only)
+    if (u.email)
+      setDoc(doc(db, "user_private", u.uid), { email: u.email, updatedAt: serverTimestamp() }).catch((err) =>
+        warn(`Could not save user_private/${u.uid}.`, err)
+      )
 
     if (!snap.exists()) {
-      const handle = await claimHandle(handleFrom(u.displayName, u.email, u.uid), u.uid)
-      const created = {
+      const fields = {
         uid: u.uid,
-        email: u.email,
-        displayName: base.displayName || handle,
-        handle,
+        displayName: base.displayName || handleFrom(u.displayName, u.email, u.uid),
         photoURL: u.photoURL,
         bio: "",
         tier: "free",
@@ -93,17 +85,25 @@ async function syncUserProfile(u: FirebaseUser): Promise<UserProfile> {
         createdAt: serverTimestamp(),
         lastLoginAt: serverTimestamp(),
       }
-      await setDoc(ref, created)
+      // The profile and its handle-registry entry are written together (the rules require both)
+      const handle = await claimHandle(u.uid, handleFrom(u.displayName, u.email, u.uid), { data: fields, merge: false })
+      const created = { ...fields, handle }
       return { ...base, ...created, createdAt: undefined, lastLoginAt: undefined } as UserProfile
     }
 
     const existing = snap.data() as UserProfile & { handle?: string }
-    const patch: Record<string, unknown> = { email: u.email, isAdmin: admin, lastLoginAt: serverTimestamp() }
+    // Older docs carried the email publicly: remove it on the next sign-in
+    const patch: Record<string, unknown> = { isAdmin: admin, lastLoginAt: serverTimestamp(), ...("email" in existing ? { email: deleteField() } : {}) }
     // Older docs may predate handles; the profile photo stays whatever the user last uploaded
-    if (!existing.handle) patch.handle = await claimHandle(handleFrom(existing.displayName ?? u.displayName, u.email, u.uid), u.uid)
     if (!existing.photoURL && u.photoURL) patch.photoURL = u.photoURL
-    setDoc(ref, patch, { merge: true }).catch((err) => warn(`Could not update users/${u.uid}.`, err))
-    return { ...base, ...existing, ...patch, lastLoginAt: undefined } as UserProfile
+    if (!existing.handle) {
+      patch.handle = await claimHandle(u.uid, handleFrom(existing.displayName ?? u.displayName, u.email, u.uid), { data: patch, merge: true })
+    } else {
+      // Joined before the handle registry: register the handle they already use
+      void ensureHandleRegistered(u.uid, existing.handle)
+      setDoc(ref, patch, { merge: true }).catch((err) => warn(`Could not update users/${u.uid}.`, err))
+    }
+    return { ...base, ...existing, ...patch, email: u.email, lastLoginAt: undefined } as UserProfile
   } catch (err) {
     warn("Firestore profile sync skipped; using the Firebase auth profile.", err)
     return base

@@ -140,7 +140,7 @@ function Queue({ reviewer, filter }: { reviewer: string; filter: Filter }) {
           </p>
         </div>
       ) : (
-        <div className="mt-6 grid lg:grid-cols-[320px_minmax(0,1fr)] gap-6 items-start">
+        <div className="mt-6 grid grid-cols-1 lg:grid-cols-[320px_minmax(0,1fr)] gap-6 items-start">
           <ul className="space-y-2 lg:sticky lg:top-24" aria-label={filter === "queue" ? "Waiting for review" : "Decided"}>
             {list.map((d) => (
               <li key={d.id}>
@@ -196,10 +196,10 @@ function ReviewPanel({ draft, reviewer }: { draft: Draft; reviewer: string }) {
   const pending = draft.status === "PENDING_EMPLOYEE_REVIEW"
   const ownStory = draft.authorUsername === reviewer
 
-  const decide = () => {
+  const decide = async () => {
     if (!mode) return
     setBusy(true)
-    const res = decideReview(draft.id, mode === "approve" ? "APPROVED" : "REJECTED", notes, reviewer)
+    const res = await decideReview(draft.id, mode === "approve" ? "APPROVED" : "REJECTED", notes)
     setBusy(false)
     if (!res.ok) {
       setError(res.error)

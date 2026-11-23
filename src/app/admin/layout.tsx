@@ -2,7 +2,7 @@ import type { Metadata } from "next"
 import { AdminShell } from "@/components/admin/AdminShell"
 
 export const metadata: Metadata = {
-  title: { template: "%s · Prism Admin", default: "Prism Admin" },
+  title: { template: "%s | Prism Admin", default: "Prism Admin" },
   robots: { index: false, follow: false },
 }
 

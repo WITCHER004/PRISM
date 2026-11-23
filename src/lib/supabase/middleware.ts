@@ -1,9 +1,10 @@
 import { createServerClient } from "@supabase/ssr"
 import { NextResponse, type NextRequest } from "next/server"
 
-export async function updateSession(request: NextRequest) {
+export async function updateSession(request: NextRequest, requestHeaders: Headers = request.headers) {
+  // requestHeaders carries the per-request CSP nonce through to rendering
   let supabaseResponse = NextResponse.next({
-    request,
+    request: { headers: requestHeaders },
   })
 
   // If supabase env vars are placeholders/demo, bypass cleanly
@@ -24,7 +25,7 @@ export async function updateSession(request: NextRequest) {
         setAll(cookiesToSet) {
           cookiesToSet.forEach(({ name, value, options }) => request.cookies.set(name, value))
           supabaseResponse = NextResponse.next({
-            request,
+            request: { headers: requestHeaders },
           })
           cookiesToSet.forEach(({ name, value, options }) =>
             supabaseResponse.cookies.set(name, value, options)

@@ -1,137 +1,281 @@
 rules_version = '2';
 
-// Security rules for Prism. The client hides what a role can't do; these rules enforce it.
-// Deploy with:  npm run deploy:rules   (or: firebase deploy --only firestore:rules)
+// Production security rules for Prism. The client hides what a role can't do; these rules enforce it.
+// Article status changes (submit → staff → peer panel → publish, counters, rulings) and view counts run
+// on the server (src/app/api/workflow, src/app/api/articles/[id]/views) with the Admin SDK, which these
+// rules don't apply to. Browsers may edit their own text, never statuses, review outcomes or counters.
 //
-// Admins are exactly the Google accounts in ADMIN_EMAILS (src/lib/admin.ts): keep both lists in step.
-// Deploying this file replaces the console's Test Mode rules (which expire after 30 days anyway).
+// Deploy:  firebase deploy --only firestore:rules,storage
+//
+// Admins are exactly the Google accounts below AND in ADMIN_EMAILS (src/lib/admin.ts): keep both lists
+// in step. Admin rights come only from the verified sign-in email, never from a document field.
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    // ── helpers ───────────────────────────────────────────────────────────────────────────────
     function signedIn() { return request.auth != null; }
+    function me() { return request.auth.uid; }
     function isAdmin() {
       return signedIn()
         && request.auth.token.email_verified == true
         && request.auth.token.email in ['ayushra6111@gmail.com', 'surishri03@gmail.com'];
     }
-    function me() { return request.auth.uid; }
+    function data() { return request.resource.data; }
     function changed() { return request.resource.data.diff(resource.data).affectedKeys(); }
+    // A field that may be absent, compared with absent == null
+    function same(field) { return data().get(field, null) == resource.data.get(field, null); }
+    function str(v, min, max) { return v is string && v.size() >= min && v.size() <= max; }
+    function optStr(v, max) { return v == null || (v is string && v.size() <= max); }
+    function httpsUrl(v) { return v is string && v.size() <= 2048 && v.matches('^https://.+'); }
+    function userDoc() { return get(/databases/$(database)/documents/users/$(me())); }
     function isPanelMember() {
       return signedIn()
         && exists(/databases/$(database)/documents/users/$(me()))
-        && get(/databases/$(database)/documents/users/$(me())).data.isPanelMember == true
-        && get(/databases/$(database)/documents/users/$(me())).data.get('suspended', false) != true;
+        && userDoc().data.get('isPanelMember', false) == true
+        && userDoc().data.get('suspended', false) != true;
+    }
+    // A list in which only the caller's uid was added or removed
+    function onlyMeToggled(after, before) {
+      return after.toSet().difference(before.toSet()).union(before.toSet().difference(after.toSet())).hasOnly([me()])
+        && after.size() == after.toSet().size();
     }
 
-    // ── users/{uid} ────────────────────────────────────────────────────────────────────────────
-    // Public profiles (author bylines, the directory). Note: the requested schema keeps `email` here,
-    // which makes it publicly readable; move it to a private subcollection before launch.
+    // ── rate limits ───────────────────────────────────────────────────────────────────────────
+    // rate_limits/{uid} holds the server time of the caller's last post of each kind. A throttled
+    // write must stamp its field in the same batch (getAfter sees it), and the previous stamp must be
+    // older than the cooldown. Bots can't post faster than this without new accounts.
+    function rl() { return /databases/$(database)/documents/rate_limits/$(me()); }
+    function throttled(action, seconds) {
+      return getAfter(rl()).data.get(action, null) == request.time
+        && (!exists(rl())
+            || get(rl()).data.get(action, null) == null
+            || get(rl()).data.get(action, null) + duration.value(seconds, 's') <= request.time);
+    }
+    match /rate_limits/{uid} {
+      allow read: if signedIn() && me() == uid;
+      allow create: if signedIn() && me() == uid
+        && data().keys().hasOnly(['forum_thread', 'forum_reply', 'idea', 'comment', 'margin_note'])
+        && stampsAreNow(data().keys());
+      allow update: if signedIn() && me() == uid
+        && data().keys().hasOnly(['forum_thread', 'forum_reply', 'idea', 'comment', 'margin_note'])
+        && stampsAreNow(changed());
+    }
+    function stampsAreNow(keys) {
+      return (!('forum_thread' in keys) || data().forum_thread == request.time)
+        && (!('forum_reply' in keys) || data().forum_reply == request.time)
+        && (!('idea' in keys) || data().idea == request.time)
+        && (!('comment' in keys) || data().comment == request.time)
+        && (!('margin_note' in keys) || data().margin_note == request.time);
+    }
+
+    // ── users/{uid} ───────────────────────────────────────────────────────────────────────────
+    // Public profiles. Privileged fields (tier, isPanelMember, suspended, eliteSince) are admin-only;
+    // isAdmin may only ever mirror the verified email whitelist. Email lives in user_private.
+    function validProfile(d) {
+      return str(d.get('displayName', 'x'), 1, 100)
+        && str(d.get('handle', 'x'), 1, 40) && d.get('handle', 'x').matches('^[a-z0-9_]+$')
+        && optStr(d.get('bio', null), 300)
+        && (d.get('photoURL', null) == null || httpsUrl(d.get('photoURL', null)))
+        && optStr(d.get('websiteUrl', null), 300)
+        && optStr(d.get('twitterHandle', null), 100)
+        && optStr(d.get('linkedinHandle', null), 100)
+        && optStr(d.get('instagramHandle', null), 100)
+        && optStr(d.get('githubHandle', null), 100)
+        && d.keys().hasOnly(['uid', 'displayName', 'handle', 'photoURL', 'bio', 'tier', 'isPanelMember',
+            'panelApplicationStatus', 'isAdmin', 'suspended', 'eliteSince', 'websiteUrl', 'twitterHandle',
+            'linkedinHandle', 'instagramHandle', 'githubHandle', 'emailDigest', 'emailReplies',
+            'createdAt', 'lastLoginAt', 'email']);
+    }
+    // A profile's handle must be registered to its owner (handles/{handle}), in the same batch
+    function ownsHandle(h) {
+      return getAfter(/databases/$(database)/documents/handles/$(h)).data.uid == me();
+    }
     match /users/{uid} {
       allow read: if true;
       allow create: if signedIn() && me() == uid
-        && request.resource.data.isAdmin == isAdmin()
-        && request.resource.data.tier == 'free'
-        && request.resource.data.isPanelMember == false
-        && request.resource.data.panelApplicationStatus == 'none';
-      // Self: profile fields, tier (simulated checkout) and applying. Membership, suspension and the
-      // admin flag (beyond mirroring the whitelist) are admin-only.
+        && ownsHandle(data().handle)
+        && data().uid == uid
+        && data().isAdmin == isAdmin()
+        && data().tier == 'free'
+        && data().isPanelMember == false
+        && data().panelApplicationStatus == 'none'
+        && !('suspended' in data()) && !('eliteSince' in data()) && !('email' in data())
+        && validProfile(data());
       allow update: if signedIn() && me() == uid
-        && !changed().hasAny(['isPanelMember', 'suspended', 'uid'])
-        && (!changed().hasAny(['isAdmin']) || request.resource.data.isAdmin == isAdmin())
-        && (!changed().hasAny(['panelApplicationStatus']) || request.resource.data.panelApplicationStatus == 'pending');
+        && !changed().hasAny(['uid', 'tier', 'isPanelMember', 'suspended', 'eliteSince', 'createdAt'])
+        && (!('isAdmin' in changed()) || data().isAdmin == isAdmin())
+        // Applying to the panel flips none/rejected → pending (grants nothing); decisions are admin-only
+        && (!('panelApplicationStatus' in changed())
+            || (data().panelApplicationStatus == 'pending'
+                && resource.data.get('panelApplicationStatus', 'none') in ['none', 'rejected']))
+        // The public email field may only be removed (it moved to user_private)
+        && (!('email' in changed()) || !('email' in data()))
+        && (!('handle' in changed()) || ownsHandle(data().handle))
+        && validProfile(data());
       allow update, delete: if isAdmin();
     }
 
-    // ── articles/{id} ──────────────────────────────────────────────────────────────────────────
+    // ── handles/{handle} ──────────────────────────────────────────────────────────────────────
+    // One owner per handle. You can register only the handle your own profile uses (no squatting),
+    // and release it only once your profile has moved off it.
+    match /handles/{handle} {
+      allow read: if true;
+      allow create: if signedIn()
+        && handle.matches('^[a-z0-9_]{1,40}$')
+        && data().keys().hasOnly(['uid', 'createdAt'])
+        && data().uid == me()
+        && getAfter(/databases/$(database)/documents/users/$(me())).data.handle == handle;
+      allow delete: if (signedIn() && resource.data.uid == me()
+          && getAfter(/databases/$(database)/documents/users/$(me())).data.get('handle', '') != handle)
+        || isAdmin();
+      allow update: if isAdmin();
+    }
+
+    // ── user_private/{uid} ────────────────────────────────────────────────────────────────────
+    // Contact details: the owner and staff only
+    match /user_private/{uid} {
+      allow read: if (signedIn() && me() == uid) || isAdmin();
+      allow create, update: if signedIn() && me() == uid
+        && data().keys().hasOnly(['email', 'updatedAt'])
+        && data().email == request.auth.token.get('email', null);
+      allow delete: if isAdmin();
+    }
+
+    // ── articles/{id} ─────────────────────────────────────────────────────────────────────────
+    // Workflow-owned fields: only the server (Admin SDK) and staff change these
+    function workflowFields() {
+      return ['verificationStatus', 'workflowStatus', 'peerVotes', 'rebuttal', 'review', 'live', 'publishedAt',
+              'liveAiPercent', 'panelPassed', 'phase1', 'aiScore', 'plagiarismScore', 'submitted', 'submittedAt',
+              'track', 'views', 'likes'];
+    }
+    function validArticle(d) {
+      return str(d.get('title', ''), 0, 300)
+        && optStr(d.get('subtitle', null), 500)
+        && d.get('content', '') is string
+        && d.get('tags', []) is list && d.get('tags', []).size() <= 10
+        && d.get('voterIds', []) is list && d.get('voterIds', []).size() <= 100;
+    }
+
     match /articles/{id} {
-      allow read: if resource.data.verificationStatus == 'published'
+      allow read: if resource.data.get('verificationStatus', 'draft') == 'published'
         || (signedIn() && resource.data.authorId == me())
         || isAdmin()
-        || (resource.data.verificationStatus == 'pending_panel' && isPanelMember());
+        || (resource.data.get('verificationStatus', 'draft') == 'pending_panel' && isPanelMember());
 
+      // A new story is a draft: none of the workflow fields, whatever the client sends
       allow create: if signedIn()
-        && request.resource.data.authorId == me()
-        && request.resource.data.verificationStatus in ['draft', 'pending_employee', 'rejected'];
+        && data().authorId == me()
+        && !data().keys().hasAny(workflowFields())
+        && validArticle(data());
 
-      // Author: edit and submit; never publish (except going back to the version that's already live)
+      // The author edits their own text and settings; statuses, review outcomes, the live copy and the
+      // counters are out of reach. Who sparked the idea (voterIds) is fixed after the story is created.
       allow update: if signedIn() && resource.data.authorId == me()
-        && request.resource.data.authorId == me()
-        && !changed().hasAny(['views', 'likes'])
-        && (request.resource.data.verificationStatus != 'published'
-            || (resource.data.live != null && request.resource.data.live == resource.data.live));
+        && data().authorId == me()
+        && !changed().hasAny(workflowFields())
+        && same('voterIds')
+        && validArticle(data());
 
-      // Panel members: vote and rule on rebuttals while the paper is with the panel
-      allow update: if isPanelMember()
-        && resource.data.verificationStatus == 'pending_panel'
-        && resource.data.authorId != me()
-        && changed().hasOnly(['peerVotes', 'workflowStatus', 'verificationStatus', 'live', 'publishedAt',
-                              'panelPassed', 'liveAiPercent', 'celebrated', 'updatedAt', 'rebuttal']);
-
-      // Readers: the view and clap counters only ever go up
-      allow update: if changed().hasOnly(['views'])
-        && request.resource.data.views == resource.data.get('views', 0) + 1;
-      allow update: if changed().hasOnly(['likes'])
-        && request.resource.data.likes > resource.data.get('likes', 0)
-        && request.resource.data.likes <= resource.data.get('likes', 0) + 50;
+      // Claps: signed-in readers only, up to 50 at a time (views are counted by the server)
+      allow update: if signedIn() && changed().hasOnly(['likes'])
+        && data().likes > resource.data.get('likes', 0)
+        && data().likes <= resource.data.get('likes', 0) + 50;
 
       allow update, delete: if isAdmin();
       allow delete: if signedIn() && resource.data.authorId == me();
     }
 
-    // ── instant_ideas/{id} ─────────────────────────────────────────────────────────────────────
+    // ── instant_ideas/{id} ────────────────────────────────────────────────────────────────────
     match /instant_ideas/{id} {
       allow read: if true;
-      allow create: if signedIn() && request.resource.data.authorId == me()
-        && request.resource.data.content is string && request.resource.data.content.size() <= 280
-        && request.resource.data.totalReactions == 0 && request.resource.data.isImmortal == false;
-      // Reactions (the client recomputes counts in a transaction); immortality never reverts
+      allow create: if signedIn() && data().authorId == me()
+        && str(data().content, 1, 280)
+        && data().totalReactions == 0 && data().isImmortal == false
+        && data().voterIds.size() == 0
+        && data().reactors.sparked.size() == 0 && data().reactors.deep.size() == 0
+        && data().reactions.sparked == 0 && data().reactions.deep == 0
+        && optStr(data().get('authorName', null), 100)
+        && throttled('idea', 30);
+      // Reactions: the caller toggles only their own uid, and every count is derived from the lists,
+      // so nobody can inflate totals or reach "immortal" without real, distinct reactors.
       allow update: if signedIn()
         && changed().hasOnly(['reactors', 'reactions', 'totalReactions', 'voterIds', 'isImmortal'])
-        && (resource.data.isImmortal != true || request.resource.data.isImmortal == true);
+        && data().reactors.keys().hasOnly(['sparked', 'deep'])
+        && (data().reactors.sparked == resource.data.reactors.sparked
+            || onlyMeToggled(data().reactors.sparked, resource.data.reactors.sparked))
+        && (data().reactors.deep == resource.data.reactors.deep
+            || onlyMeToggled(data().reactors.deep, resource.data.reactors.deep))
+        && data().reactions.sparked == data().reactors.sparked.size()
+        && data().reactions.deep == data().reactors.deep.size()
+        && data().totalReactions == data().reactions.sparked + data().reactions.deep
+        && data().voterIds.toSet() == data().reactors.sparked.toSet().union(data().reactors.deep.toSet())
+        && data().isImmortal == (resource.data.isImmortal == true || data().totalReactions >= 25);
       // The author or an admin can remove one; anyone may clean up an expired, non-immortal idea
       allow delete: if (signedIn() && resource.data.authorId == me()) || isAdmin()
         || (resource.data.isImmortal != true && resource.data.expiresAt <= request.time.toMillis());
     }
 
-    // ── margin_notes/{id} · comments/{id} ──────────────────────────────────────────────────────
+    // ── margin_notes/{id} · comments/{id} · reviews/{postId}_{uid} ────────────────────────────
     match /margin_notes/{id} {
       allow read: if true;
-      allow create: if signedIn() && request.resource.data.authorId == me();
+      allow create: if signedIn() && data().authorId == me()
+        && str(data().noteText, 1, 1000)
+        && str(data().selectedText, 0, 2000)
+        && data().paragraphIndex is int
+        && str(data().articleId, 1, 128)
+        && throttled('margin_note', 5);
       allow delete: if (signedIn() && resource.data.authorId == me()) || isAdmin();
     }
     match /comments/{id} {
       allow read: if true;
-      allow create: if signedIn() && request.resource.data.authorId == me()
-        && request.resource.data.likerIds.size() == 0;
+      allow create: if signedIn() && data().authorId == me()
+        && str(data().body, 1, 1000)
+        && str(data().articleId, 1, 128)
+        && (data().parentId == null || str(data().parentId, 1, 128))
+        && data().likerIds.size() == 0
+        && throttled('comment', 10);
       // Likes: a reader adds or removes only their own uid
       allow update: if signedIn() && changed().hasOnly(['likerIds'])
-        && request.resource.data.likerIds.toSet().difference(resource.data.likerIds.toSet())
-             .union(resource.data.likerIds.toSet().difference(request.resource.data.likerIds.toSet()))
-             .hasOnly([me()]);
+        && onlyMeToggled(data().likerIds, resource.data.likerIds);
       allow delete: if (signedIn() && resource.data.authorId == me()) || isAdmin();
     }
-
-    // ── reviews/{postId}_{uid} ─────────────────────────────────────────────────────────────────
     match /reviews/{reviewId} {
       allow read: if true;
-      allow create, update: if signedIn() && reviewId == request.resource.data.postId + '_' + me()
-        && request.resource.data.authorId == me()
-        && request.resource.data.rating >= 1 && request.resource.data.rating <= 5;
+      allow create, update: if signedIn() && reviewId == data().postId + '_' + me()
+        && data().authorId == me()
+        && data().rating is int && data().rating >= 1 && data().rating <= 5
+        && str(data().get('body', ''), 0, 1000);
       allow delete: if (signedIn() && resource.data.authorId == me()) || isAdmin();
     }
 
-    // ── panel_applications/{id} ────────────────────────────────────────────────────────────────
+    // ── panel_applications/{id} ───────────────────────────────────────────────────────────────
     match /panel_applications/{id} {
       allow read: if (signedIn() && resource.data.userId == me()) || isAdmin();
-      allow create: if signedIn() && request.resource.data.userId == me() && request.resource.data.status == 'pending';
+      allow create: if signedIn() && data().userId == me() && data().status == 'pending'
+        && str(data().statement, 80, 1200)
+        && data().portfolioUrl is string && data().portfolioUrl.size() <= 2048 && data().portfolioUrl.matches('^https?://.+')
+        && data().domains is list && data().domains.size() <= 10
+        && data().get('decidedAt', null) == null && data().get('decidedBy', null) == null
+        && (data().get('userEmail', null) == null || data().userEmail == request.auth.token.get('email', null));
+      // Only staff approve or reject
       allow update, delete: if isAdmin();
     }
 
     // ── notifications/{id} ────────────────────────────────────────────────────────────────────
-    // Any member's action can notify another (review outcomes, panel seats, published ideas)
+    // Workflow notifications come from the server. In the browser, staff may notify anyone (panel
+    // decisions, role changes) and members only themselves; links always stay inside the site.
+    function validNotification(d) {
+      return d.keys().hasOnly(['recipientId', 'type', 'message', 'articleId', 'href', 'read', 'createdAt'])
+        && str(d.recipientId, 1, 128)
+        && d.type in ['follow', 'clap', 'comment', 'system', 'review', 'idea_published']
+        && str(d.message, 1, 300)
+        && optStr(d.get('articleId', null), 128)
+        && (d.get('href', null) == null || (str(d.href, 1, 300) && d.href.matches('^/([^/\\\\].*)?$')))
+        && d.read == false;
+    }
     match /notifications/{id} {
       allow read, delete: if signedIn() && resource.data.recipientId == me();
-      allow create: if signedIn() && request.resource.data.read == false;
+      allow create: if signedIn() && validNotification(data()) && (data().recipientId == me() || isAdmin());
       allow update: if signedIn() && resource.data.recipientId == me() && changed().hasOnly(['read']);
     }
 
@@ -139,60 +283,57 @@ service cloud.firestore {
     // A reader's own highlights: nobody else can list, read or change them
     match /private_highlights/{id} {
       allow read, delete: if signedIn() && resource.data.userId == me();
-      allow create: if signedIn() && request.resource.data.userId == me()
-        && request.resource.data.selectedText is string
-        && request.resource.data.selectedText.size() > 0 && request.resource.data.selectedText.size() <= 2000
-        && request.resource.data.color in ['amber', 'sage', 'sky'];
+      allow create: if signedIn() && data().userId == me()
+        && str(data().selectedText, 1, 2000)
+        && data().color in ['amber', 'sage', 'sky']
+        && optStr(data().get('personalNote', null), 1000);
       allow update: if signedIn() && resource.data.userId == me()
         && changed().hasOnly(['color', 'personalNote'])
-        && request.resource.data.color in ['amber', 'sage', 'sky']
-        && request.resource.data.personalNote.size() <= 1000;
+        && data().color in ['amber', 'sage', 'sky']
+        && optStr(data().get('personalNote', null), 1000);
     }
 
-    // ── reading_progress/{uid}_{articleId} · reading_history/{uid}_{articleId} ─────────────────
+    // ── reading_progress/{uid}_{articleId} · reading_history/{uid}_{articleId} ────────────────
     // Owner-only. `get` is keyed by the id prefix (the doc may not exist yet); `list` needs userId == me.
     match /reading_progress/{id} {
       allow get, delete: if signedIn() && id.split('_')[0] == me();
       allow list: if signedIn() && resource.data.userId == me();
-      allow create, update: if signedIn() && request.resource.data.userId == me()
-        && id == me() + '_' + request.resource.data.articleId
-        && request.resource.data.progressPercent >= 0 && request.resource.data.progressPercent <= 100;
+      allow create, update: if signedIn() && data().userId == me()
+        && id == me() + '_' + data().articleId
+        && data().progressPercent >= 0 && data().progressPercent <= 100;
     }
     match /reading_history/{id} {
       allow get, delete: if signedIn() && id.split('_')[0] == me();
       allow list: if signedIn() && resource.data.userId == me();
-      allow create, update: if signedIn() && request.resource.data.userId == me()
-        && id == me() + '_' + request.resource.data.articleId;
+      allow create, update: if signedIn() && data().userId == me()
+        && id == me() + '_' + data().articleId;
     }
 
     // ── forum_threads/{id} · forum_replies/{id} ───────────────────────────────────────────────
     function onlyMyVoteChanged() {
-      return changed().hasOnly(['upvoterIds'])
-        && request.resource.data.upvoterIds.toSet().difference(resource.data.upvoterIds.toSet())
-             .union(resource.data.upvoterIds.toSet().difference(request.resource.data.upvoterIds.toSet()))
-             .hasOnly([me()]);
+      return changed().hasOnly(['upvoterIds']) && onlyMeToggled(data().upvoterIds, resource.data.upvoterIds);
     }
     match /forum_threads/{id} {
       allow read: if true;
-      allow create: if signedIn() && request.resource.data.authorId == me()
-        && request.resource.data.title is string
-        && request.resource.data.title.size() > 0 && request.resource.data.title.size() <= 160
-        && request.resource.data.body is string && request.resource.data.body.size() <= 5000
-        && request.resource.data.replyCount == 0 && request.resource.data.upvoterIds.size() == 0;
-      // The reply counter moves by exactly one with each reply posted or deleted
+      allow create: if signedIn() && data().authorId == me()
+        && str(data().title, 1, 160)
+        && str(data().body, 0, 5000)
+        && data().replyCount == 0 && data().upvoterIds.size() == 0
+        && throttled('forum_thread', 60);
+      // The reply counter moves by exactly one with each reply posted or deleted, never below zero
       allow update: if signedIn() && changed().hasOnly(['replyCount', 'lastActivityAt'])
-        && (request.resource.data.replyCount == resource.data.replyCount + 1
-            || request.resource.data.replyCount == resource.data.replyCount - 1);
+        && (data().replyCount == resource.data.replyCount + 1
+            || (data().replyCount == resource.data.replyCount - 1 && data().replyCount >= 0));
       allow update: if signedIn() && onlyMyVoteChanged();
       allow delete: if (signedIn() && resource.data.authorId == me()) || isAdmin();
     }
     match /forum_replies/{id} {
       allow read: if true;
-      allow create: if signedIn() && request.resource.data.authorId == me()
-        && request.resource.data.body is string
-        && request.resource.data.body.size() > 0 && request.resource.data.body.size() <= 5000
-        && request.resource.data.upvoterIds.size() == 0
-        && exists(/databases/$(database)/documents/forum_threads/$(request.resource.data.threadId));
+      allow create: if signedIn() && data().authorId == me()
+        && str(data().body, 1, 5000)
+        && data().upvoterIds.size() == 0
+        && exists(/databases/$(database)/documents/forum_threads/$(data().threadId))
+        && throttled('forum_reply', 10);
       allow update: if signedIn() && onlyMyVoteChanged();
       // Its author, the thread's author (deleting the whole discussion), or an admin
       allow delete: if (signedIn() && resource.data.authorId == me())
@@ -200,14 +341,25 @@ service cloud.firestore {
         || isAdmin();
     }
 
-    // ── craft_certificates/{id} · peer_dossiers/{id} (copies of an article's earned records) ──
-    match /craft_certificates/{id} {
-      allow read: if true;
-      allow write: if signedIn();
+    // ── craft_certificates/{articleId} · peer_dossiers/{articleId} ───────────────────────────
+    // Copies of an article's earned records, written by that article's author (the article document
+    // itself stays the source of truth for what pages display). Dossiers only for panel-passed papers.
+    function ownArticle(articleId) {
+      return signedIn()
+        && get(/databases/$(database)/documents/articles/$(articleId)).data.authorId == me();
     }
-    match /peer_dossiers/{id} {
+    match /craft_certificates/{articleId} {
       allow read: if true;
-      allow write: if signedIn();
+      allow create, update: if ownArticle(articleId) && data().get('articleId', articleId) == articleId;
+      allow delete: if ownArticle(articleId) || isAdmin();
     }
+    match /peer_dossiers/{articleId} {
+      allow read: if true;
+      allow create, update: if ownArticle(articleId)
+        && get(/databases/$(database)/documents/articles/$(articleId)).data.get('panelPassed', false) == true;
+      allow delete: if ownArticle(articleId) || isAdmin();
+    }
+
+    // Anything not matched above is closed
   }
 }

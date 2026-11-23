@@ -1,9 +1,11 @@
 rules_version = '2';
 
-// Firebase Storage rules for Prism. Deploy with:  npm run deploy:rules
-//   avatars/{uid}/…    profile photos      (written by that user)
+// Firebase Storage rules for Prism. Deploy with:  firebase deploy --only firestore:rules,storage
+//   avatars/{uid}/…    profile photos        (written by that user)
 //   articles/{uid}/…   cover + inline images (written by that user)
-// Everything is publicly readable: these images appear on public profiles and stories.
+// Both are publicly readable: these images appear on public profiles and stories.
+// Uploads: the owner's own folder only, ≤ 5 MB, JPEG/PNG/WebP with a matching extension.
+// Keep in step with MAX_IMAGE_BYTES / IMAGE_TYPES in src/lib/storage.ts.
 service firebase.storage {
   match /b/{bucket}/o {
     function isAdmin() {
@@ -11,22 +13,24 @@ service firebase.storage {
         && request.auth.token.email_verified == true
         && request.auth.token.email in ['ayushra6111@gmail.com', 'surishri03@gmail.com'];
     }
-    function ownImage(uid) {
+    function ownImage(uid, file) {
       return request.auth != null && request.auth.uid == uid
-        && request.resource.size < 8 * 1024 * 1024
-        && request.resource.contentType.matches('image/(jpeg|png|webp|gif)');
+        && request.resource.size < 5 * 1024 * 1024
+        && request.resource.contentType.matches('image/(jpeg|png|webp)')
+        && file.lower().matches('.+\\.(jpe?g|png|webp)$');
     }
 
     match /avatars/{uid}/{file} {
       allow read: if true;
-      allow create, update: if ownImage(uid);
+      allow create, update: if ownImage(uid, file);
       allow delete: if (request.auth != null && request.auth.uid == uid) || isAdmin();
     }
     match /articles/{uid}/{file} {
       allow read: if true;
-      allow create, update: if ownImage(uid);
+      allow create, update: if ownImage(uid, file);
       allow delete: if (request.auth != null && request.auth.uid == uid) || isAdmin();
     }
+    // Everything else is closed
     match /{path=**} {
       allow read, write: if false;
     }

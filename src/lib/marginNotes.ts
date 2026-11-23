@@ -6,6 +6,7 @@
 
 import { useCallback, useEffect, useState } from "react"
 import { toast, useUIStore } from "@/lib/store"
+import { cooldownMessage, markPosted, stampRateLimit } from "@/lib/rateLimit"
 
 export interface MarginNote {
   id: string
@@ -95,8 +96,18 @@ export function useMarginNotes(articleId: string) {
         authorAvatar: profile.avatarUrl || "",
         createdAt: Date.now(),
       }
+      const wait = cooldownMessage("margin_note")
+      if (wait) {
+        toast(wait)
+        return false
+      }
       fs()
-        .then(([{ collection, addDoc }, { db }]) => addDoc(collection(db, NOTES), data))
+        .then(([fsm, { db }]) => {
+          const batch = fsm.writeBatch(db)
+          batch.set(fsm.doc(fsm.collection(db, NOTES)), data)
+          stampRateLimit(fsm, batch, db, uid, "margin_note")
+          return batch.commit().then(() => markPosted("margin_note"))
+        })
         .catch((err) => {
           warn("couldn't save the note", err)
           toast("Couldn't save your margin note.", { tone: "error" })

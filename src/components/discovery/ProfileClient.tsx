@@ -244,7 +244,7 @@ function About({
   links: { href: string; label: string; icon: React.ComponentType<{ className?: string }> }[]
 }) {
   return (
-    <div className="grid md:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)] gap-4">
+    <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)] gap-4">
       <div className="panel p-6 shadow-[var(--shadow)]">
         <h2 className="font-display font-semibold text-lg tracking-tight">About {name.split(" ")[0]}</h2>
         <p className="mt-3 font-serif text-[1.0625rem] leading-relaxed text-[var(--fg-secondary)]">{bio}</p>

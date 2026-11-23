@@ -78,7 +78,7 @@ export function CoverImageField({ value, onChange }: { value?: string; onChange:
           <span className="flex flex-col items-center gap-2">
             {busy ? <Loader2 className="w-5 h-5 animate-spin" /> : <ImagePlus className="w-5 h-5" />}
             {busy ? `Uploading… ${progress}%` : "Upload a cover image"}
-            {!busy && <span className="text-xs">JPG, PNG, WebP or GIF · up to 8 MB</span>}
+            {!busy && <span className="text-xs">JPG, PNG or WebP · up to 5 MB</span>}
           </span>
         </button>
       )}
@@ -86,7 +86,7 @@ export function CoverImageField({ value, onChange }: { value?: string; onChange:
       <input
         ref={input}
         type="file"
-        accept="image/jpeg,image/png,image/webp,image/gif"
+        accept="image/jpeg,image/png,image/webp"
         className="sr-only"
         tabIndex={-1}
         onChange={(e) => {
@@ -116,7 +116,7 @@ export function InlineImageUpload({ onUploaded }: { onUploaded: (url: string) =>
       <input
         ref={input}
         type="file"
-        accept="image/jpeg,image/png,image/webp,image/gif"
+        accept="image/jpeg,image/png,image/webp"
         className="sr-only"
         tabIndex={-1}
         onChange={async (e) => {

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import {
   createIdea,
+  RateLimitedError,
   deleteIdea,
   isActive,
   loadSeen,
@@ -80,7 +81,8 @@ export function useInstantIdeas(viewerUid?: string) {
     setNow(created)
     createIdea(idea).catch((err) => {
       setRemote((prev) => prev.filter((i) => i.id !== idea.id))
-      toast("Couldn't post your idea. Check your connection and try again.", { tone: "error" })
+      if (err instanceof RateLimitedError) toast(err.message)
+      else toast("Couldn't post your idea. Check your connection and try again.", { tone: "error" })
       console.warn("[ideas] create failed", err)
     })
     return idea

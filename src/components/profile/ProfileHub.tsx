@@ -239,7 +239,7 @@ function Capabilities({ username }: { username: string }) {
       </h2>
       <p className="mt-1 text-sm text-[var(--fg-muted)]">One account. Each step unlocks more of Prism, right here.</p>
 
-      <div className="mt-5 grid gap-4 md:grid-cols-3">
+      <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-3">
         {/* Membership */}
         <article className={cn(card, access.isElite && "border-[var(--elite-line)] bg-[var(--elite-wash)]")}>
           <p className="meta">Membership</p>

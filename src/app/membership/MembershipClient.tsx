@@ -161,7 +161,7 @@ export function MembershipClient({ requestedPlan }: { requestedPlan: Plan | null
           <h2 id="plans-title" className="sr-only">
             Plans
           </h2>
-          <div className="grid gap-4 md:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
             {TIERS.map((tier, i) => (
               <Reveal key={tier.id} index={i}>
                 <PlanCard
@@ -183,7 +183,7 @@ export function MembershipClient({ requestedPlan }: { requestedPlan: Plan | null
         {/* How the split works */}
         <section className="max-w-7xl mx-auto px-4 sm:px-6 pb-20">
           <Reveal>
-            <div className="panel p-6 sm:p-10 grid lg:grid-cols-[1fr_1.1fr] gap-10 items-center">
+            <div className="panel p-6 sm:p-10 grid grid-cols-1 lg:grid-cols-[1fr_1.1fr] gap-10 items-center">
               <div>
                 <p className="meta">How your fee is shared</p>
                 <h2 className="display mt-3 text-[2rem] sm:text-[2.5rem]">Your attention decides who gets paid.</h2>
@@ -608,7 +608,7 @@ function CheckoutBody({
           <p className="mt-2 text-sm text-[var(--fg-muted)] leading-relaxed max-w-xs mx-auto">
             Every member story is open to you, and this month&apos;s share will follow what you read.
           </p>
-          <div className="mt-7 grid sm:grid-cols-2 gap-2">
+          <div className="mt-7 grid grid-cols-1 sm:grid-cols-2 gap-2">
             <button
               type="button"
               onClick={onDone}
@@ -772,7 +772,7 @@ function CancelDialog({ open, current, onClose }: { open: boolean; current: Tier
       <p className="mt-3 text-xs text-[var(--fg-subtle)] leading-relaxed">
         In this demo the change is immediate, and there&apos;s nothing to refund because nothing was charged.
       </p>
-      <div className="mt-7 grid sm:grid-cols-2 gap-2">
+      <div className="mt-7 grid grid-cols-1 sm:grid-cols-2 gap-2">
         <button
           type="button"
           onClick={onClose}

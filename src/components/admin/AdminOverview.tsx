@@ -49,7 +49,7 @@ export function AdminOverview() {
     <>
       <AdminHeader eyebrow="Admin" title="Overview" />
       <div className="px-5 sm:px-8 py-8 space-y-8">
-        <section aria-label="Work waiting" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <section aria-label="Work waiting" className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <Kpi label="Panel applications" value={stats.pendingApps} href="/admin/applications" hint="waiting for a decision" />
           <Kpi label="Article verification" value={stats.verification} href="/admin/verification" hint="passed the AI check" />
           <Kpi label="With the peer panel" value={stats.onPanel} href="/admin/verification?tab=panel" hint="votes in progress" />

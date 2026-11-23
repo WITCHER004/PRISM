@@ -106,7 +106,7 @@ export function SettingsClient() {
             Your profile, how stories look and sound, and what we email you. Profile changes are saved to your account.
           </p>
 
-          <div className="mt-10 grid md:grid-cols-[200px_minmax(0,1fr)] gap-6 md:gap-10 items-start">
+          <div className="mt-10 grid grid-cols-1 md:grid-cols-[200px_minmax(0,1fr)] gap-6 md:gap-10 items-start">
             {/* Tabs */}
             <div
               role="tablist"
@@ -376,7 +376,7 @@ function ProfileForm({ username }: { username: string | null }) {
   return (
     <form onSubmit={save} noValidate className="space-y-4">
       <Section title="Public profile" description="This is how you appear on your stories, responses and profile page.">
-        <div className="grid lg:grid-cols-[minmax(0,1fr)_240px] gap-8">
+        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_240px] gap-8">
           <div className="space-y-5">
             <AvatarUploader
               value={draft.avatarUrl}
@@ -403,7 +403,7 @@ function ProfileForm({ username }: { username: string | null }) {
               max={BIO_MAX}
               placeholder="A sentence or two about what you write and read."
             />
-            <div className="grid sm:grid-cols-2 gap-5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
               <TextField
                 label="Website"
                 value={draft.websiteUrl}
@@ -1019,7 +1019,7 @@ function AccountPanel() {
         <p className="mt-3 text-sm text-[var(--fg-muted)] leading-relaxed">
           You can reset this device&apos;s preferences (theme, bookmarks, followed writers) right now.
         </p>
-        <div className="mt-7 grid sm:grid-cols-2 gap-2">
+        <div className="mt-7 grid grid-cols-1 sm:grid-cols-2 gap-2">
           <button
             type="button"
             data-autofocus

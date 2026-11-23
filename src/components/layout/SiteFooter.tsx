@@ -47,10 +47,10 @@ export function SiteFooter() {
           {columns.map(({ title, links }) => (
             <div key={title}>
               <h4 className="meta mb-3">{title}</h4>
-              <ul className="space-y-2">
+              <ul className="sm:space-y-2">
                 {links.map(({ label, href }) => (
                   <li key={label}>
-                    <Link href={href} className="text-sm text-[var(--fg-secondary)] hover:text-[var(--fg)] transition-colors">
+                    <Link href={href} className="inline-flex items-center min-h-10 sm:min-h-0 text-sm text-[var(--fg-secondary)] hover:text-[var(--fg)] transition-colors">
                       {label}
                     </Link>
                   </li>

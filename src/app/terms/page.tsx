@@ -5,7 +5,7 @@ import { pageMetadata } from "@/lib/seo"
 
 export const metadata: Metadata = pageMetadata({
   title: "Terms of Service",
-  description: "Illustrative terms for Prism's demo. Placeholder text, not a binding agreement or legal advice.",
+  description: "The terms for reading, writing and publishing on Prism: accounts, content ownership, payments and conduct.",
   path: "/terms",
 })
 

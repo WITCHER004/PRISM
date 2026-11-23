@@ -1,3 +1,5 @@
+import { linkifyContacts } from "@/lib/linkify"
+import { sanitizeArticleHtml } from "@/lib/sanitize"
 import { deepReadMinutes, PAPER_MASK, PAPER_PREVIEW_FRACTION } from "@/lib/papers"
 import { certificateFrom } from "@/lib/craft"
 import { dossierFromPanel } from "@/lib/dossier"
@@ -58,42 +60,6 @@ function withHeadingIds(html: string): { html: string; toc: TocItem[] } {
   return { html: out, toc }
 }
 
-// Split story HTML into short, speakable pieces for listen mode: one per block,
-// with long paragraphs broken at sentence ends so the voice never runs on too long
-function toSpeechChunks(title: string, html: string): string[] {
-  const decode = (s: string) =>
-    s
-      .replace(/&nbsp;/g, " ")
-      .replace(/&amp;/g, "&")
-      .replace(/&quot;/g, '"')
-      .replace(/&#39;|&rsquo;|&lsquo;/g, "'")
-      .replace(/&ldquo;|&rdquo;/g, '"')
-      .replace(/&mdash;/g, "—")
-      .replace(/&lt;/g, "<")
-      .replace(/&gt;/g, ">")
-  const blocks = [...html.matchAll(/<(p|h[1-4]|li|blockquote)[^>]*>([\s\S]*?)<\/\1>/g)]
-    .map((m) => decode(m[2].replace(/<[^>]+>/g, " ")).replace(/\s+/g, " ").trim())
-    .filter(Boolean)
-
-  const chunks: string[] = [title]
-  for (const block of blocks) {
-    if (block.length <= 240) {
-      chunks.push(block)
-      continue
-    }
-    let cur = ""
-    for (const sentence of block.match(/[^.!?]+[.!?]+["')\]]*\s*|[^.!?]+$/g) ?? [block]) {
-      if (cur && (cur + sentence).length > 240) {
-        chunks.push(cur.trim())
-        cur = ""
-      }
-      cur += sentence
-    }
-    if (cur.trim()) chunks.push(cur.trim())
-  }
-  return chunks
-}
-
 export async function generateMetadata({ params }: PostPageProps): Promise<Metadata> {
   const { username, slug } = await params
   const post = await getPostBySlug(username, slug)
@@ -149,7 +115,9 @@ export default async function PostPage({ params }: PostPageProps) {
   const topic = post.tags[0]
   const path = `/${post.author.username}/${post.slug}`
   const aiScore = article?.liveAiPercent ?? article?.phase1?.aiPercent ?? null
-  const { html, toc } = withHeadingIds(post.contentHtml)
+  // Author HTML is untrusted: allowlist it before linkifying and rendering
+  const safeHtml = sanitizeArticleHtml(post.contentHtml)
+  const { html, toc } = withHeadingIds(linkifyContacts(safeHtml))
   const dockProps = {
     postId: post.id,
     clapCount: post.clapCount,
@@ -286,13 +254,12 @@ export default async function PostPage({ params }: PostPageProps) {
                 <UnlockedOnly postId={post.id} paywalled={isPaywalled}>
                   <ListenMode
                     title={post.title}
-                    chunks={toSpeechChunks(post.title, post.contentHtml)}
                     minutes={post.readingTimeMin}
                   />
                 </UnlockedOnly>
                 <ExportMenu
                   postId={post.id}
-                  html={post.contentHtml}
+                  html={safeHtml}
                   isAdvancedPaper={!!paper}
                   paywalled={isPaywalled}
                   meta={{

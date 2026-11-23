@@ -25,6 +25,7 @@ import { dur, ease } from "@/lib/motion"
 import { toast, useUIStore } from "@/lib/store"
 import { hueStyle, TOPICS } from "@/lib/topics"
 import { cn, formatRelativeDate } from "@/lib/utils"
+import { safeHref } from "@/lib/sanitize"
 
 type Sort = "latest" | "discussed" | "unanswered"
 const topicName = (slug: string) => TOPICS.find((t) => t.slug === slug)?.name ?? slug
@@ -151,7 +152,7 @@ export function ForumClient() {
         )}
       </header>
 
-      <div className="mt-10 grid gap-10 lg:grid-cols-[minmax(0,1fr)_320px]">
+      <div className="mt-10 grid grid-cols-1 gap-10 lg:grid-cols-[minmax(0,1fr)_320px]">
         {/* ── Threads ───────────────────────────────────────────────── */}
         <div className="min-w-0">
           <AnimatePresence initial={false}>
@@ -334,7 +335,7 @@ function Composer({
           {body.length}/{BODY_MAX}
         </p>
       </div>
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div>
           <label htmlFor="thread-topic" className="meta">
             Topic
@@ -422,9 +423,9 @@ function ThreadCard({
         </div>
         <h2 className="mt-2.5 font-display text-xl font-semibold leading-snug">{t.title}</h2>
         <p className={cn("mt-1.5 text-[15px] leading-relaxed text-[var(--fg-secondary)] whitespace-pre-line", !open && "line-clamp-2")}>{t.body}</p>
-        {t.linkedArticleHref && t.linkedArticleTitle && (
+        {safeHref(t.linkedArticleHref)?.startsWith("/") && t.linkedArticleTitle && (
           <Link
-            href={t.linkedArticleHref}
+            href={safeHref(t.linkedArticleHref)!}
             onClick={(e) => e.stopPropagation()}
             className="mt-3 inline-flex max-w-full items-center gap-1.5 h-8 px-3 rounded-full border border-[var(--border)] bg-[var(--bg)] text-[13px] text-[var(--fg-secondary)] hover:border-[var(--border-strong)]"
           >

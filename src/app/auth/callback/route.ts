@@ -5,7 +5,14 @@ import { NextResponse } from "next/server"
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url)
   const code = searchParams.get("code")
-  const next = searchParams.get("next") ?? "/dashboard"
+  // Only ever continue to a page on this site (no //host, /\host or @host tricks)
+  let target: URL
+  try {
+    target = new URL(searchParams.get("next") ?? "/dashboard", origin)
+  } catch {
+    target = new URL("/dashboard", origin)
+  }
+  const next = target.origin === origin ? `${target.pathname}${target.search}${target.hash}` : "/dashboard"
 
   if (code) {
     const supabase = await createClient()

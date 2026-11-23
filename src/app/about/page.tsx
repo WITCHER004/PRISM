@@ -87,7 +87,7 @@ export default function AboutPage() {
         {/* Mission */}
         <section className="max-w-7xl mx-auto px-4 sm:px-6 pb-20">
           <Reveal>
-            <div className="panel p-6 sm:p-10 lg:p-14 grid lg:grid-cols-[0.8fr_1.2fr] gap-8 lg:gap-16">
+            <div className="panel p-6 sm:p-10 lg:p-14 grid grid-cols-1 lg:grid-cols-[0.8fr_1.2fr] gap-8 lg:gap-16">
               <div>
                 <p className="meta">Our mission</p>
                 <h2 className="display mt-3 text-[2rem] sm:text-[2.75rem]">One beam of curiosity, every topic worth it.</h2>
@@ -118,7 +118,7 @@ export default function AboutPage() {
               attention.
             </p>
           </Reveal>
-          <ol className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <ol className="mt-10 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {STEPS.map((s, i) => {
               const Icon = s.icon
               return (
@@ -149,7 +149,7 @@ export default function AboutPage() {
             <p className="meta">What we believe</p>
             <h2 className="display mt-3 text-[2rem] sm:text-[2.75rem]">Four promises we design around.</h2>
           </Reveal>
-          <div className="mt-10 grid gap-4 md:grid-cols-2">
+          <div className="mt-10 grid grid-cols-1 gap-4 md:grid-cols-2">
             {VALUES.map((v, i) => {
               const Icon = v.icon
               return (
@@ -175,7 +175,7 @@ export default function AboutPage() {
           <Reveal>
             <div className="relative overflow-hidden rounded-[28px] bg-[var(--fg)] text-[var(--bg)] p-8 sm:p-12">
               <div className="absolute inset-x-0 top-0 h-1.5 spectrum-bg" />
-              <div className="grid md:grid-cols-[1.4fr_1fr] gap-8 items-end">
+              <div className="grid grid-cols-1 md:grid-cols-[1.4fr_1fr] gap-8 items-end">
                 <div>
                   <p className="font-mono text-xs uppercase tracking-wider opacity-60">Join in</p>
                   <h2 className="display mt-3 text-4xl sm:text-5xl">

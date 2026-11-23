@@ -112,7 +112,12 @@ function UserRow({ row }: { row: DirectoryRow }) {
             <p className="font-medium truncate">{row.displayName}</p>
             <p className="text-xs text-[var(--fg-muted)] truncate">
               @{row.username}
-              {row.email ? ` · ${row.email}` : ""}
+              {row.email && (
+                <>
+                  {" · "}
+                  <a href={`mailto:${row.email}`} className="hover:text-[var(--fg)] hover:underline underline-offset-2">{row.email}</a>
+                </>
+              )}
             </p>
           </div>
         </div>

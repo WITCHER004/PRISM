@@ -77,7 +77,7 @@ export function PanelTab({ me, staff }: { me: string; staff: boolean }) {
     )
 
   return (
-    <div className="mt-6 grid lg:grid-cols-[320px_minmax(0,1fr)] gap-6 items-start">
+    <div className="mt-6 grid grid-cols-1 lg:grid-cols-[320px_minmax(0,1fr)] gap-6 items-start">
       <ul className="space-y-2 lg:sticky lg:top-24" aria-label="Panel papers">
         {papers.map((d) => {
           const mine = d.panel!.find((v) => v.reviewer === me)
@@ -126,10 +126,10 @@ function PanelPaper({ draft, me, staff }: { draft: Draft; me: string; staff: boo
     setError("")
   }
 
-  const submit = () => {
+  const submit = async () => {
     if (!mode) return
     if (!criterion) return setError("Pick the criterion your vote rests on.")
-    const res = castPanelVote(draft.id, mode, reason, criterion)
+    const res = await castPanelVote(draft.id, mode, reason, criterion)
     if (!res.ok) return setError(res.error)
     toast(mode === "PASS" ? `Approved (PASS) on ${criterion}` : `Rejected (FAIL) on ${criterion}, with your reason`, { tone: "success" })
     setMode(null)
@@ -355,10 +355,10 @@ function CounterCard({ item, me, actor }: { item: CounterItem; me: string; actor
 
   useEffect(() => setError(""), [mode])
 
-  const decide = () => {
+  const decide = async () => {
     if (!mode) return
     setBusy(true)
-    const res = reconsiderCounter(item.draft.id, item.target, mode, note, actor)
+    const res = await reconsiderCounter(item.draft.id, item.target, mode, note)
     setBusy(false)
     if (!res.ok) return setError(res.error)
     toast(
@@ -392,7 +392,7 @@ function CounterCard({ item, me, actor }: { item: CounterItem; me: string; actor
         )}
       </div>
 
-      <ol className="mt-5 grid gap-3 md:grid-cols-3">
+      <ol className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-3">
         <li className="rounded-[12px] border border-[var(--border)] p-4">
           <p className="meta">1 · Article excerpt</p>
           <p className="mt-2 text-sm text-[var(--fg-secondary)] leading-relaxed line-clamp-[9]">{excerpt}…</p>

@@ -1,7 +1,24 @@
 "use server"
 
+import { z } from "zod"
 import { stripe } from "@/lib/stripe"
-import { headers } from "next/headers"
+import { SITE_URL } from "@/lib/seo"
+
+// Redirect targets come from the configured site URL, never from the request's Origin header
+const origin = SITE_URL.origin
+
+const TipInput = z.object({
+  authorId: z.string().min(1).max(128),
+  authorName: z.string().trim().min(1).max(100),
+  authorUsername: z.string().regex(/^[a-z0-9_]{1,40}$/),
+  amountDollars: z.number().finite().min(1).max(500),
+  message: z.string().trim().max(300).optional(),
+})
+
+const failed = (err: unknown) => {
+  console.error("[payments]", err)
+  return { success: false as const, error: "Payment couldn't be started. Try again." }
+}
 
 export async function createTipSession(data: {
   authorId: string
@@ -10,9 +27,10 @@ export async function createTipSession(data: {
   amountDollars: number
   message?: string
 }) {
+  const parsed = TipInput.safeParse(data)
+  if (!parsed.success) return { success: false as const, error: "Choose a tip between $1 and $500." }
+  data = parsed.data
   try {
-    const origin = (await headers()).get("origin") || "http://localhost:3000"
-
     // If Stripe key is demo/placeholder, return a simulated success URL
     if (!process.env.STRIPE_SECRET_KEY || process.env.STRIPE_SECRET_KEY.includes("placeholder")) {
       return {
@@ -42,14 +60,14 @@ export async function createTipSession(data: {
     })
 
     return { success: true, url: session.url }
-  } catch (error: any) {
-    return { success: false, error: error.message }
+  } catch (error) {
+    return failed(error)
   }
 }
 
 export async function createSubscriptionCheckout(plan: "reader" | "patron" = "reader") {
+  if (plan !== "reader" && plan !== "patron") return { success: false as const, error: "Unknown plan." }
   try {
-    const origin = (await headers()).get("origin") || "http://localhost:3000"
     const priceAmount = plan === "reader" ? 800 : 2000
 
     if (!process.env.STRIPE_SECRET_KEY || process.env.STRIPE_SECRET_KEY.includes("placeholder")) {
@@ -83,7 +101,7 @@ export async function createSubscriptionCheckout(plan: "reader" | "patron" = "re
     })
 
     return { success: true, url: session.url }
-  } catch (error: any) {
-    return { success: false, error: error.message }
+  } catch (error) {
+    return failed(error)
   }
 }

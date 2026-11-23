@@ -29,7 +29,6 @@ import { PANEL_PASS_THRESHOLD, PANEL_SIZE } from "@/lib/elite/config"
 import { tallyPanel } from "@/lib/elite/panel"
 import { useSubscription } from "@/components/elite/hooks"
 import { EliteTag } from "@/components/elite/EliteBadges"
-import { requestPhase1 } from "@/lib/moderation/client"
 import { countWords } from "@/lib/moderation/heuristics"
 import { AIHumanGauge, Phase1Breakdown, StatusPill } from "@/components/moderation/Phase1Report"
 import { PaperSettings, PanelReviewSetting } from "@/components/papers/PaperSettings"
@@ -83,7 +82,7 @@ export function StoryEditor({ draftId }: { draftId?: string }) {
 
 function EditorWorkspace({ initial }: { initial?: Draft }) {
   const saveDraft = useUIStore((s) => s.saveDraft)
-  const recordPhase1 = useUIStore((s) => s.recordPhase1)
+  const submitForReview = useUIStore((s) => s.submitForReview)
   const withdrawSubmission = useUIStore((s) => s.withdrawSubmission)
   const { user, displayName } = useWriter()
 
@@ -365,40 +364,31 @@ function EditorWorkspace({ initial }: { initial?: Draft }) {
     checking.current = true
     setSubmitError(null)
     setPublishPhase("checking")
-    let result: Awaited<ReturnType<typeof requestPhase1>>
+    // The server scores the stored text itself and moves the story on; the browser only shows the result
+    let result: Awaited<ReturnType<typeof submitForReview>>
     try {
-      result = await requestPhase1({ title: saved.title, contentHtml: saved.contentHtml })
+      result = await submitForReview(id)
     } finally {
       checking.current = false
     }
-    if ("error" in result) {
-      setSubmitError(result.error)
+    if (!result.ok || !result.report) {
+      setSubmitError(result.ok ? "This story can't be submitted right now." : result.error)
       setPublishPhase("confirm")
       return
     }
-    const updated = recordPhase1(id, result.report)
+    const report = result.report
     // Mirror the craft certificate as submitted (best effort; the draft keeps the source copy)
-    if (updated?.craft) {
+    if (saved.craft) {
       mirrorRecord("craft_certificates", id, {
         articleId: id,
-        author: updated.authorUsername,
-        ...certificateFrom(updated.craft, result.report.wordCount, result.report.aiPercent),
-        telemetry: updated.craft,
+        author: saved.authorUsername,
+        ...certificateFrom(saved.craft, report.wordCount, report.aiPercent),
+        telemetry: saved.craft,
       })
     }
-    if (!updated) {
-      toast(
-        result.report.wordCount < MIN_WORDS_FOR_SUBMISSION
-          ? `Articles need at least ${MIN_WORDS_FOR_SUBMISSION} words`
-          : "This story can't be submitted right now",
-        { tone: "error" }
-      )
-      setPublishPhase(null)
-      return
-    }
-    setReport(result.report)
+    setReport(report)
     setSettingsOpen(false)
-    setPublishPhase(result.report.passed ? "queued" : "failed")
+    setPublishPhase(report.passed ? "queued" : "failed")
   }
 
   const openLastReport = () => {
@@ -407,8 +397,9 @@ function EditorWorkspace({ initial }: { initial?: Draft }) {
     setPublishPhase(stored.phase1.passed ? "queued" : "failed")
   }
 
-  const withdraw = () => {
-    withdrawSubmission(id)
+  const withdraw = async () => {
+    const res = await withdrawSubmission(id)
+    if (!res.ok) return toast(res.error, { tone: "error" })
     setPreview(false)
     toast("Withdrawn from review — you can edit again")
   }

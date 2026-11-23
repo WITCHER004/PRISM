@@ -148,7 +148,7 @@ export default function StudioOverviewPage() {
               Drafts autosave to your account. Submitting runs an AI-content check, then a Prism employee reviews it.
             </p>
           </div>
-          <div ref={tablistRef} role="tablist" aria-label="Filter stories" className="flex items-center gap-1 border-b border-[var(--border)]">
+          <div ref={tablistRef} role="tablist" aria-label="Filter stories" className="flex items-center gap-1 border-b border-[var(--border)] overflow-x-auto scrollbar-none">
             {TABS.map((t) => {
               const active = tab === t.value
               return (
@@ -158,7 +158,7 @@ export default function StudioOverviewPage() {
                   aria-selected={active}
                   onClick={() => setTab(t.value)}
                   className={cn(
-                    "relative h-11 px-4 text-sm font-medium transition-colors",
+                    "relative shrink-0 whitespace-nowrap h-11 px-4 text-sm font-medium transition-colors",
                     active ? "text-[var(--fg)]" : "text-[var(--fg-muted)] hover:text-[var(--fg)]"
                   )}
                 >

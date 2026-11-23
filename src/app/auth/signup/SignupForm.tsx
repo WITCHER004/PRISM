@@ -274,18 +274,20 @@ export function SignupForm({
 
     // Claim the handle on users/{uid} (the doc itself was created on sign-in by AuthProvider)
     try {
-      const [{ collection, doc, getDocs, query, setDoc, where }, { db }] = await Promise.all([
+      const [{ doc, getDoc }, { db }, { tryHandle }] = await Promise.all([
         import("firebase/firestore"),
         import("@/lib/firebase"),
+        import("@/lib/handles"),
       ])
-      const taken = await getDocs(query(collection(db, "users"), where("handle", "==", finalHandle)))
-      if (taken.docs.some((d) => d.id !== fbUser.uid)) {
+      // The handle registry makes this atomic: if someone else holds it, nothing is written
+      const current = ((await getDoc(doc(db, "users", fbUser.uid))).data()?.handle as string | undefined) ?? null
+      const claimed = await tryHandle(fbUser.uid, finalHandle, { data: { displayName: finalDisplayName, bio: finalBio }, merge: true }, current)
+      if (!claimed) {
         setStatus("idle")
         setErrors({ username: `@${finalHandle} is taken. Try another.` })
         usernameRef.current?.focus()
         return
       }
-      await setDoc(doc(db, "users", fbUser.uid), { handle: finalHandle, displayName: finalDisplayName, bio: finalBio }, { merge: true })
     } catch (err) {
       console.warn("[signup] couldn't save profile:", err)
       setStatus("idle")

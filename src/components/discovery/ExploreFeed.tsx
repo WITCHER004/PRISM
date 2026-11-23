@@ -92,7 +92,7 @@ export function ExploreFeed({ posts, topics, initialFilter }: { posts: Post[]; t
         {visible.length} {visible.length === 1 ? "story" : "stories"}
       </p>
 
-      <motion.div layout className="relative grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+      <motion.div layout className="relative grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
         <AnimatePresence mode="popLayout" initial={false}>
           {visible.map((post, i) => (
             <motion.div

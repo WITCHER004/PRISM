@@ -44,7 +44,7 @@ export function EliteClient() {
         </section>
 
         {/* Plans */}
-        <section className="mt-12 grid md:grid-cols-2 gap-5 items-stretch" aria-label="Plans">
+        <section className="mt-12 grid grid-cols-1 md:grid-cols-2 gap-5 items-stretch" aria-label="Plans">
           <div className="panel p-6 sm:p-8 flex flex-col">
             <h2 className="font-display text-xl font-semibold">Free</h2>
             <p className="mt-1 text-sm text-[var(--fg-muted)]">Publish, get read, get rated.</p>
@@ -179,7 +179,7 @@ export function EliteClient() {
         </section>
 
         {/* How it works */}
-        <section className="mt-16 grid md:grid-cols-3 gap-5" aria-label="How Elite works">
+        <section className="mt-16 grid grid-cols-1 md:grid-cols-3 gap-5" aria-label="How Elite works">
           <div className="panel p-6">
             <p className="meta">Monetization</p>
             <h3 className="mt-2 font-display text-lg font-semibold">Paid per unique view</h3>

@@ -22,6 +22,8 @@ export interface SayOptions {
   words?: OrbWord[];
   audio?: HTMLMediaElement | AudioNode;
   voice?: SpeechSynthesisVoice;
+  /** An utterance the caller speaks itself; the orb only follows its events for captions. */
+  utterance?: SpeechSynthesisUtterance;
 }
 
 export interface RenderAtOptions {
@@ -398,7 +400,7 @@ class SpeakingOrbEngine {
 
   // say(text) speaks with the browser voice; say(text, {words, audio}) follows your own audio.
   // words: [{w, start, end}] in seconds from the audio start. audio: an <audio>/<video> element.
-  say(text: string, { words, audio, voice }: SayOptions = {}) {
+  say(text: string, { words, audio, voice, utterance }: SayOptions = {}) {
     const toks = String(text).trim().split(/\s+/).filter(Boolean);
     const line: any = {
       toks,
@@ -425,11 +427,13 @@ class SpeakingOrbEngine {
       if (!line.words.length) line.words = this.estimate(toks, 0);
       return;
     }
-    speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance(text),
+    if (!utterance) speechSynthesis.cancel();
+    const u = utterance ?? new SpeechSynthesisUtterance(text),
       starts: number[] = [];
-    u.voice = voice || bestVoice();
-    if (u.voice) u.lang = u.voice.lang;
+    if (!utterance) {
+      u.voice = voice || bestVoice();
+      if (u.voice) u.lang = u.voice.lang;
+    }
     let pos = 0;
     toks.forEach((t) => {
       pos = text.indexOf(t, pos);
@@ -443,9 +447,9 @@ class SpeakingOrbEngine {
     const go = () => {
       if (line.t0 > this.time) line.t0 = this.time;
     };
-    u.onstart = go;
+    u.addEventListener("start", go);
     setTimeout(go, 1500);
-    u.onboundary = (e: any) => {
+    u.addEventListener("boundary", (e: any) => {
       if (e.name && e.name !== "word") return;
       const i = starts.findIndex(
         (s, k) => e.charIndex >= s && e.charIndex < s + toks[k].length,
@@ -463,15 +467,18 @@ class SpeakingOrbEngine {
         w.start += shift;
         w.end += shift;
       }
-    };
-    u.onend = () => {
+    });
+    const finish = () => {
+      if (line.done != null) return;
       const now = this.time - line.t0;
       line.words.forEach((w: OrbWord) => {
         if (w.end > now) w.end = now;
       });
       line.done = now;
     };
-    speechSynthesis.speak(u);
+    u.addEventListener("end", finish);
+    u.addEventListener("error", finish);
+    if (!utterance) speechSynthesis.speak(u);
   }
   estimate(toks: string[], t: number) {
     return toks.map((w) => {

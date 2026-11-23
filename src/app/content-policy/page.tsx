@@ -5,7 +5,7 @@ import { pageMetadata } from "@/lib/seo"
 
 export const metadata: Metadata = pageMetadata({
   title: "Content Policy",
-  description: "Illustrative content-policy guidance for Prism's demo; this placeholder is not a final policy.",
+  description: "What Prism allows and doesn't: originality, AI use, sensitive themes, and how reports are handled.",
   path: "/content-policy",
 })
 

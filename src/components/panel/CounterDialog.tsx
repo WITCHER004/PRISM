@@ -34,9 +34,9 @@ export function CounterDialog({
   const [busy, setBusy] = useState(false)
   const remaining = Math.max(0, COUNTER_REASON_MIN - reason.trim().length)
 
-  const submit = () => {
+  const submit = async () => {
     setBusy(true)
-    const res = submitCounter(draftId, target, reason, clarification)
+    const res = await submitCounter(draftId, target, reason, clarification)
     setBusy(false)
     if (!res.ok) {
       setError(res.error)

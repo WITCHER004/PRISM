@@ -63,7 +63,7 @@ export function HomeFeed({ posts: all, topic }: { posts: Post[]; topic?: Tag }) 
             </Link>
           </div>
         ) : (
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 lg:auto-rows-[minmax(260px,auto)]">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4 lg:auto-rows-[minmax(260px,auto)]">
             <Reveal className="md:col-span-2 lg:row-span-2">
               <PostCard post={lead} variant="hero" />
             </Reveal>
@@ -97,7 +97,7 @@ export function HomeFeed({ posts: all, topic }: { posts: Post[]; topic?: Tag }) 
       {rest.length > 0 && (
         <section className="max-w-7xl mx-auto px-4 sm:px-6 pb-16">
           <SectionTitle title="Fresh from writers" href="/explore" />
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
             {rest.map((post, i) => (
               <Reveal key={post.id} index={i}>
                 <PostCard post={post} variant="tile" className="h-full" />

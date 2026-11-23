@@ -34,7 +34,7 @@ export function ContinueReading({ className }: { className?: string }) {
                 </h2>
                 <span className="text-xs text-[var(--fg-subtle)]">Synced across your devices</span>
               </div>
-              <ul className="grid gap-2 md:grid-cols-3">
+              <ul className="grid grid-cols-1 gap-2 md:grid-cols-3">
                 {items.map((p) => (
                   <li key={p.id} style={hueStyle(tagFor(p.topic || "prism").slug)}>
                     <Link

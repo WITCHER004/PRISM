@@ -12,6 +12,7 @@ import { EXPERTISE, STATEMENT_MAX, STATEMENT_MIN, validateApplication } from "@/
 import { hueStyle } from "@/lib/topics"
 import { useUIStore, toast } from "@/lib/store"
 import { cn, formatRelativeDate } from "@/lib/utils"
+import { safeHref } from "@/lib/sanitize"
 
 const openApply = () => useUIStore.getState().setPanelDialog("apply")
 const openPending = () => useUIStore.getState().setPanelDialog("pending")
@@ -292,7 +293,7 @@ function PendingDialog({ open, onClose }: { open: boolean; onClose: () => void }
           <div className="flex justify-between gap-4 px-4 py-3">
             <dt className="text-[var(--fg-muted)]">Credentials</dt>
             <dd className="min-w-0">
-              <a href={app.credentialsUrl} target="_blank" rel="noopener noreferrer nofollow" className="inline-flex items-center gap-1 underline underline-offset-2 truncate max-w-[16rem]">
+              <a href={/^https?:/i.test(app.credentialsUrl) ? safeHref(app.credentialsUrl) : undefined} target="_blank" rel="noopener noreferrer nofollow" className="inline-flex items-center gap-1 underline underline-offset-2 truncate max-w-[16rem]">
                 {app.credentialsUrl.replace(/^https?:\/\//, "")} <ExternalLink className="w-3 h-3 shrink-0" />
               </a>
             </dd>

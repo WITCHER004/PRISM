@@ -69,7 +69,7 @@ export default async function HomePage() {
 
       <main className="flex-1">
         {/* Intro + today's spectrum */}
-        <section className="max-w-7xl mx-auto px-4 sm:px-6 pt-12 sm:pt-16 pb-10 grid lg:grid-cols-12 gap-10 items-end">
+        <section className="max-w-7xl mx-auto px-4 sm:px-6 pt-12 sm:pt-16 pb-10 grid grid-cols-1 lg:grid-cols-12 gap-10 items-end">
           <Reveal className="lg:col-span-7">
             <p className="meta">Independent writing · Read by humans</p>
             <RevealText
@@ -161,7 +161,7 @@ export default async function HomePage() {
           <Reveal>
             <div className="relative overflow-hidden rounded-[28px] bg-[var(--fg)] text-[var(--bg)] p-8 sm:p-12">
               <div className="absolute inset-x-0 top-0 h-1.5 spectrum-bg" />
-              <div className="grid md:grid-cols-[1.4fr_1fr] gap-8 items-end">
+              <div className="grid grid-cols-1 md:grid-cols-[1.4fr_1fr] gap-8 items-end">
                 <div>
                   <p className="font-mono text-xs uppercase tracking-wider opacity-60">For writers</p>
                   <h2 className="display mt-3 text-4xl sm:text-5xl">

@@ -168,7 +168,7 @@ export function EditProfileDialog({ open, onOpenChange }: { open: boolean; onOpe
 
         <fieldset>
           <legend className="meta mb-3">Links</legend>
-          <div className="grid sm:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {SOCIAL_KEYS.map((k) => (
               <div key={k}>{field(k, SOCIALS[k].label, { prefix: SOCIALS[k].prefix, placeholder: SOCIALS[k].placeholder, icon: SOCIAL_ICON[k] })}</div>
             ))}

@@ -19,12 +19,23 @@ import {
 import { getAnalytics, isSupported, type Analytics } from "firebase/analytics"
 import { getFirestore, initializeFirestore, type Firestore } from "firebase/firestore"
 import { getStorage, type FirebaseStorage } from "firebase/storage"
+import { initializeAppCheck, ReCaptchaEnterpriseProvider, type AppCheck } from "firebase/app-check"
 import { firebaseConfig } from "@/lib/firebase-config"
 
 export { firebaseConfig }
 
 // One app, one Auth, one Firestore, one Storage — reused across Next.js HMR reloads.
 export const app: FirebaseApp = getApps().length ? getApp() : initializeApp(firebaseConfig)
+
+// App Check: proves requests come from this site (not a script holding the public API key). On when
+// NEXT_PUBLIC_RECAPTCHA_SITE_KEY is set; enforce it per service in the Firebase console. It must start
+// before Firestore/Storage/Auth make their first request, so it lives right here.
+const gac = globalThis as typeof globalThis & { __prismAppCheck?: AppCheck }
+const RECAPTCHA_SITE_KEY = process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY
+export const appCheck: AppCheck | null =
+  typeof window !== "undefined" && RECAPTCHA_SITE_KEY
+    ? (gac.__prismAppCheck ??= initializeAppCheck(app, { provider: new ReCaptchaEnterpriseProvider(RECAPTCHA_SITE_KEY), isTokenAutoRefreshEnabled: true }))
+    : null
 
 // Long polling instead of WebChannel streaming: WebChannel drops under Turbopack dev and behind some
 // proxies/ad-blockers, which shows up as "client is offline". initializeFirestore may only run once per
@@ -116,15 +127,42 @@ export async function signInWithGithub() {
   return signInWithPopup(auth, githubProvider)
 }
 
+/**
+ * Asks Prism's server whether this email/password attempt is within the rate limits (per IP and per
+ * address). Throws an error carrying a readable message when it isn't. If our server can't be reached,
+ * the attempt goes ahead: Firebase Auth still applies its own lockouts.
+ */
+async function guardAuthAttempt(kind: "signin" | "signup" | "reset", email: string) {
+  if (typeof window === "undefined") return
+  let res: Response
+  try {
+    const { appCheckToken } = await import("@/lib/appCheck")
+    const check = await appCheckToken()
+    res = await fetch("/api/auth/attempt", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...(check ? { "X-Firebase-AppCheck": check } : {}) },
+      body: JSON.stringify({ kind, email: email.trim().toLowerCase() }),
+    })
+  } catch {
+    return
+  }
+  if (res.ok) return
+  const data = (await res.json().catch(() => ({}))) as { error?: string }
+  throw Object.assign(new Error(data.error ?? "Too many attempts. Try again later."), { code: "auth/prism-rate-limited" })
+}
+
 export async function logInWithEmail(email: string, pass: string) {
+  await guardAuthAttempt("signin", email)
   return signInWithEmailAndPassword(auth, email, pass)
 }
 
 export async function registerWithEmail(email: string, pass: string) {
+  await guardAuthAttempt("signup", email)
   return createUserWithEmailAndPassword(auth, email, pass)
 }
 
 export async function resetPassword(email: string) {
+  await guardAuthAttempt("reset", email)
   return sendPasswordResetEmail(auth, email)
 }
 

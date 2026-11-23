@@ -1,6 +1,8 @@
 "use client"
 
 import Link from "next/link"
+import { useMemo } from "react"
+import { sanitizeArticleHtml } from "@/lib/sanitize"
 import { BadgeCheck, Gem, Lock } from "lucide-react"
 import { Avatar } from "@/components/ui/Avatar"
 import type { User } from "@/lib/data"
@@ -54,7 +56,9 @@ interface StoryArticleProps {
 }
 
 // The reader's view of a story written in Prism — same structure and type as the article page.
-export function StoryArticle({ title, subtitle, html, tags, paywall, date, author, authorName, meta, paper, postId, paperReview = "Editor-reviewed", afterHeader, reader }: StoryArticleProps) {
+export function StoryArticle({ title, subtitle, html: rawHtml, tags, paywall, date, author, authorName, meta, paper, postId, paperReview = "Editor-reviewed", afterHeader, reader }: StoryArticleProps) {
+  // Author HTML from Firestore: allowlisted before it reaches the DOM (staff and the panel preview here too)
+  const html = useMemo(() => sanitizeArticleHtml(rawHtml), [rawHtml])
   const topic = tags[0]
   const known = topic ? TOPICS.find((t) => t.slug === topic) : undefined
   const minutes = Math.max(1, Math.ceil(wordCount(html) / 238))

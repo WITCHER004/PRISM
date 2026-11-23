@@ -1,19 +1,19 @@
 import { NextResponse } from "next/server"
 import { recordReadSession } from "@/actions/interactions"
+import { databaseConfigured } from "@/lib/server/api"
 
+// POST /api/read-session { postId, durationSec, scrollDepth } — reading telemetry (sendBeacon).
+// The reader is taken from the session; any userId in the body is ignored.
 export async function POST(request: Request) {
+  if (!databaseConfigured()) return NextResponse.json({ recorded: false }, { status: 202 })
+  let body: unknown
   try {
-    const body = await request.json()
-    const { postId, durationSec, scrollDepth, userId } = body
-
-    if (!postId || typeof durationSec !== "number") {
-      return NextResponse.json({ error: "Invalid payload" }, { status: 400 })
-    }
-
-    await recordReadSession(postId, durationSec, scrollDepth || 0, userId)
-    return NextResponse.json({ recorded: true })
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 })
+    body = await request.json()
+  } catch {
+    return NextResponse.json({ error: "Expected a JSON body." }, { status: 400 })
   }
+  const result = await recordReadSession(body as Parameters<typeof recordReadSession>[0])
+  return result.success
+    ? NextResponse.json({ recorded: true })
+    : NextResponse.json({ error: "Invalid payload." }, { status: 400 })
 }
-

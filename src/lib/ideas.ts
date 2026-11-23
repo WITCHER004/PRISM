@@ -1,6 +1,8 @@
 // Instant Ideas: short thoughts that delete themselves after 1–24 hours, unless readers spark them past
 // IMMORTAL_THRESHOLD reactions. Stored in Firestore `instant_ideas` (no local copies).
 
+import { cooldownMessage, markPosted, stampRateLimit } from "@/lib/rateLimit"
+
 export type IdeaFormat = "thought" | "quote" | "code"
 export type IdeaTheme = "paper" | "obsidian" | "amber" | "blueprint"
 export type IdeaReaction = "sparked" | "deep"
@@ -240,7 +242,10 @@ export function watchIdeas(onChange: (ideas: InstantIdea[]) => void, onError?: (
 }
 
 export async function createIdea(idea: InstantIdea): Promise<void> {
-  const [{ doc, setDoc }, { db }] = await fs()
+  const wait = cooldownMessage("idea")
+  if (wait) throw new RateLimitedError(wait)
+  if (!idea.authorUid) throw new Error("Sign in to post an idea.")
+  const [{ doc, writeBatch, serverTimestamp }, { db }] = await fs()
   const data: IdeaDoc = {
     authorId: idea.authorUid ?? "",
     authorHandle: idea.authorHandle,
@@ -257,8 +262,16 @@ export async function createIdea(idea: InstantIdea): Promise<void> {
     voterIds: [],
     isImmortal: false,
   }
-  await setDoc(doc(db, COLLECTION, idea.id), data)
+  // The rules allow one idea per 30s per member: the rate-limit stamp rides in the same batch
+  const batch = writeBatch(db)
+  batch.set(doc(db, COLLECTION, idea.id), data)
+  stampRateLimit({ doc, serverTimestamp }, batch, db, idea.authorUid, "idea")
+  await batch.commit()
+  markPosted("idea")
 }
+
+/** Thrown when the member is still inside a posting cooldown */
+export class RateLimitedError extends Error {}
 
 export async function deleteIdea(id: string): Promise<void> {
   try {

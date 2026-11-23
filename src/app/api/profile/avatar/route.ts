@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { createClient as createSupabaseAdmin } from "@supabase/supabase-js"
+import { getSessionDbUser } from "@/lib/session"
 
 // Avatar upload. POST multipart/form-data { file } (already cropped square on the client).
 // Storage: Supabase Storage (bucket AVATAR_BUCKET, default "avatars") when a service-role key
@@ -26,6 +27,10 @@ function storageClient() {
 }
 
 export async function POST(request: Request) {
+  const storage = storageClient()
+  // Real uploads need a signed-in member (the inline fallback only echoes the image back)
+  if (storage && !(await getSessionDbUser())) return NextResponse.json({ error: "Sign in to upload a photo." }, { status: 401 })
+
   let file: FormDataEntryValue | null
   try {
     file = (await request.formData()).get("file")
@@ -40,12 +45,14 @@ export async function POST(request: Request) {
   const kind = SIGNATURES.find((s) => s.test(bytes))
   if (!kind) return NextResponse.json({ error: "Use a JPG, PNG or WebP image." }, { status: 415 })
 
-  const storage = storageClient()
   if (storage) {
     const bucket = process.env.AVATAR_BUCKET || "avatars"
     const path = `${crypto.randomUUID()}.${kind.ext}`
     const { error } = await storage.storage.from(bucket).upload(path, bytes, { contentType: kind.type, upsert: false })
-    if (error) return NextResponse.json({ error: `Upload failed: ${error.message}` }, { status: 502 })
+    if (error) {
+      console.error("[avatar] upload failed", error)
+      return NextResponse.json({ error: "Upload failed. Try again." }, { status: 502 })
+    }
     const { data } = storage.storage.from(bucket).getPublicUrl(path)
     return NextResponse.json({ url: data.publicUrl, storage: "supabase" })
   }

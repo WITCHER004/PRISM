@@ -14,6 +14,7 @@ import { useUIStore, toast } from "@/lib/store"
 import { cn, formatRelativeDate } from "@/lib/utils"
 import { AdminHeader } from "./AdminShell"
 import { StatusChip } from "./AdminOverview"
+import { safeHref } from "@/lib/sanitize"
 
 type Filter = PanelApplication["status"]
 
@@ -99,7 +100,13 @@ function ApplicationCard({ app }: { app: PanelApplication }) {
           </div>
           <p className="text-sm text-[var(--fg-muted)]">
             @{app.username}
-            {app.email ? ` · ${app.email}` : ""} · applied {formatRelativeDate(app.submittedAt)}
+            {app.email && (
+              <>
+                {" · "}
+                <a href={`mailto:${app.email}`} className="break-all hover:text-[var(--fg)] hover:underline underline-offset-2">{app.email}</a>
+              </>
+            )}
+            {" · "}applied {formatRelativeDate(app.submittedAt)}
           </p>
 
           <div className="mt-4 flex flex-wrap gap-1.5" aria-label="Expertise">
@@ -112,7 +119,7 @@ function ApplicationCard({ app }: { app: PanelApplication }) {
           </div>
 
           <a
-            href={app.credentialsUrl}
+            href={/^https?:/i.test(app.credentialsUrl) ? safeHref(app.credentialsUrl) : undefined}
             target="_blank"
             rel="noopener noreferrer nofollow"
             className="mt-4 inline-flex items-center gap-1.5 text-sm underline underline-offset-2 break-all"

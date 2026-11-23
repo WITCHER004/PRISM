@@ -2,33 +2,19 @@
 
 import { create } from "zustand"
 import { persist, createJSONStorage } from "zustand/middleware"
-import type { ArticleStatus, Phase1Report, ReviewTrack } from "@/lib/moderation/types"
-import { canTransition, MIN_WORDS_FOR_SUBMISSION, phase1Outcome, trackFor } from "@/lib/moderation/workflow"
-import { overlapWithCorpus } from "@/lib/moderation/similarity"
 import { reviewKey, REVIEW_BODY_MAX, type ArticleReview } from "@/lib/reviews"
 import { logOutFirebase } from "@/lib/firebase"
+import { callWorkflow, type WorkflowResult } from "@/lib/workflow/client"
 import { isAdminEmail, isAdminUser } from "@/lib/admin"
-import { DEFAULT_AVATAR, handleFrom, type ArticleVersion, type ArticleWorkflow, type UserDoc } from "@/lib/live/schema"
+import { handleFrom, type ArticleVersion, type ArticleWorkflow, type UserDoc } from "@/lib/live/schema"
 import {
-  CLOSING_NOTE_MIN,
-  COUNTER_REASON_MIN,
   DEMO_PAYOUT_SETTLE_MS,
-  FAILURE_REASON_MIN,
   MIN_PAYOUT_USD,
   PANEL_SIZE,
-  TEXT_MAX,
 } from "@/lib/elite/config"
 import {
-  assignPanel,
-  canCounterVote,
-  canReconsiderVote,
   tallyPanel,
-  panelStatus,
-  reconsiderationStatus,
-  resolveVote,
-  type EmployeeAppeal,
   type PanelDecision,
-  type PanelVote,
 } from "@/lib/elite/panel"
 import { activateElite, isEliteActive, type Subscription } from "@/lib/elite/subscription"
 import {
@@ -180,20 +166,21 @@ interface UIState {
   ) => Draft
   deleteDraft: (id: string) => void
   /** Phase 1 result → PHASE_1_FAILED or PENDING_EMPLOYEE_REVIEW. Elite articles go on to the panel after that. */
-  recordPhase1: (id: string, report: Phase1Report) => Draft | null
+  /** Author submits: the server runs the Phase 1 check on the stored text and routes the story */
+  submitForReview: (id: string) => Promise<WorkflowResult>
   /** Author pulls a submission out of the queue to keep editing */
-  withdrawSubmission: (id: string) => void
-  /** Phase 2: an employee approves (publishes) or requests changes. `actor` defaults to the site session. */
-  decideReview: (id: string, decision: ReviewOutcome["decision"], notes: string, actor?: string) => Result
+  withdrawSubmission: (id: string) => Promise<WorkflowResult>
+  /** Phase 2: staff approve (publish / send to the panel) or request changes */
+  decideReview: (id: string, decision: ReviewOutcome["decision"], notes: string) => Promise<WorkflowResult>
   markCelebrated: (id: string) => void
 
   // Elite peer panel + counter-reasons
   /** A panel member casts PASS or FAIL on a criterion (FAIL needs a written reason; PASS may add a note) */
-  castPanelVote: (id: string, decision: PanelDecision, reason: string, criterion: ReviewCriterion) => Result
+  castPanelVote: (id: string, decision: PanelDecision, reason: string, criterion: ReviewCriterion) => Promise<WorkflowResult>
   /** Writer appeals a FAIL vote or an employee rejection */
-  submitCounter: (id: string, target: CounterTarget, reason: string, clarification?: string) => Result
+  submitCounter: (id: string, target: CounterTarget, reason: string, clarification?: string) => Promise<WorkflowResult>
   /** Dissenting member or staff lead accepts (FAIL → PASS) or upholds the original decision */
-  reconsiderCounter: (id: string, target: CounterTarget, verdict: "ACCEPT" | "UPHOLD", note: string, actor?: string) => Result
+  reconsiderCounter: (id: string, target: CounterTarget, verdict: "ACCEPT" | "UPHOLD", note: string) => Promise<WorkflowResult>
 
   // Roles: Free → Elite → Panel member live on the main site; Admin exists only inside /admin
   access: Record<string, AccessRecord>
@@ -274,24 +261,6 @@ const isApplicationStatus = (v: unknown): v is PanelApplicationStatus =>
   typeof v === "string" && (APPLICATION_STATUSES as readonly string[]).includes(v)
 void isApplicationStatus
 
-/** The reviewed version of a draft becomes the live one, and produces notifications for any voters */
-function publishDraft(d: Draft, at: string): { draft: Draft; voterNotes: AppNotification[] } {
-  const v = d.submitted ?? { title: d.title, subtitle: d.subtitle, contentHtml: d.contentHtml, tags: d.tags, paywall: d.paywall, paper: d.paper, coverImageUrl: d.coverImageUrl }
-  const draft: Draft = { ...d, status: "PUBLISHED", live: v, publishedAt: d.publishedAt ?? at, celebrated: false, liveAiPercent: d.phase1?.aiPercent }
-  const title = titleOf(d)
-  const voterNotes: AppNotification[] = (d.voterIds ?? []).map((voter) => ({
-    id: "n_" + uid(),
-    kind: "idea_published",
-    toUid: voter,
-    articleId: d.id,
-    text: `An idea you sparked was just published as a full article: “${title}”`,
-    href: `/story/${d.id}`,
-    createdAt: at,
-    read: false,
-  }))
-  return { draft, voterNotes }
-}
-
 const titleOf = (d: Draft) => (d.submitted?.title ?? d.title).trim() || "Untitled story"
 
 const EMPTY_PROFILE: Profile = {
@@ -347,11 +316,6 @@ const MAX_VIEW_EVENTS = 20000
 const accessOf = (s: Pick<UIState, "access" | "subscriptions">, username: string | null | undefined) =>
   resolveAccess({ subscription: username ? s.subscriptions[username] : undefined, record: username ? s.access[username] : undefined })
 
-/** Every approved panel member */
-function panelPool(s: Pick<UIState, "access" | "subscriptions">): string[] {
-  return Object.keys(s.access).filter((u) => accessOf(s, u).isPanelMember)
-}
-
 /**
  * A newly approved member joins every open panel that still has a free seat (never on their own paper),
  * so they have papers to review straight away. Panels fill up to PANEL_SIZE as the panel grows.
@@ -376,48 +340,6 @@ function seatOnOpenPanels(drafts: Record<string, Draft>, username: string, at: s
     })
   }
   return { drafts: next, notes }
-}
-
-/** Seats up to PANEL_SIZE panelists (never the author) and notifies them. Throws when nobody is eligible. */
-function sendToPanel(d: Draft, at: string, pool: string[]): { draft: Draft; notes: AppNotification[] } {
-  const panel: PanelVote[] = assignPanel(pool, d.authorUsername).map((reviewer) => ({
-    id: "pv_" + uid(),
-    reviewer,
-    decision: null,
-  }))
-  const draft: Draft = { ...d, status: "PENDING_PEER_PANEL", panel }
-  const notes: AppNotification[] = panel.map((v) => ({
-    id: "n_" + uid(),
-    kind: "review",
-    to: v.reviewer,
-    text: `You've been assigned to the peer panel for “${titleOf(d)}”`,
-    href: "/panel",
-    createdAt: at,
-    read: false,
-  }))
-  return { draft, notes }
-}
-
-/** Writes a panel change and moves the article to whatever status the votes now imply */
-function applyPanel(s: UIState, d: Draft, at: string): Partial<UIState> {
-  const before = d.status
-  const next = d.panel ? panelStatus(d.panel) : d.status
-  let updated: Draft = { ...d, status: next }
-  const notes: AppNotification[] = []
-  const title = titleOf(d)
-  const notify = (text: string, href: string) =>
-    notes.push({ id: "n_" + uid(), kind: "review", to: d.authorUsername, text, href, createdAt: at, read: false })
-  if (next === "PUBLISHED" && before !== "PUBLISHED") {
-    const pub = publishDraft(updated, at)
-    updated = { ...pub.draft, panelPassed: true }
-    notes.push(...pub.voterNotes)
-    notify(`“${title}” passed the peer panel and is now live`, `/story/${d.id}`)
-  } else if (next === "REJECTED" && before === "PENDING_PEER_PANEL") {
-    notify(`The peer panel didn't reach consensus on “${title}”. You can submit counter-reasons.`, `/submissions/${d.id}`)
-  } else if (next === "REJECTED" && before === "COUNTER_SUBMITTED") {
-    notify(`Your counter-reasons on “${title}” were reviewed`, `/submissions/${d.id}`)
-  }
-  return { drafts: { ...s.drafts, [d.id]: updated }, notifications: [...notes, ...s.notifications] }
 }
 
 export const useUIStore = create<UIState>()(
@@ -493,8 +415,9 @@ export const useUIStore = create<UIState>()(
               uid: u.uid,
               isPanelMember: u.isPanelMember,
               panelApplicationStatus: u.isPanelMember ? "approved" : u.panelApplicationStatus,
-              // Admin comes from the email whitelist, never from a field a client could write
-              isAdmin: isAdminEmail(u.email),
+              // Admin comes from the verified-email whitelist: legacy docs still carry the email, newer ones
+              // the isAdmin flag, which the Firestore rules only let a whitelisted, verified account set
+              isAdmin: isAdminEmail(u.email) || u.isAdmin === true,
               suspended: !!u.suspended,
             })
             if (u.tier === "elite") {
@@ -585,244 +508,20 @@ export const useUIStore = create<UIState>()(
         set((st) => ({ drafts: { ...st.drafts, [d.id]: draft } }))
         return draft
       },
-      recordPhase1: (id, report) => {
-        const d = get().drafts[id]
-        if (!d) return null
-        // Same gate the server applies: 150 words
-        if (report.wordCount < MIN_WORDS_FOR_SUBMISSION) return null
-        const next = phase1Outcome(report.aiPercent)
-        if (!canTransition(d.status, next)) return null
-        // The route is fixed at submission time: Elite writers who kept the panel switch on go to the panel
-        const track = trackFor(accessOf(get(), d.authorUsername).isElite && d.panelReview !== false)
-        // Plagiarism score: phrasing shared with stories already published on Prism
-        const corpus = Object.values(get().drafts)
-          .filter((x) => x.live && x.id !== id)
-          .map((x) => ({ id: x.id, title: x.live!.title, html: x.live!.contentHtml }))
-        const plagiarismPercent = overlapWithCorpus(d.contentHtml, corpus, id).percent
-        const updated: Draft = {
-          ...d,
-          status: next,
-          phase1: report,
-          plagiarismPercent,
-          submittedAt: now(),
-          review: undefined,
-          appeal: undefined,
-          track,
-          panel: undefined,
-          panelPassed: undefined,
-          submitted: { title: d.title, subtitle: d.subtitle, contentHtml: d.contentHtml, tags: d.tags, paywall: d.paywall, paper: d.paper, coverImageUrl: d.coverImageUrl },
-        }
-        set((s) => ({ drafts: { ...s.drafts, [id]: updated } }))
-        return updated
+      // Every status change runs on the server (POST /api/workflow); the result arrives via the listeners
+      submitForReview: async (id) => {
+        // The server scores the text as stored, so make sure the latest edits are saved first
+        const { flushArticleNow } = await import("@/lib/live/sync")
+        await flushArticleNow(id)
+        return callWorkflow({ action: "submit", articleId: id })
       },
-      withdrawSubmission: (id) => {
-        const d = get().drafts[id]
-        if (!d || (d.status !== "PENDING_EMPLOYEE_REVIEW" && d.status !== "PENDING_PEER_PANEL")) return
-        // A live story stays live; an unpublished one goes back to being a draft
-        set((s) => ({ drafts: { ...s.drafts, [id]: { ...d, status: d.live ? "PUBLISHED" : "DRAFT", panel: undefined } } }))
-      },
-      decideReview: (id, decision, notes, actor) => {
-        const reviewer = actor ?? get().currentUser
-        const d = get().drafts[id]
-        if (!reviewer) return { ok: false, error: "Sign in as a reviewer." }
-        if (!accessOf(get(), reviewer).isAdmin) return { ok: false, error: "Only Prism staff can approve or reject stories." }
-        if (!d || d.status !== "PENDING_EMPLOYEE_REVIEW") return { ok: false, error: "This story is no longer waiting for review." }
-        if (d.authorUsername === reviewer) return { ok: false, error: "You can't review your own story." }
-        if (decision === "REJECTED" && notes.trim().length < 10)
-          return { ok: false, error: "Tell the author what to change (10+ characters)." }
-
-        const at = now()
-        const review: ReviewOutcome = { reviewer, decision, notes: notes.trim(), at }
-        const title = titleOf(d)
-        // Elite: an employee approval sends the article on to the 10-member panel instead of publishing
-        const toPanel = decision === "APPROVED" && d.track === "PEER_PANEL"
-        let updated: Draft
-        let panelNotes: AppNotification[] = []
-        let voterNotes: AppNotification[] = []
-        const pool = panelPool(get()).filter((u) => u !== d.authorUsername)
-        // Until the panel has members, a staff approval publishes Elite stories directly
-        const panelReady = toPanel && pool.length > 0
-        if (panelReady) {
-          const sent = sendToPanel({ ...d, review }, at, pool)
-          updated = sent.draft
-          panelNotes = sent.notes
-        } else {
-          if (decision === "APPROVED") {
-            const pub = publishDraft(d, at)
-            updated = { ...pub.draft, review }
-            voterNotes = pub.voterNotes
-          } else {
-            updated = { ...d, status: "REJECTED", review }
-          }
-        }
-        const note: AppNotification = {
-          id: "n_" + uid(),
-          kind: "review",
-          to: d.authorUsername,
-          text: panelReady
-            ? `“${title}” passed employee review and is now with the peer panel`
-            : decision === "APPROVED"
-              ? `“${title}” passed review and is now live`
-              : `“${title}” needs changes before it can be published`,
-          href: decision === "APPROVED" && !panelReady ? `/story/${id}` : `/submissions/${id}`,
-          articleId: id,
-          createdAt: at,
-          read: false,
-        }
-        set((s) => ({ drafts: { ...s.drafts, [id]: updated }, notifications: [note, ...panelNotes, ...voterNotes, ...s.notifications] }))
-        return { ok: true }
-      },
+      withdrawSubmission: (id) => callWorkflow({ action: "withdraw", articleId: id }),
+      decideReview: (id, decision, notes) => callWorkflow({ action: "decide", articleId: id, decision, notes }),
       markCelebrated: (id) =>
         set((s) => (s.drafts[id] ? { drafts: { ...s.drafts, [id]: { ...s.drafts[id], celebrated: true } } } : {})),
-
-      castPanelVote: (id, decision, rawReason, criterion) => {
-        const me = get().currentUser
-        const d = get().drafts[id]
-        if (!me || !accessOf(get(), me).isPanelMember) return { ok: false, error: "Only peer-panel members can vote." }
-        if (!d?.panel || d.status !== "PENDING_PEER_PANEL") return { ok: false, error: "This paper isn't waiting for panel votes." }
-        const vote = d.panel.find((v) => v.reviewer === me)
-        if (!vote) return { ok: false, error: "You aren't on this paper's panel." }
-        if (vote.decision) return { ok: false, error: "You've already voted on this paper." }
-        if (!criterion) return { ok: false, error: "Pick the criterion your vote rests on." }
-        const reason = rawReason.trim()
-        if (decision === "FAIL" && reason.length < FAILURE_REASON_MIN)
-          return { ok: false, error: `Explain why it fails (${FAILURE_REASON_MIN}+ characters).` }
-        if (reason.length > TEXT_MAX) return { ok: false, error: `Keep it under ${TEXT_MAX} characters.` }
-        const at = now()
-        const panel = d.panel.map((v) =>
-          v.id === vote.id
-            ? {
-                ...v,
-                decision,
-                criterion,
-                failureReason: decision === "FAIL" ? reason : undefined,
-                note: decision === "PASS" ? reason || undefined : undefined,
-                decidedAt: at,
-              }
-            : v
-        )
-        set((s) => applyPanel(s, { ...d, panel }, at))
-        return { ok: true }
-      },
-
-      submitCounter: (id, target, reason, clarification) => {
-        const me = get().currentUser
-        const d = get().drafts[id]
-        if (!d || d.authorUsername !== me) return { ok: false, error: "Only the author can submit a counter-reason." }
-        const text = reason.trim()
-        const extra = clarification?.trim() || undefined
-        if (text.length < COUNTER_REASON_MIN) return { ok: false, error: `Make your case in ${COUNTER_REASON_MIN}+ characters.` }
-        if (text.length > TEXT_MAX || (extra?.length ?? 0) > TEXT_MAX) return { ok: false, error: `Keep it under ${TEXT_MAX} characters.` }
-        const at = now()
-        const counter = { reason: text, clarification: extra, submittedAt: at }
-
-        if (target === "employee") {
-          // Employee rejections (no panel yet) are appealed as a whole; panel FAILs are appealed vote by vote
-          if (d.status !== "REJECTED" || d.panel || d.review?.decision !== "REJECTED" || d.appeal)
-            return { ok: false, error: "This rejection can't be appealed." }
-          const updated: Draft = {
-            ...d,
-            status: "COUNTER_SUBMITTED",
-            appeal: { counter, rejectedBy: d.review.reviewer, rejectionNotes: d.review.notes },
-          }
-          const note: AppNotification = {
-            id: "n_" + uid(),
-            kind: "review",
-            to: d.review.reviewer,
-            text: `The author of “${titleOf(d)}” submitted a counter-reason to your rejection`,
-            href: "/admin/verification?tab=counters",
-            createdAt: at,
-            read: false,
-          }
-          set((s) => ({ drafts: { ...s.drafts, [id]: updated }, notifications: [note, ...s.notifications] }))
-          return { ok: true }
-        }
-
-        const vote = d.panel?.find((v) => v.id === target)
-        if (!d.panel || !vote || !canCounterVote(vote, d.status)) return { ok: false, error: "This vote can't be appealed." }
-        const panel = d.panel.map((v) => (v.id === vote.id ? { ...v, counter } : v))
-        const note: AppNotification = {
-          id: "n_" + uid(),
-          kind: "review",
-          to: vote.reviewer,
-          text: `The author of “${titleOf(d)}” submitted a counter-reason to your FAIL vote`,
-          href: "/panel?tab=counters",
-          createdAt: at,
-          read: false,
-        }
-        set((s) => ({ drafts: { ...s.drafts, [id]: { ...d, panel, status: "COUNTER_SUBMITTED" } }, notifications: [note, ...s.notifications] }))
-        return { ok: true }
-      },
-
-      reconsiderCounter: (id, target, verdict, note, actor) => {
-        const me = actor ?? get().currentUser
-        const d = get().drafts[id]
-        if (!me) return { ok: false, error: "Sign in as a reviewer." }
-        if (!d || d.status !== "COUNTER_SUBMITTED") return { ok: false, error: "There's no open counter-reason on this article." }
-        if (d.authorUsername === me) return { ok: false, error: "You can't rule on your own appeal." }
-        const text = note.trim()
-        if (verdict === "UPHOLD" && text.length < CLOSING_NOTE_MIN)
-          return { ok: false, error: `Add a closing note for the writer (${CLOSING_NOTE_MIN}+ characters).` }
-        if (text.length > TEXT_MAX) return { ok: false, error: `Keep it under ${TEXT_MAX} characters.` }
-        const staff = accessOf(get(), me).isAdmin
-        const at = now()
-
-        if (target === "employee") {
-          if (!staff) return { ok: false, error: "Only Prism staff can reconsider an employee rejection." }
-          if (!d.appeal || reconsiderationStatus(d.appeal) !== "PENDING") return { ok: false, error: "This appeal was already decided." }
-          const appeal: Draft["appeal"] = {
-            ...d.appeal,
-            reconsideration: { status: verdict === "ACCEPT" ? "ACCEPTED" : "UPHELD", note: text, by: me, at },
-          }
-          const approved: Draft = { ...d, appeal, review: { reviewer: me, decision: "APPROVED", notes: text, at } }
-          // An accepted Elite appeal counts as the employee approval, so the article moves on to the panel
-          const toPanel = verdict === "ACCEPT" && d.track === "PEER_PANEL"
-          let updated: Draft
-          let panelNotes: AppNotification[] = []
-          let voterNotes: AppNotification[] = []
-          const pool = panelPool(get()).filter((u) => u !== d.authorUsername)
-          if (toPanel && pool.length > 0) {
-            const sent = sendToPanel(approved, at, pool)
-            updated = sent.draft
-            panelNotes = sent.notes
-          } else if (toPanel) {
-            const pub = publishDraft(approved, at)
-            updated = pub.draft
-            voterNotes = pub.voterNotes
-          } else {
-            if (verdict === "ACCEPT") {
-              const pub = publishDraft(approved, at)
-              updated = pub.draft
-              voterNotes = pub.voterNotes
-            } else {
-              updated = { ...d, status: "REJECTED", appeal }
-            }
-          }
-          const n: AppNotification = {
-            id: "n_" + uid(),
-            kind: "review",
-            to: d.authorUsername,
-            text: toPanel
-              ? `Your counter-reason was accepted — “${titleOf(d)}” is now with the peer panel`
-              : verdict === "ACCEPT"
-                ? `Your counter-reason was accepted — “${titleOf(d)}” is now live`
-                : `Your counter-reason on “${titleOf(d)}” was reviewed; the rejection stands`,
-            href: verdict === "ACCEPT" && !toPanel ? `/story/${id}` : `/submissions/${id}`,
-            createdAt: at,
-            read: false,
-          }
-          set((s) => ({ drafts: { ...s.drafts, [id]: updated }, notifications: [n, ...panelNotes, ...voterNotes, ...s.notifications] }))
-          return { ok: true }
-        }
-
-        const vote = d.panel?.find((v) => v.id === target)
-        if (!d.panel || !vote) return { ok: false, error: "Vote not found." }
-        if (!canReconsiderVote(vote, me, staff))
-          return { ok: false, error: "Only the dissenting panel member or a panel lead can rule on this." }
-        const panel = d.panel.map((v) => (v.id === vote.id ? resolveVote(v, verdict, text, me, at) : v))
-        set((s) => applyPanel(s, { ...d, panel }, at))
-        return { ok: true }
-      },
+      castPanelVote: (id, decision, reason, criterion) => callWorkflow({ action: "vote", articleId: id, decision, reason, criterion }),
+      submitCounter: (id, target, reason, clarification) => callWorkflow({ action: "counter", articleId: id, target, reason, clarification }),
+      reconsiderCounter: (id, target, verdict, note) => callWorkflow({ action: "reconsider", articleId: id, target, verdict, note }),
 
       subscriptions: {},
       upgradeToElite: (reference) => {
