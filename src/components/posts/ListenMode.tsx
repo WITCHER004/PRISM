@@ -1,12 +1,14 @@
 "use client"
 
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { AnimatePresence, motion, useDragControls } from "motion/react"
 import SpeakingOrb, { type SpeakingOrbHandle } from "@/components/ui/speaking-orb"
 import { Headphones, Pause, Play, SkipBack, SkipForward, X, RotateCcw, Mic, ChevronUp, ChevronDown } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useUIStore } from "@/lib/store"
 import { curateVoices, type VoiceOption } from "@/lib/voices"
+import { useIsDesktop } from "@/lib/useIsDesktop"
+import { useAudiobook } from "./AudiobookPlayer"
 
 interface ListenModeProps {
   title: string
@@ -116,16 +118,6 @@ function phrasesOf(text: string): { start: number; end: number; text: string }[]
   return out
 }
 
-const MD_QUERY = "(min-width: 768px)"
-const subscribeMd = (cb: () => void) => {
-  const m = window.matchMedia(MD_QUERY)
-  m.addEventListener("change", cb)
-  return () => m.removeEventListener("change", cb)
-}
-// Only one layout (and so one WebGL orb) is ever mounted, which is why this isn't done with CSS breakpoints
-const useIsDesktop = () =>
-  useSyncExternalStore(subscribeMd, () => window.matchMedia(MD_QUERY).matches, () => true)
-
 // Reads a story aloud with the browser voice; the orb pulses with the speech and captions each word
 export function ListenMode({ title, minutes, bodySelector = "#article-body .prose-prism" }: ListenModeProps) {
   const orbRef = useRef<SpeakingOrbHandle | null>(null)
@@ -155,6 +147,8 @@ export function ListenMode({ title, minutes, bodySelector = "#article-body .pros
   const [rate, setRate] = useState(1)
   const [caption, setCaptionState] = useState<string | null>(null)
   const ttsEnabled = useUIStore((s) => s.ttsEnabled)
+  // The author's own narration (a separate player): only one voice plays at a time
+  const audiobook = useAudiobook()
   const isDesktop = useIsDesktop()
   const mobile = !isDesktop
 
@@ -713,17 +707,26 @@ export function ListenMode({ title, minutes, bodySelector = "#article-body .pros
     </motion.div>
   )
 
+  const startAi = () => {
+    if (open) return
+    if (audiobook?.playing || audiobook?.floating) audiobook.close()
+    autoStart.current = true
+    setOpen(true)
+  }
+
+  // The author's narration started (header button or embedded player): stop the AI voice
+  const narrationPlaying = !!audiobook?.playing
+  useEffect(() => {
+    if (narrationPlaying && open) close()
+  }, [narrationPlaying, open, close])
+
   // Settings → Reading → "Read aloud" turns the Listen control off (an open player stays until closed)
   if (!ttsEnabled && !open) return null
 
   return (
     <>
       <button
-        onClick={() => {
-          if (open) return
-          autoStart.current = true
-          setOpen(true)
-        }}
+        onClick={startAi}
         aria-expanded={open}
         className="inline-flex items-center gap-2 h-9 pl-3 pr-4 rounded-full bg-[var(--panel)] border border-[var(--border)] text-sm font-medium hover:border-[var(--border-strong)] transition-colors"
       >

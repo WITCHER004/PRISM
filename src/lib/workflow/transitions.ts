@@ -7,7 +7,7 @@
 // notifications to send, or an error message for the person.
 
 import type { Phase1Report } from "@/lib/moderation/types"
-import { canTransition, MIN_WORDS_FOR_SUBMISSION, phase1Outcome, trackFor } from "@/lib/moderation/workflow"
+import { canTransition, MIN_WORDS_FOR_SUBMISSION, phase1Outcome, trackFor, VOICE_SKIP_PROVIDER } from "@/lib/moderation/workflow"
 import { overlapWithCorpus } from "@/lib/moderation/similarity"
 import { CLOSING_NOTE_MIN, COUNTER_REASON_MIN, FAILURE_REASON_MIN, TEXT_MAX } from "@/lib/elite/config"
 import {
@@ -20,7 +20,7 @@ import {
   type PanelDecision,
   type PanelVote,
 } from "@/lib/elite/panel"
-import type { ArticleWorkflow } from "@/lib/live/schema"
+import { versionOf, type ArticleWorkflow } from "@/lib/live/schema"
 
 export type Draft = ArticleWorkflow
 
@@ -60,7 +60,7 @@ const titleOf = (d: Draft) => (d.submitted?.title ?? d.title).trim() || "Untitle
 
 /** The reviewed version of a draft becomes the live one, and produces notifications for any voters */
 function publishDraft(d: Draft, ctx: WorkflowContext): { draft: Draft; voterNotes: WorkflowNote[] } {
-  const v = d.submitted ?? { title: d.title, subtitle: d.subtitle, contentHtml: d.contentHtml, tags: d.tags, paywall: d.paywall, paper: d.paper, coverImageUrl: d.coverImageUrl }
+  const v = d.submitted ?? versionOf(d)
   const draft: Draft = { ...d, status: "PUBLISHED", live: v, publishedAt: d.publishedAt ?? ctx.at, celebrated: false, liveAiPercent: d.phase1?.aiPercent }
   const title = titleOf(d)
   const voterNotes: WorkflowNote[] = (d.voterIds ?? []).slice(0, 100).map((voter) => ({
@@ -120,8 +120,14 @@ function applyPanel(d: Draft, ctx: WorkflowContext): Result {
  */
 export function submitForReview(d: Draft, report: Phase1Report, corpus: { id: string; title: string; html: string }[], ctx: WorkflowContext): Result {
   if (d.authorUsername !== ctx.actor) return fail("Only the author can submit this story.")
-  if (report.wordCount < MIN_WORDS_FOR_SUBMISSION) return fail(`Articles need at least ${MIN_WORDS_FOR_SUBMISSION} words.`)
-  const next = phase1Outcome(report.aiPercent)
+  // Voice posts: the recording is the piece. Reviewers listen to it; the text check only runs on show
+  // notes long enough to score (on a few lines the AI heuristics are noise, not evidence).
+  const voice = d.postFormat === "voice"
+  if (voice && !d.audiobookUrl) return fail("Voice posts need a recording. Record or upload one first.")
+  if (!voice && report.wordCount < MIN_WORDS_FOR_SUBMISSION) return fail(`Articles need at least ${MIN_WORDS_FOR_SUBMISSION} words.`)
+  const textChecked = !voice || report.wordCount >= MIN_WORDS_FOR_SUBMISSION
+  if (!textChecked) report = { ...report, passed: true, provider: VOICE_SKIP_PROVIDER }
+  const next = textChecked ? phase1Outcome(report.aiPercent) : "PENDING_EMPLOYEE_REVIEW"
   if (!canTransition(d.status, next)) return fail("This story can't be submitted right now.")
   // The route is fixed at submission time: Elite writers who kept the panel switch on go to the panel
   const track = trackFor(ctx.authorIsElite && d.panelReview !== false)
@@ -137,7 +143,7 @@ export function submitForReview(d: Draft, report: Phase1Report, corpus: { id: st
     track,
     panel: undefined,
     panelPassed: undefined,
-    submitted: { title: d.title, subtitle: d.subtitle, contentHtml: d.contentHtml, tags: d.tags, paywall: d.paywall, paper: d.paper, coverImageUrl: d.coverImageUrl },
+    submitted: versionOf(d),
   }
   return { ok: true, draft, notes: [] }
 }

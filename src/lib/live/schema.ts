@@ -178,8 +178,22 @@ export function verificationStatusOf(s: ArticleStatus): VerificationStatus {
 
 export type PaywallChoice = "FREE" | "METERED" | "SUBSCRIBER" | "PAID"
 
+/** "essay": a written story (optionally with a pre-recorded audiobook); "voice": the recording is the piece, with short show notes */
+export type PostFormat = "essay" | "voice"
+
+/** How the author's own narration was made */
+export type AudiobookSource = "recorded" | "uploaded"
+
+/** The author-narrated edition of a story (a Firebase Storage file under audiobooks/{uid}/) */
+export interface AudiobookFields {
+  postFormat?: PostFormat
+  audiobookUrl?: string
+  audiobookDurationSec?: number
+  audiobookSource?: AudiobookSource
+}
+
 /** A version of the story (the working copy, the one under review, or the live one) */
-export interface ArticleVersion {
+export interface ArticleVersion extends AudiobookFields {
   title: string
   subtitle: string
   contentHtml: string
@@ -190,7 +204,7 @@ export interface ArticleVersion {
 }
 
 /** The workflow fields the store's Draft carries; mirrored 1:1 into the article document */
-export interface ArticleWorkflow {
+export interface ArticleWorkflow extends AudiobookFields {
   id: string
   authorUsername: string
   authorUid?: string
@@ -257,6 +271,12 @@ export interface ArticleDoc {
   tags: string[]
   paywall: PaywallChoice
   coverImageUrl: string | null
+  audiobookUrl: string | null
+  audiobookDurationSec: number | null
+  audiobookSource: AudiobookSource | null
+  postFormat: PostFormat
+  /** True whenever the author's own voice is attached (a voice post, or an essay's audiobook) */
+  authorNarrated: boolean
   paper: AdvancedPaper | null
   craft: CraftTelemetry | null
   originIdeaText: string | null
@@ -308,6 +328,11 @@ export function articleToDoc(d: ArticleWorkflow): Omit<ArticleDoc, "views" | "li
     tags: d.tags,
     paywall: d.paywall,
     coverImageUrl: d.coverImageUrl ?? null,
+    audiobookUrl: d.audiobookUrl ?? null,
+    audiobookDurationSec: d.audiobookUrl ? Math.round(d.audiobookDurationSec ?? 0) : null,
+    audiobookSource: d.audiobookUrl ? (d.audiobookSource ?? "uploaded") : null,
+    postFormat: d.postFormat === "voice" ? "voice" : "essay",
+    authorNarrated: !!d.audiobookUrl,
     paper,
     craft: d.craft ?? null,
     originIdeaText: d.originIdeaText ?? null,
@@ -328,6 +353,33 @@ export function articleToDoc(d: ArticleWorkflow): Omit<ArticleDoc, "views" | "li
 
 const undef = <T>(v: T | null | undefined): T | undefined => (v === null ? undefined : v)
 
+/** The audiobook fields of a document or version, dropped entirely unless the URL is a real string */
+export function audiobookFrom(
+  d: { postFormat?: unknown; audiobookUrl?: unknown; audiobookDurationSec?: unknown; audiobookSource?: unknown } | null | undefined
+): AudiobookFields {
+  const format: AudiobookFields = d?.postFormat === "voice" ? { postFormat: "voice" } : {}
+  if (!d || typeof d.audiobookUrl !== "string" || !d.audiobookUrl) return format
+  const sec = typeof d.audiobookDurationSec === "number" && Number.isFinite(d.audiobookDurationSec) ? d.audiobookDurationSec : 0
+  return {
+    ...format,
+    audiobookUrl: d.audiobookUrl,
+    audiobookDurationSec: Math.max(0, Math.round(sec)),
+    audiobookSource: d.audiobookSource === "recorded" ? "recorded" : "uploaded",
+  }
+}
+
+/** The parts of a draft that make up a reviewable version (what gets submitted and goes live) */
+export const versionOf = (d: ArticleVersion): ArticleVersion => ({
+  title: d.title,
+  subtitle: d.subtitle,
+  contentHtml: d.contentHtml,
+  tags: d.tags,
+  paywall: d.paywall,
+  paper: d.paper,
+  coverImageUrl: d.coverImageUrl,
+  ...audiobookFrom(d),
+})
+
 /** Firestore document → store draft */
 export function articleFromDoc(id: string, raw: Record<string, unknown>): ArticleWorkflow {
   const d = raw as Partial<ArticleDoc>
@@ -344,6 +396,7 @@ export function articleFromDoc(id: string, raw: Record<string, unknown>): Articl
     paywall: (d.paywall as PaywallChoice) ?? "FREE",
     paper: undef(d.paper),
     coverImageUrl: undef(d.coverImageUrl),
+    ...audiobookFrom(d),
     craft: undef(d.craft),
     originIdeaId: undef(d.originIdeaId),
     originIdeaText: undef(d.originIdeaText),
@@ -389,6 +442,11 @@ function statusFromVerification(v: VerificationStatus | undefined): ArticleStatu
 const plain = (html: string) => html.replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim()
 export const wordsIn = (html: string) => (plain(html) ? plain(html).split(" ").length : 0)
 
+function audiobookOf(v: ArticleVersion): Post["audiobook"] {
+  const a = audiobookFrom(v)
+  return a.audiobookUrl ? { url: a.audiobookUrl, durationSec: a.audiobookDurationSec ?? 0, source: a.audiobookSource ?? "uploaded" } : undefined
+}
+
 /** A published article as the `Post` the reader pages render (the live version only) */
 export function postFromArticle(a: ArticleWorkflow, author?: User): Post | null {
   const v = a.live
@@ -404,7 +462,14 @@ export function postFromArticle(a: ArticleWorkflow, author?: User): Post | null 
     excerpt: v.subtitle || (text.length > 220 ? text.slice(0, 217).trimEnd() + "…" : text),
     contentHtml: v.contentHtml,
     coverImageUrl: v.coverImageUrl ?? a.coverImageUrl,
-    readingTimeMin: Math.max(1, Math.round(words / 230)),
+    // Only the reviewed (live) narration is ever played to readers
+    audiobook: audiobookOf(v),
+    format: v.postFormat === "voice" && v.audiobookUrl ? "voice" : "essay",
+    // A voice post takes as long as its recording; an essay as long as its words
+    readingTimeMin:
+      v.postFormat === "voice" && v.audiobookUrl
+        ? Math.max(1, Math.round((v.audiobookDurationSec ?? 0) / 60))
+        : Math.max(1, Math.round(words / 230)),
     wordCount: words,
     status: "PUBLISHED",
     paywallTier: v.paywall,

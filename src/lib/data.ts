@@ -43,6 +43,10 @@ export interface Post {
   excerpt: string
   contentHtml: string
   coverImageUrl?: string
+  /** The author's own narration of the live version, when they attached one */
+  audiobook?: { url: string; durationSec: number; source: "recorded" | "uploaded" }
+  /** "voice": the recording is the piece and the body holds show notes */
+  format?: "essay" | "voice"
   readingTimeMin: number
   wordCount: number
   status: PostStatus

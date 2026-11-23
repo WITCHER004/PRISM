@@ -4,6 +4,8 @@ import type { ArticleStatus, ReviewTrack } from "./types"
 // AI-generated (≥ 80% human-written).
 export const AI_MAX_PERCENT = 20
 export const MIN_WORDS_FOR_SUBMISSION = 150
+/** Marks a voice post whose short show notes skipped the AI-content gate (shown to the author as such) */
+export const VOICE_SKIP_PROVIDER = "voice post · text check skipped (short show notes)"
 
 /**
  * Allowed status transitions. Every article goes AI check → employee review.

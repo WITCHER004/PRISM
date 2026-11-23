@@ -21,6 +21,7 @@ import { FollowButton } from "@/components/ui/FollowButton"
 import { ReadingProgress } from "@/components/posts/ReadingProgress"
 import { ArticleDock } from "@/components/posts/ArticleDock"
 import { ListenMode } from "@/components/posts/ListenMode"
+import { AudiobookDownloadButton, AudiobookEmbed, AudiobookProvider, AuthorAudiobookButton } from "@/components/posts/AudiobookPlayer"
 import { TableOfContents, type TocItem } from "@/components/posts/TableOfContents"
 import { Reveal } from "@/components/motion/Reveal"
 import { RevealText } from "@/components/motion/RevealText"
@@ -31,6 +32,7 @@ import Link from "next/link"
 import { formatDate, generateSlug, numberWithCommas } from "@/lib/utils"
 import { BadgeCheck, Lock, ArrowLeft } from "lucide-react"
 import type { Metadata } from "next"
+import type { Post } from "@/lib/data"
 import { JsonLd } from "@/components/seo/JsonLd"
 import { UserAvatar } from "@/components/profile/identity"
 import { UserBadges } from "@/components/elite/EliteBadges"
@@ -109,9 +111,11 @@ export default async function PostPage({ params }: PostPageProps) {
   const [article, published] = await Promise.all([getArticleBySlug(username, slug), getPublishedPosts()])
   const paperReview = article?.panelPassed ? "Peer-reviewed" : "Editor-reviewed"
   // Earned records only: the writing telemetry captured in the editor, and the panel's real votes
-  const certificate = article?.craft ? certificateFrom(article.craft, post.wordCount, article.liveAiPercent ?? article.phase1?.aiPercent) : null
+  // Voice posts are judged on the recording, so the writing certificate doesn't apply to them
+  const certificate = article?.craft && post.format !== "voice" ? certificateFrom(article.craft, post.wordCount, article.liveAiPercent ?? article.phase1?.aiPercent) : null
   const dossier = article?.panelPassed ? dossierFromPanel(article.id, article.panel, article.publishedAt) : null
 
+  const isVoice = post.format === "voice" && !!post.audiobook
   const topic = post.tags[0]
   const path = `/${post.author.username}/${post.slug}`
   const aiScore = article?.liveAiPercent ?? article?.phase1?.aiPercent ?? null
@@ -177,6 +181,7 @@ export default async function PostPage({ params }: PostPageProps) {
 
       <MaybePaperScope paper={paper} author={post.author.username}>
       <main className="relative flex-1">
+        <MaybeAudiobook post={post} paywalled={isPaywalled}>
         <article>
           {/* Header */}
           <header className="max-w-4xl mx-auto px-4 sm:px-6 pt-10 sm:pt-14">
@@ -246,16 +251,16 @@ export default async function PostPage({ params }: PostPageProps) {
                   </div>
                   <div>
                     <dt className="sr-only">Reading time</dt>
-                    <dd>{post.readingTimeMin} min read</dd>
+                    <dd>{post.readingTimeMin} min {isVoice ? "listen" : "read"}</dd>
                   </div>
                 </dl>
                 <RatingChip postId={post.id} href="#reviews" />
                 {certificate && <CraftBadge certificate={certificate} authorName={post.author.displayName} />}
                 <UnlockedOnly postId={post.id} paywalled={isPaywalled}>
-                  <ListenMode
-                    title={post.title}
-                    minutes={post.readingTimeMin}
-                  />
+                  <ListenMode title={post.title} minutes={post.readingTimeMin} />
+                  {/* AI voice and the author's own recording are separate choices */}
+                  <AuthorAudiobookButton />
+                  <AudiobookDownloadButton tone="light" />
                 </UnlockedOnly>
                 <ExportMenu
                   postId={post.id}
@@ -278,6 +283,15 @@ export default async function PostPage({ params }: PostPageProps) {
           </header>
 
           {/* Elite / peer-reviewed: the panel's verdict, open to every reader */}
+          {/* A voice post's recording is the piece: a full player right under the byline, show notes below */}
+          {isVoice && (
+            <UnlockedOnly postId={post.id} paywalled={isPaywalled}>
+              <Reveal index={1} className="max-w-4xl mx-auto px-4 sm:px-6 mt-8">
+                <AudiobookEmbed />
+              </Reveal>
+            </UnlockedOnly>
+          )}
+
           {dossier && (
             <div className="max-w-4xl mx-auto px-4 sm:px-6 mt-8">
               <PeerDossierCard
@@ -421,6 +435,7 @@ export default async function PostPage({ params }: PostPageProps) {
             </aside>
           </div>
         </article>
+        </MaybeAudiobook>
 
         <UnlockedOnly postId={post.id} paywalled={isPaywalled} rise={false} delay={0.35}>
           <div className="xl:hidden">
@@ -435,5 +450,23 @@ export default async function PostPage({ params }: PostPageProps) {
 
       <SiteFooter />
     </div>
+  )
+}
+
+/** One narration engine for the whole story (header button, download, floating player) */
+function MaybeAudiobook({ post, paywalled, children }: { post: Post; paywalled: boolean; children: React.ReactNode }) {
+  if (!post.audiobook) return <>{children}</>
+  return (
+    <AudiobookProvider
+      src={post.audiobook.url}
+      slug={post.slug}
+      paywalled={paywalled}
+      durationSec={post.audiobook.durationSec}
+      title={post.title}
+      authorName={post.author.displayName}
+      articleId={post.id}
+    >
+      {children}
+    </AudiobookProvider>
   )
 }
