@@ -1,8 +1,8 @@
 "use client"
 
-import { CircleAlert, CircleCheck } from "lucide-react"
-import type { ArticleStatus, Phase1Report as Report } from "@/lib/moderation/types"
-import { STATUS_META } from "@/lib/moderation/workflow"
+import { CircleAlert, CircleCheck, Code2, Copy, Quote } from "lucide-react"
+import type { ArticleStatus, FlaggedSentence, Phase1Report as Report } from "@/lib/moderation/types"
+import { PLAGIARISM_MAX_PERCENT, STATUS_META } from "@/lib/moderation/workflow"
 import { cn, formatRelativeDate } from "@/lib/utils"
 
 const pct = (n: number) => `${Math.round(n)}%`
@@ -57,7 +57,50 @@ export function AIHumanGauge({ aiPercent, threshold, className }: { aiPercent: n
   )
 }
 
+/** Site-relative paths and http(s) only (match links come from the engine and other authors' stories) */
+const safeLink = (u?: string | null) => {
+  if (!u) return undefined
+  const t = u.trim()
+  if (t.startsWith("/") && !t.startsWith("//") && !t.startsWith("/\\")) return t
+  return /^https?:\/\//i.test(t) ? t : undefined
+}
+
+const DOMAIN_LABEL: Record<string, string> = {
+  programming: "Programming",
+  infrastructure: "Infrastructure",
+  academic: "Academic / science",
+  essay: "Essay / long-form",
+  journalism: "Policy / journalism",
+  general: "General",
+}
+
 export function Phase1Verdict({ report }: { report: Report }) {
+  const plagLimit = report.plagiarismThreshold ?? PLAGIARISM_MAX_PERCENT
+  const aiFailed = report.aiPassed === undefined ? !report.passed : !report.aiPassed
+  const plagFailed = report.plagiarismPassed === false
+  if (report.manualReview)
+    return (
+      <p className="flex items-start gap-2 text-sm text-[var(--fg-secondary)]">
+        <CircleAlert className="w-4 h-4 mt-0.5 shrink-0 text-amber-600" />
+        <span>
+          <span className="font-semibold text-[var(--fg)]">Sent to manual review.</span> {pct(report.aiPercent)} reads as
+          AI-generated, above the {report.threshold}% limit but within the range where careful human writing is sometimes
+          misread (formal, technical or second-language prose). A Prism reviewer will read it instead of an automatic
+          rejection. Reviewing the flagged sentences below can still help.
+        </span>
+      </p>
+    )
+  if (!report.passed && plagFailed && !aiFailed)
+    return (
+      <p className="flex items-start gap-2 text-sm text-[var(--fg-secondary)]">
+        <CircleAlert className="w-4 h-4 mt-0.5 shrink-0 text-[var(--error)]" />
+        <span>
+          <span className="font-semibold text-[var(--error)]">Didn&apos;t pass Phase 1.</span> {pct(report.plagiarismScore ?? 0)} of the
+          text matches existing writing; the limit is {plagLimit}%. Put borrowed passages in a blockquote with attribution, or
+          rewrite them in your own words, then submit again.
+        </span>
+      </p>
+    )
   return report.passed ? (
     <p className="flex items-start gap-2 text-sm text-[var(--fg-secondary)]">
       <CircleCheck className="w-4 h-4 mt-0.5 shrink-0 text-[var(--accent)]" />
@@ -71,7 +114,9 @@ export function Phase1Verdict({ report }: { report: Report }) {
       <CircleAlert className="w-4 h-4 mt-0.5 shrink-0 text-[var(--error)]" />
       <span>
         <span className="font-semibold text-[var(--error)]">Didn&apos;t pass Phase 1.</span> {pct(report.aiPercent)} reads as
-        AI-generated; the limit is {report.threshold}%. Rewrite the flagged passages in your own words and submit again.
+        AI-generated; the limit is {report.threshold}%.
+        {plagFailed ? ` ${pct(report.plagiarismScore ?? 0)} also matches existing writing (limit ${plagLimit}%).` : ""} Rewrite the
+        flagged sentences in your own words and submit again.
       </span>
     </p>
   )
@@ -83,6 +128,7 @@ export function Phase1Breakdown({ report, compact = false }: { report: Report; c
     <div className="space-y-5">
       <AIHumanGauge aiPercent={report.aiPercent} threshold={report.threshold} />
       <Phase1Verdict report={report} />
+      <IntegrityFacts report={report} />
 
       <div>
         <p className="meta mb-2">Signals</p>
@@ -105,7 +151,9 @@ export function Phase1Breakdown({ report, compact = false }: { report: Report; c
         </ul>
       </div>
 
-      {report.flagged.length > 0 && (
+      {report.flaggedSentences ? (
+        <FlaggedSentences items={report.flaggedSentences} compact={compact} />
+      ) : report.flagged.length > 0 && (
         <div>
           <p className="meta mb-2">Passages that read as machine-written</p>
           <ul className="space-y-2">
@@ -142,6 +190,118 @@ const DOT: Record<(typeof STATUS_META)[ArticleStatus]["tone"], string> = {
   error: "bg-[var(--error)]",
 }
 
+/** Plagiarism score, detected domain, confidence and what was excluded from scoring */
+function IntegrityFacts({ report }: { report: Report }) {
+  if (report.plagiarismScore === undefined && !report.detectedDomain) return null
+  const limit = report.plagiarismThreshold ?? PLAGIARISM_MAX_PERCENT
+  const plagHigh = (report.plagiarismScore ?? 0) > limit
+  const excluded = report.excluded
+  return (
+    <div className="space-y-2.5">
+      <dl className="grid grid-cols-3 gap-2 text-sm">
+        <div className={cn("rounded-[12px] border p-2.5", plagHigh ? "border-[var(--error)]/40" : "border-[var(--border)]")}>
+          <dt className="meta">Plagiarism</dt>
+          <dd className={cn("mt-1 font-semibold tabular-nums", plagHigh && "text-[var(--error)]")}>
+            {report.plagiarismScore === undefined ? "–" : pct(report.plagiarismScore)}
+          </dd>
+          <dd className="text-[11px] text-[var(--fg-muted)]">limit {limit}%</dd>
+        </div>
+        <div className="rounded-[12px] border border-[var(--border)] p-2.5">
+          <dt className="meta">Domain</dt>
+          <dd className="mt-1 font-semibold">{DOMAIN_LABEL[report.detectedDomain ?? "general"] ?? report.detectedDomain}</dd>
+          <dd className="text-[11px] text-[var(--fg-muted)]">calibration profile</dd>
+        </div>
+        <div className={cn("rounded-[12px] border p-2.5", report.confidenceLevel === "Borderline" ? "border-amber-400/50" : "border-[var(--border)]")}>
+          <dt className="meta">Confidence</dt>
+          <dd className="mt-1 font-semibold">{report.confidenceLevel ?? "–"}</dd>
+          <dd className="text-[11px] text-[var(--fg-muted)]">{report.confidenceLevel === "Borderline" ? "read it closely" : "of the AI score"}</dd>
+        </div>
+      </dl>
+      {report.plagiarismMatches && report.plagiarismMatches.length > 0 && (
+        <ul className="text-xs text-[var(--fg-muted)] space-y-0.5">
+          {report.plagiarismMatches.slice(0, 3).map((m, i) => {
+            const href = safeLink(m.url)
+            return (
+              <li key={i}>
+                {pct(m.percent)} matches{" "}
+                {href ? (
+                  <a href={href} target="_blank" rel="noopener noreferrer nofollow" className="underline underline-offset-2">
+                    {m.title}
+                  </a>
+                ) : (
+                  m.title
+                )}
+              </li>
+            )
+          })}
+        </ul>
+      )}
+      {(!!excluded?.codeBlocks || !!excluded?.quotes || !!report.craftAdjustment) && (
+        <p className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-[var(--fg-subtle)]">
+          {!!excluded?.codeBlocks && (
+            <span className="inline-flex items-center gap-1">
+              <Code2 className="w-3 h-3" /> {excluded.codeBlocks} code block{excluded.codeBlocks === 1 ? "" : "s"} not scored
+            </span>
+          )}
+          {!!excluded?.quotes && (
+            <span className="inline-flex items-center gap-1">
+              <Quote className="w-3 h-3" /> {excluded.quotes} attributed quote{excluded.quotes === 1 ? "" : "s"} excluded
+            </span>
+          )}
+          {!!report.craftAdjustment && (
+            <span>
+              Proof of Craft {report.craftAdjustment < 0 ? "lowered" : "raised"} a borderline score by {Math.abs(report.craftAdjustment)} pts
+            </span>
+          )}
+        </p>
+      )}
+    </div>
+  )
+}
+
+/** Exact sentences behind the scores, so authors can fix phrasing or add citations */
+export function FlaggedSentences({ items, compact = false }: { items: FlaggedSentence[]; compact?: boolean }) {
+  if (!items.length) return <p className="text-sm text-[var(--fg-muted)]">No individual sentences were flagged.</p>
+  const shown = compact ? items.slice(0, 8) : items
+  return (
+    <div>
+      <p className="meta mb-2">Flagged sentences ({items.length})</p>
+      <ul className="space-y-2">
+        {shown.map((f, i) => {
+          const copied = !!(f.plagiarismMatchUrl || f.matchType)
+          const href = safeLink(f.plagiarismMatchUrl)
+          const title = f.plagiarismMatchTitle ?? "matched source"
+          return (
+            <li key={i} className={cn("rounded-[12px] border bg-[var(--panel)] p-3", copied ? "border-amber-400/50" : "border-[var(--error)]/25")}>
+              <p className={cn("text-sm leading-relaxed text-[var(--fg-secondary)]", compact && "line-clamp-3")}>
+                <mark className={cn("rounded px-0.5 text-inherit", copied ? "bg-amber-200/40" : "bg-[var(--error)]/10")}>{f.text}</mark>
+              </p>
+              <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+                {f.aiProbability >= 0.5 && <span className="font-medium text-[var(--error)] tabular-nums">{Math.round(f.aiProbability * 100)}% AI-like</span>}
+                {copied && (
+                  <span className="inline-flex items-center gap-1 font-medium text-amber-700 dark:text-amber-400">
+                    <Copy className="w-3 h-3" />
+                    {href ? (
+                      <a href={href} target="_blank" rel="noopener noreferrer nofollow" className="underline underline-offset-2">
+                        {title}
+                      </a>
+                    ) : (
+                      title
+                    )}
+                    {f.plagiarismSimilarity !== undefined && <span className="tabular-nums">· {Math.round(f.plagiarismSimilarity * 100)}%</span>}
+                  </span>
+                )}
+              </div>
+              {!compact && <p className="mt-1 text-xs text-[var(--fg-muted)] leading-relaxed">{f.reason}</p>}
+            </li>
+          )
+        })}
+      </ul>
+      {shown.length < items.length && <p className="mt-2 text-xs text-[var(--fg-subtle)]">+{items.length - shown.length} more</p>}
+    </div>
+  )
+}
+
 export function StatusPill({ status, tracker = false, className }: { status: ArticleStatus; tracker?: boolean; className?: string }) {
   const meta = STATUS_META[status]
   return (
@@ -152,8 +312,8 @@ export function StatusPill({ status, tracker = false, className }: { status: Art
         className
       )}
     >
-      <span aria-hidden className={cn("w-1.5 h-1.5 rounded-full", DOT[meta.tone])} />
-      {tracker ? meta.tracker : meta.label}
+      <span aria-hidden className={cn("w-1.5 h-1.5 shrink-0 rounded-full", DOT[meta.tone])} />
+      <span className="min-w-0 truncate leading-tight">{tracker ? meta.tracker : meta.label}</span>
     </span>
   )
 }

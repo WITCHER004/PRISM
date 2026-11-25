@@ -1,0 +1,129 @@
+{
+  "version": "2026-11-25-bench",
+  "thresholds": {
+    "ai_pass_max": 20.0,
+    "plagiarism_pass_max": 15.0,
+    "borderline": [
+      18.0,
+      25.0
+    ],
+    "manual_review_max": 60.0
+  },
+  "models": {
+    "desklib": true,
+    "roberta": true,
+    "binoculars": {
+      "enabled": true,
+      "observer": "Qwen/Qwen2.5-0.5B",
+      "performer": "Qwen/Qwen2.5-0.5B-Instruct"
+    }
+  },
+  "chunk_words": 180,
+  "max_chunks": 24,
+  "binoculars_center": 0.9,
+  "weights": {
+    "desklib": 0.6459,
+    "roberta": 0.0621,
+    "binoculars": 0.8845,
+    "burst_window": 0.0,
+    "burst_doc": 0.4448,
+    "cliche_window": 0.1342,
+    "cliche_doc": 0.1172
+  },
+  "bias": -1.476,
+  "impute": {
+    "desklib": 1.7134,
+    "roberta": -2.431,
+    "binoculars": -0.6493,
+    "burst_window": 0.5241,
+    "burst_doc": -0.096,
+    "cliche_window": 0.041,
+    "cliche_doc": 0.0333
+  },
+  "cliche_max_logit": 1.0,
+  "domains": {
+    "programming": {
+      "temperature": 0.6,
+      "bias": -4.0,
+      "n_human": 27,
+      "n_ai": 45,
+      "source": "tuned (shrinkage 0.75)"
+    },
+    "infrastructure": {
+      "temperature": 0.6,
+      "bias": -2.2,
+      "n_human": 0,
+      "n_ai": 0,
+      "source": "global"
+    },
+    "academic": {
+      "temperature": 1.0,
+      "bias": -1.9,
+      "n_human": 55,
+      "n_ai": 76,
+      "source": "tuned (shrinkage 1.00)"
+    },
+    "essay": {
+      "temperature": 0.6,
+      "bias": -2.2,
+      "n_human": 83,
+      "n_ai": 36,
+      "source": "global"
+    },
+    "journalism": {
+      "temperature": 0.6,
+      "bias": -2.0,
+      "n_human": 65,
+      "n_ai": 109,
+      "source": "tuned (shrinkage 1.00)"
+    },
+    "general": {
+      "temperature": 0.6,
+      "bias": -1.575,
+      "n_human": 15,
+      "n_ai": 41,
+      "source": "tuned (shrinkage 0.42)"
+    }
+  },
+  "craft": {
+    "max_discount": 6.0,
+    "max_penalty": 3.0
+  },
+  "plagiarism": {
+    "embedding_model": "BAAI/bge-base-en-v1.5",
+    "lexical_overlap": 0.85,
+    "semantic_threshold": 0.84,
+    "sentence_semantic_threshold": 0.86,
+    "min_sentence_words": 8
+  },
+  "flag_sentence_min": 0.6,
+  "metrics": {
+    "test_overall": {
+      "n_human": 280,
+      "n_ai": 294,
+      "precision": 0.979,
+      "recall": 0.935,
+      "f1": 0.957,
+      "fpr": 0.0214,
+      "human_mean": 1.5,
+      "human_p95": 3.8,
+      "human_max": 94.4,
+      "ai_mean": 82.3
+    },
+    "fp_audit_all": {
+      "all audit essays": {
+        "n_human": 117,
+        "n_ai": 0,
+        "precision": 0.0,
+        "recall": null,
+        "f1": 0.0,
+        "fpr": 0.0769,
+        "human_mean": 6.1,
+        "human_p95": 34.1,
+        "human_max": 99.1,
+        "ai_mean": null
+      }
+    },
+    "generated": "2026-11-25 13:28"
+  }
+}

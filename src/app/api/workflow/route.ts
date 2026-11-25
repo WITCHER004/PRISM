@@ -1,7 +1,7 @@
-import { NextResponse } from "next/server"
+import { after, NextResponse } from "next/server"
 import { randomBytes } from "node:crypto"
 import { z } from "zod"
-import { analyzeArticle } from "@/lib/moderation/analyzer"
+import { analyzeArticle, indexPublishedArticle } from "@/lib/moderation/analyzer"
 import { articleFromDoc, articleToDoc, COL, readUserDoc } from "@/lib/live/schema"
 import { adminConfigured, adminDb, verifyAppCheck, verifyRequestUser } from "@/lib/server/firebaseAdmin"
 import { sharedRateLimit } from "@/lib/server/sharedRateLimit"
@@ -32,6 +32,9 @@ const Body = z.discriminatedUnion("action", [
   z.object({ action: z.literal("counter"), articleId: Id, target: z.string().min(1).max(128), reason: z.string().max(5000), clarification: z.string().max(5000).optional() }),
   z.object({ action: z.literal("reconsider"), articleId: Id, target: z.string().min(1).max(128), verdict: z.enum(["ACCEPT", "UPHOLD"]), note: z.string().max(5000) }),
 ])
+
+// The ML engine runs transformer models; give the submit check room to finish
+export const maxDuration = 90
 
 const json = (body: unknown, status = 200) => NextResponse.json(body, { status })
 const newId = () => randomBytes(6).toString("base64url").toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 8) || "x"
@@ -72,7 +75,7 @@ export async function POST(request: Request) {
 
     // Submissions are scored on the text as stored, by the server's own Phase 1 check
     let report: Awaited<ReturnType<typeof analyzeArticle>> | null = null
-    let corpus: { id: string; title: string; html: string }[] = []
+    let corpus: { id: string; title: string; html: string; url: string }[] = []
     let analyzedAt: unknown = null
     if (body.action === "submit") {
       const snap = await ref.get()
@@ -85,8 +88,15 @@ export async function POST(request: Request) {
         .filter((x) => x.id !== snap.id)
         .map((x) => articleFromDoc(x.id, x.data()))
         .filter((x) => x.live)
-        .map((x) => ({ id: x.id, title: x.live!.title, html: x.live!.contentHtml }))
-      report = await analyzeArticle({ title: d.title, contentHtml: d.contentHtml })
+        .map((x) => ({ id: x.id, title: x.live!.title, html: x.live!.contentHtml, url: `/${x.authorUsername}/${x.slug}` }))
+      report = await analyzeArticle({
+        title: d.title,
+        contentHtml: d.contentHtml,
+        articleId: d.id,
+        topic: d.tags[0],
+        craft: d.craft,
+        corpus,
+      })
     }
 
     const outcome = await db.runTransaction(async (tx) => {
@@ -118,6 +128,18 @@ export async function POST(request: Request) {
     })
 
     if (!outcome.result.ok) return json({ error: outcome.result.error }, outcome.status)
+    // Newly published stories join the ML engine's plagiarism corpus (no-op when no engine is configured)
+    const published = outcome.result.draft
+    if (published.status === "PUBLISHED" && published.live) {
+      after(() =>
+        indexPublishedArticle({
+          id: published.id,
+          title: published.live!.title,
+          contentHtml: published.live!.contentHtml,
+          url: `/${published.authorUsername}/${published.slug}`,
+        }).catch((err) => console.warn("[workflow] engine index failed:", (err as Error).message))
+      )
+    }
     // The stored report, which can differ from the raw one (voice posts with short notes skip the text gate)
     return json({ ok: true, status: outcome.result.draft.status, report: (report && outcome.result.draft.phase1) ?? undefined })
   } catch (err) {

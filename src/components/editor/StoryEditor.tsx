@@ -685,7 +685,7 @@ function EditorWorkspace({ initial }: { initial?: Draft }) {
                           <p className="text-sm text-[var(--fg-muted)] leading-relaxed">
                             {status === "COUNTER_SUBMITTED"
                               ? "Reviewers are reading your defense. You'll be notified when they decide."
-                              : `Passed the AI check${stored?.phase1 ? ` (${Math.round(stored.phase1.humanPercent)}% human)` : ""}. ${
+                              : `${stored?.phase1?.manualReview ? `Sent to manual review (${Math.round(stored.phase1.aiPercent)}% read as AI, above the ${stored.phase1.threshold}% limit)` : `Passed the AI check${stored?.phase1 ? ` (${Math.round(stored.phase1.humanPercent)}% human)` : ""}`}. ${
                                   status === "PENDING_PEER_PANEL"
                                     ? `It publishes when ${PANEL_PASS_THRESHOLD} of ${PANEL_SIZE} panel members vote PASS.`
                                     : stored?.track === "PEER_PANEL"

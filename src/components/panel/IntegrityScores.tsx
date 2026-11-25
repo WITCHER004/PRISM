@@ -2,17 +2,16 @@
 
 import { useMemo } from "react"
 import { Bot, Copy } from "lucide-react"
-import { AI_MAX_PERCENT } from "@/lib/moderation/workflow"
+import { AI_MAX_PERCENT, PLAGIARISM_MAX_PERCENT } from "@/lib/moderation/workflow"
 import { overlapWithCorpus } from "@/lib/moderation/similarity"
 import { useUIStore, type Draft } from "@/lib/store"
 import { cn } from "@/lib/utils"
 
-/** Overlap above this is worth a close read; it isn't proof of plagiarism on its own */
-const OVERLAP_FLAG = 15
 
 /**
  * The two integrity numbers reviewers see first: Phase 1's AI-detection score, and how much of the
- * text's phrasing already appears in a published story on Prism (5-word phrase overlap, measured live).
+ * text matches existing writing. The submission-time score (lexical + the engine's semantic paraphrase
+ * search, when configured) is shown when stored; otherwise the lexical overlap is measured live.
  */
 export function IntegrityScores({ draft, className }: { draft: Draft; className?: string }) {
   const drafts = useUIStore((s) => s.drafts)
@@ -21,14 +20,18 @@ export function IntegrityScores({ draft, className }: { draft: Draft; className?
     const corpus = [
       ...Object.values(drafts)
         .filter((d) => d.live)
-        .map((d) => ({ id: d.id, title: d.live!.title, html: d.live!.contentHtml })),
+        .map((d) => ({ id: d.id, title: d.live!.title, html: d.live!.contentHtml, url: `/${d.authorUsername}/${d.slug}` })),
     ]
     return overlapWithCorpus(html, corpus, draft.id)
   }, [drafts, html, draft.id])
 
   const ai = draft.phase1?.aiPercent
   const aiHigh = ai !== undefined && ai > AI_MAX_PERCENT
-  const overlapHigh = overlap.percent >= OVERLAP_FLAG
+  const stored = draft.phase1?.plagiarismScore
+  const plagiarism = stored ?? overlap.percent
+  const overlapHigh = plagiarism > PLAGIARISM_MAX_PERCENT
+  const domain = draft.phase1?.detectedDomain
+  const confidence = draft.phase1?.confidenceLevel
 
   return (
     <section className={cn("panel p-5", className)} aria-label="Integrity scores">
@@ -39,21 +42,23 @@ export function IntegrityScores({ draft, className }: { draft: Draft; className?
             <Bot className="w-3.5 h-3.5" /> AI detection
           </dt>
           <dd className="mt-1.5 font-display text-2xl font-semibold tabular-nums">{ai === undefined ? "–" : `${Math.round(ai)}%`}</dd>
-          <dd className="text-xs text-[var(--fg-muted)]">Limit {AI_MAX_PERCENT}%</dd>
+          <dd className="text-xs text-[var(--fg-muted)]">
+            Limit {AI_MAX_PERCENT}%{confidence ? ` · ${confidence}` : ""}
+          </dd>
         </div>
         <div className={cn("rounded-[12px] border p-3", overlapHigh ? "border-amber-300 bg-amber-50/60" : "border-[var(--border)]")}>
           <dt className="meta flex items-center gap-1.5">
             <Copy className="w-3.5 h-3.5" /> Plagiarism
           </dt>
-          <dd className="mt-1.5 font-display text-2xl font-semibold tabular-nums">{overlap.percent}%</dd>
-          <dd className="text-xs text-[var(--fg-muted)]">overlap with Prism stories</dd>
+          <dd className="mt-1.5 font-display text-2xl font-semibold tabular-nums">{Math.round(plagiarism * 10) / 10}%</dd>
+          <dd className="text-xs text-[var(--fg-muted)]">Limit {PLAGIARISM_MAX_PERCENT}% · {stored !== undefined ? "at submission" : "overlap with Prism stories"}</dd>
         </div>
       </dl>
       <p className="mt-3 text-xs text-[var(--fg-muted)] leading-relaxed">
         {overlap.closest
           ? `Closest match: “${overlap.closest.title}” (${overlap.closest.percent}% of phrases). `
           : "No shared phrasing with any published Prism story. "}
-        Compared against {overlap.compared} stories on Prism; outside sources aren&apos;t checked.
+        Compared against {overlap.compared} stories on Prism{domain ? `; scored with the ${domain} calibration profile` : ""}.
       </p>
     </section>
   )

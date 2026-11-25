@@ -1,8 +1,18 @@
 import type { ArticleStatus, ReviewTrack } from "./types"
 
-// The publishing rules: an article needs at least 150 words, and may be at most 20%
-// AI-generated (≥ 80% human-written).
+// The publishing rules: an article needs at least 150 words, may be at most 20% AI-generated
+// (≥ 80% human-written), and at most 15% of its prose may match an existing source.
 export const AI_MAX_PERCENT = 20
+export const PLAGIARISM_MAX_PERCENT = 15
+/**
+ * AI scores above the limit but at most this go to an employee for manual review instead of failing.
+ * Chosen from the benchmark (ai_plagiarism_engine/benchmarks/REPORT.md): the genuine human writing the
+ * detector still misreads (non-native English, dense technical abstracts) mostly scores 20–60, while
+ * 84% of AI text scores above 60. Plagiarism has no such band.
+ */
+export const MANUAL_REVIEW_MAX_AI = 60
+/** AI scores in this band are "borderline": Proof-of-Craft telemetry may nudge them (see analyzer.ts) */
+export const BORDERLINE_AI: readonly [number, number] = [18, 25]
 export const MIN_WORDS_FOR_SUBMISSION = 150
 /** Marks a voice post whose short show notes skipped the AI-content gate (shown to the author as such) */
 export const VOICE_SKIP_PROVIDER = "voice post · text check skipped (short show notes)"
@@ -32,9 +42,17 @@ export function canTransition(from: ArticleStatus, to: ArticleStatus) {
   return TRANSITIONS[from].includes(to)
 }
 
-/** Phase 1 outcome → next status. Everyone who passes goes to an employee first. */
-export function phase1Outcome(aiPercent: number): ArticleStatus {
-  return aiPercent > AI_MAX_PERCENT ? "PHASE_1_FAILED" : "PENDING_EMPLOYEE_REVIEW"
+export type Phase1Decision = "PASS" | "MANUAL_REVIEW" | "FAIL"
+
+/** AI ≤ 20 and plagiarism ≤ 15 pass; AI 20–60 goes to manual review; above that, or plagiarism > 15, fails */
+export function phase1Decision(aiPercent: number, plagiarismScore = 0): Phase1Decision {
+  if (plagiarismScore > PLAGIARISM_MAX_PERCENT || aiPercent > MANUAL_REVIEW_MAX_AI) return "FAIL"
+  return aiPercent > AI_MAX_PERCENT ? "MANUAL_REVIEW" : "PASS"
+}
+
+/** Phase 1 outcome → next status. Passing and manual-review articles both go to an employee first. */
+export function phase1Outcome(report: { aiPercent: number; plagiarismScore?: number }): ArticleStatus {
+  return phase1Decision(report.aiPercent, report.plagiarismScore) === "FAIL" ? "PHASE_1_FAILED" : "PENDING_EMPLOYEE_REVIEW"
 }
 
 /** Review route by plan: Free = AI → employee; Elite = AI → employee → 10-member peer panel */

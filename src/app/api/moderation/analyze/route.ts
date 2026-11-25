@@ -9,6 +9,9 @@ import { verifyAppCheck } from "@/lib/server/firebaseAdmin"
 // The DB-backed submit action (src/actions/moderation.ts) runs the same analyzer server-side,
 // so a client can't skip this check by calling the review queue directly.
 
+// The ML engine runs transformer models; give the submit check room to finish
+export const maxDuration = 90
+
 const Body = z.object({
   title: z.string().max(300).optional(),
   contentHtml: z.string().min(1).max(400_000),

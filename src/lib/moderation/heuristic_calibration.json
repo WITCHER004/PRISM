@@ -1,0 +1,49 @@
+{
+  "version": "2026-11-25-bench",
+  "targetFpr": 0.015,
+  "threshold": 20,
+  "domains": {
+    "programming": {
+      "temperature": 0.6,
+      "bias": -1.9,
+      "n_human": 27,
+      "n_ai": 45,
+      "source": "tuned (shrinkage 0.75)"
+    },
+    "infrastructure": {
+      "temperature": 0.6,
+      "bias": -2.5,
+      "n_human": 0,
+      "n_ai": 0,
+      "source": "global"
+    },
+    "academic": {
+      "temperature": 0.6,
+      "bias": -2.7,
+      "n_human": 55,
+      "n_ai": 76,
+      "source": "tuned (shrinkage 1.00)"
+    },
+    "essay": {
+      "temperature": 0.6,
+      "bias": -1.4,
+      "n_human": 83,
+      "n_ai": 36,
+      "source": "tuned (shrinkage 1.00)"
+    },
+    "journalism": {
+      "temperature": 2.5,
+      "bias": -4.4,
+      "n_human": 65,
+      "n_ai": 109,
+      "source": "tuned (shrinkage 1.00)"
+    },
+    "general": {
+      "temperature": 0.6,
+      "bias": -1.333,
+      "n_human": 15,
+      "n_ai": 41,
+      "source": "tuned (shrinkage 0.42)"
+    }
+  }
+}

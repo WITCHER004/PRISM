@@ -1,0 +1,741 @@
+{
+  "generated": "2026-11-25 14:51",
+  "threshold": 20.0,
+  "target_fpr": 0.015,
+  "samples": {
+    "calib": 552,
+    "test": 574
+  },
+  "weights": {
+    "desklib": 0.6459,
+    "roberta": 0.0621,
+    "binoculars": 0.8845,
+    "burst_window": 0.0,
+    "burst_doc": 0.4448,
+    "cliche_window": 0.1342,
+    "cliche_doc": 0.1172
+  },
+  "bias": -1.476,
+  "domains": {
+    "programming": {
+      "temperature": 0.6,
+      "bias": -4.0,
+      "n_human": 27,
+      "n_ai": 45,
+      "source": "tuned (shrinkage 0.75)"
+    },
+    "infrastructure": {
+      "temperature": 0.6,
+      "bias": -2.2,
+      "n_human": 0,
+      "n_ai": 0,
+      "source": "global"
+    },
+    "academic": {
+      "temperature": 1.0,
+      "bias": -1.9,
+      "n_human": 55,
+      "n_ai": 76,
+      "source": "tuned (shrinkage 1.00)"
+    },
+    "essay": {
+      "temperature": 0.6,
+      "bias": -2.2,
+      "n_human": 83,
+      "n_ai": 36,
+      "source": "global"
+    },
+    "journalism": {
+      "temperature": 0.6,
+      "bias": -2.0,
+      "n_human": 65,
+      "n_ai": 109,
+      "source": "tuned (shrinkage 1.00)"
+    },
+    "general": {
+      "temperature": 0.6,
+      "bias": -1.575,
+      "n_human": 15,
+      "n_ai": 41,
+      "source": "tuned (shrinkage 0.42)"
+    }
+  },
+  "test_overall": {
+    "n_human": 280,
+    "n_ai": 294,
+    "precision": 0.979,
+    "recall": 0.935,
+    "f1": 0.957,
+    "fpr": 0.0214,
+    "human_mean": 1.5,
+    "human_p95": 3.8,
+    "human_max": 94.4,
+    "ai_mean": 82.3
+  },
+  "test_overall_uncalibrated_defaults": {
+    "n_human": 280,
+    "n_ai": 294,
+    "precision": 0.909,
+    "recall": 0.956,
+    "f1": 0.932,
+    "fpr": 0.1,
+    "human_mean": 7.8,
+    "human_p95": 37.8,
+    "human_max": 94.9,
+    "ai_mean": 88.0
+  },
+  "calib_overall": {
+    "n_human": 245,
+    "n_ai": 307,
+    "precision": 0.99,
+    "recall": 0.938,
+    "f1": 0.963,
+    "fpr": 0.0122,
+    "human_mean": 1.5,
+    "human_p95": 3.9,
+    "human_max": 99.1,
+    "ai_mean": 82.5
+  },
+  "test_by_domain": {
+    "academic": {
+      "n_human": 41,
+      "n_ai": 76,
+      "precision": 1.0,
+      "recall": 0.921,
+      "f1": 0.959,
+      "fpr": 0.0,
+      "human_mean": 0.9,
+      "human_p95": 4.2,
+      "human_max": 10.7,
+      "ai_mean": 83.3
+    },
+    "essay": {
+      "n_human": 41,
+      "n_ai": 49,
+      "precision": 1.0,
+      "recall": 0.837,
+      "f1": 0.911,
+      "fpr": 0.0,
+      "human_mean": 0.1,
+      "human_p95": 0.0,
+      "human_max": 3.0,
+      "ai_mean": 65.6
+    },
+    "general": {
+      "n_human": 9,
+      "n_ai": 34,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "fpr": 0.0,
+      "human_mean": 0.3,
+      "human_p95": 1.7,
+      "human_max": 2.7,
+      "ai_mean": 95.8
+    },
+    "journalism": {
+      "n_human": 76,
+      "n_ai": 84,
+      "precision": 1.0,
+      "recall": 0.94,
+      "f1": 0.969,
+      "fpr": 0.0,
+      "human_mean": 0.1,
+      "human_p95": 0.2,
+      "human_max": 1.5,
+      "ai_mean": 84.0
+    },
+    "programming": {
+      "n_human": 49,
+      "n_ai": 51,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "fpr": 0.0,
+      "human_mean": 0.0,
+      "human_p95": 0.0,
+      "human_max": 2.0,
+      "ai_mean": 85.0
+    }
+  },
+  "test_by_source": {
+    "Audit/college essays": {
+      "n_human": 23,
+      "n_ai": 0,
+      "precision": 0.0,
+      "recall": null,
+      "f1": 0.0,
+      "fpr": 0.0435,
+      "human_mean": 1.9,
+      "human_p95": 1.2,
+      "human_max": 40.3,
+      "ai_mean": null
+    },
+    "Audit/non-native English (TOEFL)": {
+      "n_human": 22,
+      "n_ai": 0,
+      "precision": 0.0,
+      "recall": null,
+      "f1": 0.0,
+      "fpr": 0.0909,
+      "human_mean": 8.3,
+      "human_p95": 51.6,
+      "human_max": 94.4,
+      "ai_mean": null
+    },
+    "Audit/technical abstracts (CS224N)": {
+      "n_human": 19,
+      "n_ai": 0,
+      "precision": 0.0,
+      "recall": null,
+      "f1": 0.0,
+      "fpr": 0.1579,
+      "human_mean": 8.2,
+      "human_p95": 32.8,
+      "human_max": 53.0,
+      "ai_mean": null
+    },
+    "Ghostbuster/reuter": {
+      "n_human": 10,
+      "n_ai": 5,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "fpr": 0.0,
+      "human_mean": 0.0,
+      "human_p95": 0.1,
+      "human_max": 0.1,
+      "ai_mean": 89.0
+    },
+    "Ghostbuster/wp": {
+      "n_human": 13,
+      "n_ai": 12,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "fpr": 0.0,
+      "human_mean": 0.2,
+      "human_p95": 1.2,
+      "human_max": 3.0,
+      "ai_mean": 66.4
+    },
+    "HC3/finance": {
+      "n_human": 37,
+      "n_ai": 45,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "fpr": 0.0,
+      "human_mean": 0.1,
+      "human_p95": 0.2,
+      "human_max": 1.5,
+      "ai_mean": 91.3
+    },
+    "HC3/medicine": {
+      "n_human": 18,
+      "n_ai": 43,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "fpr": 0.0,
+      "human_mean": 1.0,
+      "human_p95": 5.1,
+      "human_max": 10.0,
+      "ai_mean": 93.9
+    },
+    "HC3/open_qa": {
+      "n_human": 6,
+      "n_ai": 34,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "fpr": 0.0,
+      "human_mean": 0.5,
+      "human_p95": 2.1,
+      "human_max": 2.7,
+      "ai_mean": 95.8
+    },
+    "HC3/wiki_csai": {
+      "n_human": 49,
+      "n_ai": 51,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "fpr": 0.0,
+      "human_mean": 0.0,
+      "human_p95": 0.0,
+      "human_max": 2.0,
+      "ai_mean": 85.0
+    },
+    "MAGE/cmv": {
+      "n_human": 3,
+      "n_ai": 6,
+      "precision": 1.0,
+      "recall": 0.167,
+      "f1": 0.286,
+      "fpr": 0.0,
+      "human_mean": 0.0,
+      "human_p95": 0.0,
+      "human_max": 0.0,
+      "ai_mean": 9.6
+    },
+    "MAGE/eli5": {
+      "n_human": 3,
+      "n_ai": 0,
+      "precision": 1.0,
+      "recall": null,
+      "f1": 0.0,
+      "fpr": 0.0,
+      "human_mean": 0.0,
+      "human_p95": 0.0,
+      "human_max": 0.0,
+      "ai_mean": null
+    },
+    "MAGE/sci_gen": {
+      "n_human": 6,
+      "n_ai": 5,
+      "precision": 1.0,
+      "recall": 0.4,
+      "f1": 0.571,
+      "fpr": 0.0,
+      "human_mean": 2.0,
+      "human_p95": 8.1,
+      "human_max": 10.7,
+      "ai_mean": 19.0
+    },
+    "MAGE/tldr": {
+      "n_human": 1,
+      "n_ai": 7,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "fpr": 0.0,
+      "human_mean": 0.0,
+      "human_p95": 0.0,
+      "human_max": 0.0,
+      "ai_mean": 93.2
+    },
+    "MAGE/wp": {
+      "n_human": 7,
+      "n_ai": 1,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "fpr": 0.0,
+      "human_mean": 0.0,
+      "human_p95": 0.1,
+      "human_max": 0.1,
+      "ai_mean": 85.8
+    },
+    "MAGE/xsum": {
+      "n_human": 8,
+      "n_ai": 1,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "fpr": 0.0,
+      "human_mean": 0.2,
+      "human_p95": 0.6,
+      "human_max": 0.9,
+      "ai_mean": 64.4
+    },
+    "RAID/abstracts": {
+      "n_human": 17,
+      "n_ai": 28,
+      "precision": 1.0,
+      "recall": 0.893,
+      "f1": 0.943,
+      "fpr": 0.0,
+      "human_mean": 0.3,
+      "human_p95": 1.4,
+      "human_max": 1.8,
+      "ai_mean": 78.6
+    },
+    "RAID/books": {
+      "n_human": 18,
+      "n_ai": 30,
+      "precision": 1.0,
+      "recall": 0.9,
+      "f1": 0.947,
+      "fpr": 0.0,
+      "human_mean": 0.0,
+      "human_p95": 0.0,
+      "human_max": 0.0,
+      "ai_mean": 75.7
+    },
+    "RAID/news": {
+      "n_human": 20,
+      "n_ai": 26,
+      "precision": 1.0,
+      "recall": 0.808,
+      "f1": 0.894,
+      "fpr": 0.0,
+      "human_mean": 0.1,
+      "human_p95": 0.2,
+      "human_max": 0.7,
+      "ai_mean": 68.7
+    }
+  },
+  "test_by_attack": {
+    "none": {
+      "n_human": 0,
+      "n_ai": 246,
+      "precision": 1.0,
+      "recall": 0.955,
+      "f1": 0.977,
+      "fpr": null,
+      "human_mean": null,
+      "human_p95": null,
+      "human_max": null,
+      "ai_mean": 85.5
+    },
+    "paraphrase": {
+      "n_human": 0,
+      "n_ai": 21,
+      "precision": 1.0,
+      "recall": 0.81,
+      "f1": 0.895,
+      "fpr": null,
+      "human_mean": null,
+      "human_p95": null,
+      "human_max": null,
+      "ai_mean": 61.8
+    },
+    "synonym": {
+      "n_human": 0,
+      "n_ai": 27,
+      "precision": 1.0,
+      "recall": 0.852,
+      "f1": 0.92,
+      "fpr": null,
+      "human_mean": null,
+      "human_p95": null,
+      "human_max": null,
+      "ai_mean": 68.9
+    }
+  },
+  "test_by_generator": {
+    "chatgpt": {
+      "n_human": 0,
+      "n_ai": 194,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "fpr": null,
+      "human_mean": null,
+      "human_p95": null,
+      "human_max": null,
+      "ai_mean": 90.2
+    },
+    "claude": {
+      "n_human": 0,
+      "n_ai": 2,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "fpr": null,
+      "human_mean": null,
+      "human_p95": null,
+      "human_max": null,
+      "ai_mean": 86.2
+    },
+    "cmv": {
+      "n_human": 0,
+      "n_ai": 6,
+      "precision": 1.0,
+      "recall": 0.167,
+      "f1": 0.286,
+      "fpr": null,
+      "human_mean": null,
+      "human_p95": null,
+      "human_max": null,
+      "ai_mean": 9.6
+    },
+    "cohere-chat": {
+      "n_human": 0,
+      "n_ai": 17,
+      "precision": 1.0,
+      "recall": 0.588,
+      "f1": 0.741,
+      "fpr": null,
+      "human_mean": null,
+      "human_p95": null,
+      "human_max": null,
+      "ai_mean": 46.0
+    },
+    "gpt": {
+      "n_human": 0,
+      "n_ai": 15,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "fpr": null,
+      "human_mean": null,
+      "human_p95": null,
+      "human_max": null,
+      "ai_mean": 71.3
+    },
+    "gpt4": {
+      "n_human": 0,
+      "n_ai": 13,
+      "precision": 1.0,
+      "recall": 0.769,
+      "f1": 0.87,
+      "fpr": null,
+      "human_mean": null,
+      "human_p95": null,
+      "human_max": null,
+      "ai_mean": 64.6
+    },
+    "llama-chat": {
+      "n_human": 0,
+      "n_ai": 20,
+      "precision": 1.0,
+      "recall": 0.95,
+      "f1": 0.974,
+      "fpr": null,
+      "human_mean": null,
+      "human_p95": null,
+      "human_max": null,
+      "ai_mean": 87.2
+    },
+    "mistral-chat": {
+      "n_human": 0,
+      "n_ai": 13,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "fpr": null,
+      "human_mean": null,
+      "human_p95": null,
+      "human_max": null,
+      "ai_mean": 86.6
+    },
+    "sci": {
+      "n_human": 0,
+      "n_ai": 5,
+      "precision": 1.0,
+      "recall": 0.4,
+      "f1": 0.571,
+      "fpr": null,
+      "human_mean": null,
+      "human_p95": null,
+      "human_max": null,
+      "ai_mean": 19.0
+    },
+    "tldr": {
+      "n_human": 0,
+      "n_ai": 7,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "fpr": null,
+      "human_mean": null,
+      "human_p95": null,
+      "human_max": null,
+      "ai_mean": 93.2
+    },
+    "wp": {
+      "n_human": 0,
+      "n_ai": 1,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "fpr": null,
+      "human_mean": null,
+      "human_p95": null,
+      "human_max": null,
+      "ai_mean": 85.8
+    },
+    "xsum": {
+      "n_human": 0,
+      "n_ai": 1,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "fpr": null,
+      "human_mean": null,
+      "human_p95": null,
+      "human_max": null,
+      "ai_mean": 64.4
+    }
+  },
+  "fp_audit_test": {
+    "Audit/college essays": {
+      "n_human": 23,
+      "n_ai": 0,
+      "precision": 0.0,
+      "recall": null,
+      "f1": 0.0,
+      "fpr": 0.0435,
+      "human_mean": 1.9,
+      "human_p95": 1.2,
+      "human_max": 40.3,
+      "ai_mean": null
+    },
+    "Audit/non-native English (TOEFL)": {
+      "n_human": 22,
+      "n_ai": 0,
+      "precision": 0.0,
+      "recall": null,
+      "f1": 0.0,
+      "fpr": 0.0909,
+      "human_mean": 8.3,
+      "human_p95": 51.6,
+      "human_max": 94.4,
+      "ai_mean": null
+    },
+    "Audit/technical abstracts (CS224N)": {
+      "n_human": 19,
+      "n_ai": 0,
+      "precision": 0.0,
+      "recall": null,
+      "f1": 0.0,
+      "fpr": 0.1579,
+      "human_mean": 8.2,
+      "human_p95": 32.8,
+      "human_max": 53.0,
+      "ai_mean": null
+    }
+  },
+  "fp_audit_all": {
+    "all audit essays": {
+      "n_human": 117,
+      "n_ai": 0,
+      "precision": 0.0,
+      "recall": null,
+      "f1": 0.0,
+      "fpr": 0.0769,
+      "human_mean": 6.1,
+      "human_p95": 34.1,
+      "human_max": 99.1,
+      "ai_mean": null
+    }
+  },
+  "routing_test": {
+    "manual_review_max": 60.0,
+    "human": {
+      "n": 280,
+      "pass": 0.9786,
+      "manual_review": 0.0179,
+      "auto_fail": 0.0036
+    },
+    "AI": {
+      "n": 294,
+      "pass": 0.0646,
+      "manual_review": 0.0986,
+      "auto_fail": 0.8367
+    }
+  },
+  "false_positives_test": [
+    {
+      "id": "e0f0f59d61d2c560",
+      "source": "Audit/non-native English (TOEFL)",
+      "domain": "essay",
+      "score": 94.4
+    },
+    {
+      "id": "31db4e77efcbedf3",
+      "source": "Audit/non-native English (TOEFL)",
+      "domain": "essay",
+      "score": 53.7
+    },
+    {
+      "id": "3187278aa01b2611",
+      "source": "Audit/technical abstracts (CS224N)",
+      "domain": "academic",
+      "score": 53.0
+    },
+    {
+      "id": "ca0bbc946561dcaa",
+      "source": "Audit/college essays",
+      "domain": "essay",
+      "score": 40.3
+    },
+    {
+      "id": "977944f9c0c33f47",
+      "source": "Audit/technical abstracts (CS224N)",
+      "domain": "academic",
+      "score": 30.6
+    },
+    {
+      "id": "715b34d2cd73ef85",
+      "source": "Audit/technical abstracts (CS224N)",
+      "domain": "academic",
+      "score": 25.1
+    }
+  ],
+  "plagiarism": {
+    "pairs": 59,
+    "negatives": 80,
+    "cases": {
+      "paraphrase (RAID/Dipper)": {
+        "n": 59,
+        "flagged_over_threshold": 0.983,
+        "mean_score": 60.8
+      },
+      "verbatim insert": {
+        "n": 59,
+        "flagged_over_threshold": 0.695,
+        "mean_score": 28.4
+      },
+      "light-edit insert": {
+        "n": 59,
+        "flagged_over_threshold": 0.678,
+        "mean_score": 27.6
+      },
+      "mosaic (interleaved)": {
+        "n": 59,
+        "flagged_over_threshold": 0.678,
+        "mean_score": 35.3
+      },
+      "human negatives (not in corpus)": {
+        "n": 80,
+        "flagged_over_threshold": 0.0,
+        "mean_score": 0.0
+      }
+    },
+    "semantic_sweep": [
+      {
+        "threshold": 0.78,
+        "recall": 1.0,
+        "fpr": 0.0
+      },
+      {
+        "threshold": 0.8,
+        "recall": 1.0,
+        "fpr": 0.0
+      },
+      {
+        "threshold": 0.82,
+        "recall": 0.983,
+        "fpr": 0.0
+      },
+      {
+        "threshold": 0.84,
+        "recall": 0.983,
+        "fpr": 0.0
+      },
+      {
+        "threshold": 0.86,
+        "recall": 0.983,
+        "fpr": 0.0
+      },
+      {
+        "threshold": 0.88,
+        "recall": 0.966,
+        "fpr": 0.0
+      },
+      {
+        "threshold": 0.9,
+        "recall": 0.932,
+        "fpr": 0.0
+      },
+      {
+        "threshold": 0.92,
+        "recall": 0.78,
+        "fpr": 0.0
+      }
+    ]
+  }
+}

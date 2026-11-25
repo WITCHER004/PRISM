@@ -126,12 +126,13 @@ export function submitForReview(d: Draft, report: Phase1Report, corpus: { id: st
   if (voice && !d.audiobookUrl) return fail("Voice posts need a recording. Record or upload one first.")
   if (!voice && report.wordCount < MIN_WORDS_FOR_SUBMISSION) return fail(`Articles need at least ${MIN_WORDS_FOR_SUBMISSION} words.`)
   const textChecked = !voice || report.wordCount >= MIN_WORDS_FOR_SUBMISSION
-  if (!textChecked) report = { ...report, passed: true, provider: VOICE_SKIP_PROVIDER }
-  const next = textChecked ? phase1Outcome(report.aiPercent) : "PENDING_EMPLOYEE_REVIEW"
+  if (!textChecked) report = { ...report, passed: true, manualReview: undefined, aiPassed: true, plagiarismPassed: true, provider: VOICE_SKIP_PROVIDER }
+  const next = textChecked ? phase1Outcome(report) : "PENDING_EMPLOYEE_REVIEW"
   if (!canTransition(d.status, next)) return fail("This story can't be submitted right now.")
   // The route is fixed at submission time: Elite writers who kept the panel switch on go to the panel
   const track = trackFor(ctx.authorIsElite && d.panelReview !== false)
-  const plagiarismPercent = overlapWithCorpus(d.contentHtml, corpus, d.id).percent
+  // The analyzer scores plagiarism when it was given the corpus; older callers get the lexical check here
+  const plagiarismPercent = report.plagiarismScore ?? overlapWithCorpus(d.contentHtml, corpus, d.id).percent
   const draft: Draft = {
     ...d,
     status: next,
