@@ -36,7 +36,6 @@ import { isDuplicateView, priceView, walletFromArticles, type PayoutRecord, type
 
 type Theme = "light" | "dark" | "sepia"
 type FontSize = "sm" | "md" | "lg" | "xl"
-export type Plan = "reader" | "patron"
 export type PaywallChoice = "FREE" | "METERED" | "SUBSCRIBER" | "PAID"
 
 export interface LocalComment {
@@ -209,7 +208,10 @@ interface UIState {
   // Elite subscription (keyed by username)
   subscriptions: Record<string, Subscription>
   upgradeToElite: (reference: string) => Result
+  /** Stops renewal; Elite stays active until the paid period ends */
   cancelElite: () => void
+  /** Undoes a pending cancellation */
+  resumeElite: () => void
 
   // Monetization
   /** Anonymous browser fingerprint for view dedupe when signed out */
@@ -227,10 +229,8 @@ interface UIState {
   saveReview: (postId: string, postAuthor: string, input: ReviewInput) => Result
   deleteReview: (postId: string) => void
 
-  // membership / money (simulated)
-  plan: Plan | null
+  // money (simulated)
   tips: { authorUsername: string; amount: number; at: string }[]
-  setPlan: (plan: Plan | null) => void
   recordTip: (authorUsername: string, amount: number) => void
 
   // newsletter (writer side, simulated)
@@ -423,7 +423,11 @@ export const useUIStore = create<UIState>()(
             })
             if (u.tier === "elite") {
               const sub = activateElite("firestore", "users_doc")
-              subscriptions[u.handle] = remote(u.eliteSince ? { ...sub, subscribedAt: new Date(u.eliteSince).toISOString() } : sub)
+              // A cancellation pending in this session keeps its original end date across syncs
+              const prev = s.subscriptions[u.handle]
+              subscriptions[u.handle] = prev?.cancelAtPeriodEnd
+                ? prev
+                : remote(u.eliteSince ? { ...sub, subscribedAt: new Date(u.eliteSince).toISOString() } : sub)
             }
           }
           const me = s.authUid ? docs.find((u) => u.uid === s.authUid) : undefined
@@ -545,7 +549,16 @@ export const useUIStore = create<UIState>()(
         const me = get().currentUser
         const sub = me ? get().subscriptions[me] : undefined
         if (!me || !sub) return
-        set((s) => ({ subscriptions: { ...s.subscriptions, [me]: { ...sub, subscriptionStatus: "INACTIVE" } } }))
+        // With a paid period still running, keep access until it ends; otherwise end it now
+        const running = !!sub.expiresAt && new Date(sub.expiresAt).getTime() > Date.now()
+        const next: Subscription = running ? { ...sub, cancelAtPeriodEnd: true } : { ...sub, subscriptionStatus: "INACTIVE" }
+        set((s) => ({ subscriptions: { ...s.subscriptions, [me]: next } }))
+      },
+      resumeElite: () => {
+        const me = get().currentUser
+        const sub = me ? get().subscriptions[me] : undefined
+        if (!me || !sub?.cancelAtPeriodEnd) return
+        set((s) => ({ subscriptions: { ...s.subscriptions, [me]: { ...sub, cancelAtPeriodEnd: false } } }))
       },
 
       access: {},
@@ -727,9 +740,7 @@ export const useUIStore = create<UIState>()(
           return { drafts: next }
         }),
 
-      plan: null,
       tips: [],
-      setPlan: (plan) => set({ plan }),
       recordTip: (authorUsername, amount) => set((s) => ({ tips: [...s.tips, { authorUsername, amount, at: now() }] })),
 
       newsletterSubscribers: [],
@@ -791,7 +802,6 @@ export const useUIStore = create<UIState>()(
         viewerId: s.viewerId,
         views: s.views,
         payouts: s.payouts,
-        plan: s.plan,
         tips: s.tips,
         newsletterSubscribers: s.newsletterSubscribers,
       }),

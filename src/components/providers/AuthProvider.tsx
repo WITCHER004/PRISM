@@ -4,6 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import {
   auth,
   authPersistenceReady,
+  awaitLoginGate,
   getClientAnalytics,
   logOutFirebase,
   onAuthStateChanged,
@@ -145,8 +146,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
         // Usable profile right away; replaced by the Firestore doc if it loads
         setUserProfile(profileFromAuth(firebaseUser))
-        syncUserProfile(firebaseUser).then((profile) => {
-          if (auth.currentUser?.uid === firebaseUser.uid) setUserProfile(profile)
+        // The sign-in page may be about to delete a brand-new account: wait, then skip if it's gone
+        awaitLoginGate().then(() => {
+          if (auth.currentUser?.uid !== firebaseUser.uid) return
+          return syncUserProfile(firebaseUser).then((profile) => {
+            if (auth.currentUser?.uid === firebaseUser.uid) setUserProfile(profile)
+          })
         })
       })
     }

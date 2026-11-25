@@ -59,7 +59,7 @@ const sections: LegalSection[] = [
     title: "Gaming the system",
     body: (
       <p>
-        Because payouts follow reading time, inflating it is a form of theft from other writers. Bots, click farms,
+        Because Elite writers are paid per unique reader, faking views is a form of theft from other writers. Bots, click farms,
         reading rings and similar schemes lead to withheld earnings and account closure.
       </p>
     ),

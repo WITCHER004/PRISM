@@ -33,8 +33,11 @@ export function useRoleActions() {
         return res
       },
       cancel() {
+        // Access continues until the period ends; isEliteActive lapses it at expiresAt
         useUIStore.getState().cancelElite()
-        patchUserProfile({ tier: "free" })
+      },
+      resume() {
+        useUIStore.getState().resumeElite()
       },
       applyForPanel(input: ApplicationInput) {
         const res = useUIStore.getState().submitPanelApplication({

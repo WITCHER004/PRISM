@@ -3,6 +3,8 @@ import {
   getAuth,
   GoogleAuthProvider,
   GithubAuthProvider,
+  getAdditionalUserInfo,
+  getRedirectResult,
   signInWithPopup,
   signInWithRedirect,
   setPersistence,
@@ -14,6 +16,7 @@ import {
   onAuthStateChanged,
   updateProfile,
   type Auth,
+  type UserCredential,
   type User as FirebaseUser,
 } from "firebase/auth"
 import { getAnalytics, isSupported, type Analytics } from "firebase/analytics"
@@ -107,15 +110,22 @@ export const getClientAnalytics = async (): Promise<Analytics | null> => {
 // Authentication Helpers
 // Popup first: redirects break on localhost and in browsers that block third-party cookies.
 // Fall back to a redirect only when the popup itself can't open; onAuthStateChanged picks up the result.
+const LOGIN_REDIRECT_KEY = "prism:login-redirect"
 const POPUP_UNAVAILABLE = new Set(["auth/popup-blocked", "auth/operation-not-supported-in-this-environment"])
 
-export async function signInWithGoogle() {
+export async function signInWithGoogle(fromLoginPage = false) {
   await authPersistenceReady
   try {
     return await signInWithPopup(auth, googleProvider)
   } catch (err) {
     const code = (err as { code?: string })?.code
     if (code && POPUP_UNAVAILABLE.has(code)) {
+      // The page reloads after the redirect, so remember that it started on the sign-in page
+      if (fromLoginPage) {
+        try {
+          sessionStorage.setItem(LOGIN_REDIRECT_KEY, "1")
+        } catch {}
+      }
       await signInWithRedirect(auth, googleProvider)
       return null
     }
@@ -125,6 +135,65 @@ export async function signInWithGoogle() {
 
 export async function signInWithGithub() {
   return signInWithPopup(auth, githubProvider)
+}
+
+// While the sign-in page checks whether an OAuth account already existed, AuthProvider waits on this
+// before writing users/{uid}, so a rejected brand-new account leaves no profile or handle behind.
+let loginGate: Promise<void> | null = null
+export const awaitLoginGate = () => loginGate ?? Promise.resolve()
+
+const noAccountError = () =>
+  Object.assign(new Error("No Prism account is linked to this sign-in yet."), { code: "auth/prism-no-account" })
+
+/** Runs `fn` with the login gate held; a brand-new account in its result is deleted and rejected. */
+async function requireExistingAccount(fn: () => Promise<UserCredential | null>) {
+  let release!: () => void
+  loginGate = new Promise<void>((r) => (release = r))
+  try {
+    const result = await fn()
+    if (result && getAdditionalUserInfo(result)?.isNewUser) {
+      await result.user.delete().catch(() => firebaseSignOut(auth))
+      throw noAccountError()
+    }
+    return result
+  } finally {
+    release()
+    loginGate = null
+  }
+}
+
+/**
+ * Sign-in page only: OAuth popups create a Firebase account when none exists. If this one is brand
+ * new, delete it again and throw `auth/prism-no-account` so the caller can send the user to signup.
+ */
+export function signInExistingWithProvider(p: "google" | "github") {
+  return requireExistingAccount(() => (p === "google" ? signInWithGoogle(true) : signInWithGithub()))
+}
+
+// Redirect fallback: when the page comes back from a redirect that started on the sign-in page, run the
+// same check on the redirect result. It starts at module load so the gate is held before AuthProvider
+// subscribes to auth state and sees the new user.
+let loginRedirectCheck: Promise<UserCredential | null> | null = null
+if (typeof window !== "undefined") {
+  let pending = false
+  try {
+    pending = sessionStorage.getItem(LOGIN_REDIRECT_KEY) === "1"
+    sessionStorage.removeItem(LOGIN_REDIRECT_KEY)
+  } catch {}
+  if (pending) {
+    loginRedirectCheck = requireExistingAccount(async () => {
+      await authPersistenceReady
+      return getRedirectResult(auth)
+    })
+    loginRedirectCheck.catch(() => {}) // surfaced to the sign-in page via consumeLoginRedirect()
+  }
+}
+
+/** The sign-in page's redirect result, once: the credential, null, or a rejection (`auth/prism-no-account`). */
+export function consumeLoginRedirect(): Promise<UserCredential | null> {
+  const check = loginRedirectCheck
+  loginRedirectCheck = null
+  return check ?? Promise.resolve(null)
 }
 
 /**

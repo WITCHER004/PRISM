@@ -63,18 +63,20 @@ const sections: LegalSection[] = [
   },
   {
     id: "memberships",
-    title: "Memberships and payments",
+    title: "Elite subscription and payments",
     body: (
       <>
         <p>
-          Memberships renew monthly until you cancel. You can cancel at any time from the{" "}
-          <Link href="/membership">membership page</Link>; you keep access until the end of the period you&apos;ve
-          paid for.
+          Elite is a paid subscription that renews every 30 days until you cancel. You can cancel at any time
+          from the <Link href="/elite">Elite page</Link>. You keep Elite until the end of the period you&apos;ve
+          paid for; after that it doesn&apos;t renew, per-view earnings stop and member stories lock again. Your
+          wallet balance and earned badges are kept for when you come back.
         </p>
         <p>
-          A share of each membership fee is distributed to writers based on members&apos; active reading time, as
-          described on our <Link href="/about#payouts">About page</Link>. Tips are passed to the writer you tip, less
-          payment processing costs.
+          Writers with an active Elite subscription earn a fixed amount for each unique reader of their published
+          stories, at the rate shown on the Elite page and described on our{" "}
+          <Link href="/about#payouts">About page</Link>. Views of your own stories don&apos;t count. Tips are passed
+          to the writer you tip, less payment processing costs.
         </p>
         <p>Prices may change. We&apos;ll tell you at least 30 days before a change affects you.</p>
       </>
@@ -87,7 +89,7 @@ const sections: LegalSection[] = [
       <>
         <p>
           Writers who enable earnings agree to our payment partner&apos;s terms and must provide accurate tax and
-          payout details. We may hold payouts while we investigate suspected fraud, such as artificial reading time.
+          payout details. We may hold payouts while we investigate suspected fraud, such as artificial views.
         </p>
       </>
     ),
@@ -100,7 +102,7 @@ const sections: LegalSection[] = [
         <p>Don&apos;t misuse Prism. In particular, don&apos;t:</p>
         <ul>
           <li>Try to break, overload or probe the service without permission.</li>
-          <li>Inflate reading time, claps or followers with automation or coordinated schemes.</li>
+          <li>Inflate views, claps or followers with automation or coordinated schemes.</li>
           <li>Scrape the site at scale or republish others&apos; work without permission.</li>
           <li>Impersonate another person or organisation.</li>
         </ul>

@@ -59,9 +59,9 @@ const sections: LegalSection[] = [
         <p>We use your information to:</p>
         <ul>
           <li>Run your account and show you writers and topics you follow.</li>
-          <li>Divide membership fees between writers by reading time.</li>
+          <li>Count unique readers of each story to calculate Elite writers&apos; earnings.</li>
           <li>Send the emails you&apos;ve opted into, like the weekly digest.</li>
-          <li>Keep Prism secure and detect fraud, such as artificial reading time.</li>
+          <li>Keep Prism secure and detect fraud, such as artificial views.</li>
         </ul>
       </>
     ),

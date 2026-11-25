@@ -25,7 +25,8 @@ export function EliteClient() {
   const currentUser = useUIStore((s) => s.currentUser)
   const { isElite, subscription } = useSubscription()
   const [cancelOpen, setCancelOpen] = useState(false)
-  const { cancel } = useRoleActions()
+  const { cancel, resume } = useRoleActions()
+  const ending = isElite && !!subscription.cancelAtPeriodEnd
   const lapsed = subscription.tier === "ELITE" && !isElite
 
   return (
@@ -100,19 +101,32 @@ export function EliteClient() {
                   <p className="font-semibold text-indigo-900">You&apos;re on Elite</p>
                   <p className="mt-1 text-indigo-800/80">
                     Active since {formatDate(subscription.subscribedAt!)}
-                    {subscription.expiresAt ? ` · renews ${formatDate(subscription.expiresAt)}` : ""}
+                    {subscription.expiresAt ? ` · ${ending ? "ends" : "renews"} ${formatDate(subscription.expiresAt)}` : ""}
                   </p>
                   <div className="mt-3 flex flex-wrap gap-2">
                     <Link href="/dashboard/earnings" className="inline-flex h-9 items-center px-3.5 rounded-full bg-indigo-600 text-white font-medium hover:bg-indigo-700">
                       Earnings
                     </Link>
-                    <button
-                      type="button"
-                      onClick={() => setCancelOpen(true)}
-                      className="inline-flex h-9 items-center px-3.5 rounded-full border border-indigo-200 bg-white text-indigo-800 hover:border-indigo-400"
-                    >
-                      Cancel subscription
-                    </button>
+                    {ending ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          resume()
+                          toast("Elite will renew as usual.", { tone: "success" })
+                        }}
+                        className="inline-flex h-9 items-center px-3.5 rounded-full border border-indigo-200 bg-white text-indigo-800 hover:border-indigo-400"
+                      >
+                        Keep Elite
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setCancelOpen(true)}
+                        className="inline-flex h-9 items-center px-3.5 rounded-full border border-indigo-200 bg-white text-indigo-800 hover:border-indigo-400"
+                      >
+                        Cancel subscription
+                      </button>
+                    )}
                   </div>
                 </div>
               ) : (
@@ -217,7 +231,7 @@ export function EliteClient() {
         open={cancelOpen}
         onOpenChange={setCancelOpen}
         title="Cancel Elite?"
-        description="Paid features lock right away: per-view earnings stop, the peer panel closes to new submissions, and your badges are hidden. Your balance and earned badges are kept for when you come back."
+        description={`You keep Elite until ${subscription.expiresAt ? formatDate(subscription.expiresAt) : "the end of this period"}, and it won't renew. After that, per-view earnings stop, the peer panel closes to new submissions and your badges are hidden. Your balance and earned badges are kept for when you come back.`}
       >
         <DialogActions>
           <Button variant="secondary" size="lg" onClick={() => setCancelOpen(false)}>
@@ -229,7 +243,7 @@ export function EliteClient() {
             onClick={() => {
               cancel()
               setCancelOpen(false)
-              toast("Elite cancelled. Badges are hidden until you renew.")
+              toast(subscription.expiresAt ? `Elite cancelled. You keep access until ${formatDate(subscription.expiresAt)}.` : "Elite cancelled.")
             }}
           >
             Cancel subscription

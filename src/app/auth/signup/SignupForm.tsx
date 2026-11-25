@@ -7,7 +7,6 @@ import { AnimatePresence, motion } from "motion/react"
 import {
   ArrowRight,
   Check,
-  X,
   Eye,
   EyeOff,
   RotateCcw,
@@ -17,7 +16,7 @@ import {
   FileText,
   Compass,
 } from "lucide-react"
-import { useUIStore, type Plan } from "@/lib/store"
+import { useUIStore } from "@/lib/store"
 import { dur, ease, spring } from "@/lib/motion"
 import { cn } from "@/lib/utils"
 import { Avatar } from "@/components/ui/Avatar"
@@ -42,11 +41,6 @@ import {
   type Provider,
 } from "../_components/AuthKit"
 
-const PLAN_LABEL: Record<Plan, { name: string; price: string }> = {
-  reader: { name: "Reader", price: "$8/mo" },
-  patron: { name: "Patron", price: "$20/mo" },
-}
-
 const UNIFIED_PERKS = [
   "Ad-free reading with typography tuned for focus and audio listen mode",
   "A personal library to save bookmarks, highlight text, and discuss stories",
@@ -67,13 +61,7 @@ type Step = "credentials" | "profile"
 type Status = "idle" | "creating" | "done"
 type Errors = { name?: string; email?: string; password?: string; username?: string }
 
-export function SignupForm({
-  initialWriter = false,
-  initialPlan = null,
-}: {
-  initialWriter?: boolean
-  initialPlan?: Plan | null
-}) {
+export function SignupForm({ initialWriter = false }: { initialWriter?: boolean }) {
   const router = useRouter()
   const currentUser = useUIStore((s) => s.currentUser)
   const signOut = useUIStore((s) => s.signOut)
@@ -87,7 +75,6 @@ export function SignupForm({
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [showPassword, setShowPassword] = useState(false)
-  const [plan, setPlanChoice] = useState<Plan | null>(initialPlan)
 
   // Step 2: Profile & Stage Name
   const [stageName, setStageName] = useState("")
@@ -106,12 +93,8 @@ export function SignupForm({
   const usernameRef = useRef<HTMLInputElement>(null)
 
   const busy = status !== "idle"
-  const destination = initialWriter ? "/editor/new" : plan ? `/membership?plan=${plan}` : "/"
-  const destinationLabel = initialWriter
-    ? "Opening your editor…"
-    : plan
-    ? "Taking you to membership checkout…"
-    : "Taking you to your reading feed…"
+  const destination = initialWriter ? "/editor/new" : "/"
+  const destinationLabel = initialWriter ? "Opening your editor…" : "Taking you to your reading feed…"
 
   const toggleTopic = (topic: string) => {
     setSelectedTopics((prev) =>
@@ -493,33 +476,6 @@ export function SignupForm({
         <p className="mt-2 sm:mt-3 text-xs sm:text-sm text-[var(--fg-muted)] leading-relaxed">
           One account to read, write, and discuss. Free forever, with no algorithms between you and good words.
         </p>
-
-        {/* Plan carried over from /membership if present */}
-        <AnimatePresence initial={false}>
-          {plan && (
-            <motion.div
-              key="plan"
-              initial={{ opacity: 0, y: -4 }}
-              animate={{ opacity: 1, y: 0, transition: { duration: dur.base, ease: ease.out } }}
-              exit={{ opacity: 0, scale: 0.97, transition: { duration: dur.fast, ease: ease.in } }}
-              className="mt-4 sm:mt-5 flex items-center gap-3 rounded-[16px] bg-[var(--accent-subtle)] pl-3.5 sm:pl-4 pr-1.5 py-1.5 text-xs sm:text-sm"
-            >
-              <span className="w-2 h-2 rounded-full bg-[var(--accent)] shrink-0" />
-              <p className="flex-1 min-w-0 truncate">
-                <span className="font-medium">{PLAN_LABEL[plan].name} membership</span>
-                <span className="text-[var(--fg-muted)]"> · {PLAN_LABEL[plan].price}</span>
-              </p>
-              <button
-                type="button"
-                onClick={() => setPlanChoice(null)}
-                aria-label="Remove membership selection"
-                className="grid place-items-center w-8 h-8 sm:w-10 sm:h-10 rounded-full text-[var(--fg-muted)] hover:text-[var(--fg)] hover:bg-[var(--panel)] transition-colors shrink-0 touch-manipulation"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </motion.div>
-          )}
-        </AnimatePresence>
 
         <form onSubmit={onSubmitCredentials} noValidate className="mt-5 sm:mt-7 space-y-3.5 sm:space-y-4">
           <Field

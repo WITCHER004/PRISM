@@ -1,6 +1,6 @@
 "use client"
 
-import { useRef, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { AnimatePresence, motion } from "motion/react"
@@ -9,7 +9,7 @@ import { useUIStore } from "@/lib/store"
 import { TOPICS } from "@/lib/topics"
 import { dur, ease, spring } from "@/lib/motion"
 import { cn } from "@/lib/utils"
-import { signInWithGoogle, signInWithGithub, logInWithEmail, resetPassword, logOutFirebase } from "@/lib/firebase"
+import { signInExistingWithProvider, consumeLoginRedirect, logInWithEmail, resetPassword, logOutFirebase } from "@/lib/firebase"
 import {
   AuthShell,
   Divider,
@@ -143,6 +143,32 @@ export function LoginForm({ redirectTo }: { redirectTo?: string }) {
     }
   }
 
+  // Back from the Google redirect fallback (popup was blocked): same check as the popup path
+  useEffect(() => {
+    let active = true
+    consumeLoginRedirect()
+      .then((result) => {
+        if (!active || !result?.user) return
+        const u = result.user
+        setWelcomeName(u.displayName || (u.email || u.uid).split("@")[0])
+        setStatus("categories")
+      })
+      .catch((err: any) => {
+        if (!active) return
+        if (err?.code === "auth/prism-no-account") {
+          toast("No account found for that sign-in. Create your Prism account first.")
+          router.push("/signup")
+          return
+        }
+        console.error("Firebase redirect sign-in error:", err)
+        setError(err?.message || "Google sign-in failed. Please try again.")
+      })
+    return () => {
+      active = false
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   const onProvider = async (p: Provider) => {
     if (busy) return
     setProvider(p)
@@ -150,12 +176,7 @@ export function LoginForm({ redirectTo }: { redirectTo?: string }) {
     setError(undefined)
 
     try {
-      let result: any = null
-      if (p === "google") {
-        result = await signInWithGoogle()
-      } else if (p === "github") {
-        result = await signInWithGithub()
-      }
+      const result = await signInExistingWithProvider(p)
 
       if (result?.user) {
         const u = result.user
@@ -169,6 +190,11 @@ export function LoginForm({ redirectTo }: { redirectTo?: string }) {
       setStatus("idle")
       setProvider(null)
       if (err?.code === "auth/popup-closed-by-user" || err?.code === "auth/cancelled-popup-request") {
+        return
+      }
+      if (err?.code === "auth/prism-no-account") {
+        toast("No account found for that sign-in. Create your Prism account first.")
+        router.push("/signup")
         return
       }
       if (err?.code === "auth/unauthorized-domain") {
@@ -500,7 +526,7 @@ function Aside({ status, selectedCount }: { status: Status; selectedCount: numbe
           Pay writers.
         </blockquote>
         <p className="mt-6 max-w-sm opacity-70 leading-relaxed">
-          Your membership follows your attention: the writers you actually spend time with are the ones who get paid.
+          Elite writers are paid for every real reader they reach, so good writing is what earns.
         </p>
       </div>
       <p className="font-mono text-xs uppercase tracking-wider opacity-50">Independent writing · Read by humans</p>

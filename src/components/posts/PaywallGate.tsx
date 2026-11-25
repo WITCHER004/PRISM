@@ -10,6 +10,7 @@ import { DialogShell } from "@/components/posts/DialogShell"
 import { copyText } from "@/components/posts/copyText"
 import { dur, ease } from "@/lib/motion"
 import { cn } from "@/lib/utils"
+import { ELITE_PRICE_USD } from "@/lib/elite/config"
 import { ArrowRight, BookOpen, Check, CreditCard, Loader2, Lock, LogIn, Share2, Sparkles } from "lucide-react"
 
 interface PaywallGateProps {
@@ -64,15 +65,15 @@ export function PaywallGate({ post }: PaywallGateProps) {
   }
 
   const heading =
-    tier === "METERED" ? "Keep reading" : tier === "PAID" ? "Unlock this story" : "For members"
+    tier === "METERED" ? "Keep reading" : tier === "PAID" ? "Unlock this story" : "For Elite members"
   const body =
     tier === "METERED"
       ? currentUser
         ? "You’ve reached the end of the preview. Your free account includes a few member stories each month."
-        : "You’ve reached the end of the preview. Sign in for free to keep reading, or get full access with a membership."
+        : "You’ve reached the end of the preview. Sign in for free to keep reading, or get full access with Elite."
       : tier === "PAID"
       ? `Support ${post.author.displayName} directly and unlock this story with a one-time payment.`
-      : `This story is for members. Join to read it, and everything else on Prism.`
+      : `This story is for Elite members. Go Elite to read it, and everything else on Prism.`
 
   return (
     <div className="relative mt-2">
@@ -92,8 +93,8 @@ export function PaywallGate({ post }: PaywallGateProps) {
                   <Sparkles className="w-4 h-4" /> Unlock for ${price.toFixed(2)}
                 </button>
               ) : (
-                <Link href="/membership" className={primaryBtn}>
-                  <Sparkles className="w-4 h-4" /> Become a member
+                <Link href="/elite" className={primaryBtn}>
+                  <Sparkles className="w-4 h-4" /> Go Elite
                 </Link>
               )
             ) : currentUser ? (
@@ -114,10 +115,10 @@ export function PaywallGate({ post }: PaywallGateProps) {
 
           <div className="mt-7 pt-6 border-t border-[var(--border)] flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-sm">
             <Link
-              href="/membership"
+              href="/elite"
               className="inline-flex items-center gap-1 text-[var(--fg-muted)] hover:text-[var(--fg)] transition-colors"
             >
-              Prism membership · from $8/mo <ArrowRight className="w-3.5 h-3.5" />
+              Prism Elite · ${ELITE_PRICE_USD}/mo <ArrowRight className="w-3.5 h-3.5" />
             </Link>
             {tier === "SUBSCRIBER" && (
               <button

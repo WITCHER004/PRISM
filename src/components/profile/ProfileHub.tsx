@@ -177,8 +177,8 @@ export function ProfileHub({ username }: { username: string }) {
 
           <ul className="mt-5 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3" aria-label="Submissions by status">
             {TRACKED.map((s) => (
-              <li key={s} className="panel p-4">
-                <StatusPill status={s} tracker />
+              <li key={s} className="panel p-4 min-w-0">
+                <StatusPill status={s} tracker className="max-w-full px-2.5 py-0.5 text-[11px]" />
                 <p className="display mt-3 text-[1.75rem] tabular-nums">{counts[s]}</p>
               </li>
             ))}

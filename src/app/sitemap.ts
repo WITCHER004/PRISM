@@ -7,7 +7,7 @@ import { absoluteUrl } from "@/lib/seo"
 export const dynamic = "force-dynamic"
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const staticPages = ["/", "/about", "/explore", "/forum", "/elite", "/membership", "/terms", "/privacy", "/content-policy"]
+  const staticPages = ["/", "/about", "/explore", "/forum", "/elite", "/terms", "/privacy", "/content-policy"]
   const [posts, writers] = await Promise.all([getPublishedPosts(), getActiveWriters(5000)])
 
   return [
