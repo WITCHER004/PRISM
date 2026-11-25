@@ -143,7 +143,7 @@ export function htmlToPlainText(html: string) {
   return html
     .replace(/<(script|style)[^>]*>[\s\S]*?<\/\1>/gi, " ")
     .replace(/<\/(p|h[1-6]|li|blockquote|pre|div)>|<br\s*\/?>/gi, "\n")
-    .replace(/<[^>]+>/g, " ")
+    .replace(/<[^<>]{0,2000}>/g, " ")
     .replace(/&nbsp;/g, " ")
     .replace(/&amp;/g, "&")
     .replace(/&lt;/g, "<")

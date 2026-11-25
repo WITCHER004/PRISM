@@ -1,24 +1,37 @@
 "use client"
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
+import { useEffect, useLayoutEffect, useRef, useState } from "react"
 import { AnimatePresence, motion } from "motion/react"
 import { useUIStore } from "@/lib/store"
-import { isEliteActive } from "@/lib/elite/subscription"
 import { dur, ease } from "@/lib/motion"
-import { cn } from "@/lib/utils"
 import { usePaperAccess } from "@/components/papers/ElitePaper"
+import { checkAccess, useAccessStatus, usePaywallBody } from "@/components/posts/paywallAccess"
 
-// Demo paywall: the full story HTML is always sent and only hidden on screen. Real gating needs
-// the server to withhold the locked part until the reader is entitled to it.
+// Server-enforced paywall (audit F-02): a locked story arrives as its preview only. The full text is
+// fetched from the server, which decides who may read it (author, staff, Elite, or a recorded unlock).
+// Nothing in the browser can unlock a story on its own.
 
-/**
- * True when the reader may see the whole story (free post, unlocked here, or an active Elite subscription).
- * Inside a <PaperScope> (Advanced Papers) only Elite, the author or the dev demo view unlock it.
- */
-export function usePostUnlocked(postId: string, paywalled: boolean) {
+/** Locked when the story is paywalled, or inside a <PaperScope> (Advanced Papers are Elite-only) */
+function useLocked(paywalled: boolean) {
   const paper = usePaperAccess()
-  const open = useUIStore((s) => !paywalled || (!!s.currentUser && isEliteActive(s.subscriptions[s.currentUser])) || s.unlockedPosts.has(postId))
-  return paper.scoped ? paper.canRead : open
+  return paywalled || paper.scoped
+}
+
+/** True when the reader may see the whole story: a free post, or the server has handed over its body */
+export function usePostUnlocked(postId: string, paywalled: boolean) {
+  const locked = useLocked(paywalled)
+  const body = usePaywallBody(postId)
+  return !locked || !!body
+}
+
+/** Ask the server once auth has settled, and again when the signed-in account changes */
+function useAccessCheck(postId: string, locked: boolean) {
+  const uid = useUIStore((s) => s.authUid)
+  const authLoading = useUIStore((s) => s.authLoading)
+  useEffect(() => {
+    if (locked && !authLoading) void checkAccess(postId, uid)
+  }, [postId, locked, uid, authLoading])
+  return useAccessStatus(postId, uid)
 }
 
 /**
@@ -50,31 +63,12 @@ const MASK = "linear-gradient(to bottom, black calc(100% - 14rem), transparent 1
 const REVEAL_MS = 900
 const CURVE = `cubic-bezier(${ease.out.join(",")})`
 
-/**
- * Tag every top-level block after the preview cut with .pw-rest so the locked state can hide them
- * with CSS. Cutting by blocks (not a fixed height) keeps the preview a real share of any story.
- */
-function markPreviewCut(html: string, fraction: number) {
-  const blocks = /<(p|h[1-6]|blockquote|ul|ol|pre|figure|table|div|section)(\s[^>]*)?>[\s\S]*?<\/\1>|<(hr|img)\b[^>]*\/?>/g
-  const matches = [...html.matchAll(blocks)]
-  if (matches.length < 3) return html
-  const keep = Math.max(2, Math.min(matches.length - 1, Math.round(matches.length * fraction)))
-  let out = ""
-  let last = 0
-  matches.forEach((m, i) => {
-    const at = m.index ?? 0
-    out += html.slice(last, at)
-    out += i >= keep ? m[0].replace(/^<([a-z0-9]+)/i, (_t, tag: string) => `<${tag} data-pw-rest=""`) : m[0]
-    last = at + m[0].length
-  })
-  return out + html.slice(last)
-}
-
 interface PaywalledBodyProps {
   postId: string
   paywalled: boolean
+  /** The story as the page has it: the full text when free, only the preview when locked */
   html: string
-  /** Share of the story's blocks shown as the preview while locked (0–1) */
+  /** Kept for callers; the server cuts the preview now */
   previewFraction?: number
   /** Fade over the locked preview (CSS mask-image) */
   mask?: string
@@ -84,11 +78,14 @@ type Phase = "locked" | "measure" | "revealing" | "open"
 
 // Story body. Locked: only the preview blocks show, fading out at the bottom. Unlocking shows the
 // rest, releases the height from the preview's to the full story's and slides the fade off the end.
-export function PaywalledBody({ postId, paywalled, html, previewFraction = 0.4, mask = MASK }: PaywalledBodyProps) {
+export function PaywalledBody({ postId, paywalled, html, mask = MASK }: PaywalledBodyProps) {
+  const locked = useLocked(paywalled)
+  useAccessCheck(postId, locked)
   const unlocked = usePostUnlocked(postId, paywalled)
+  const body = usePaywallBody(postId)
   const animate = useAnimateChanges()
   const ref = useRef<HTMLDivElement>(null)
-  const markup = useMemo(() => (paywalled ? markPreviewCut(html, previewFraction) : html), [html, paywalled, previewFraction])
+  const markup = locked && body ? body : html
   const [phase, setPhase] = useState<Phase>(unlocked ? "open" : "locked")
   const [heights, setHeights] = useState({ from: 0, to: 0 })
 
@@ -143,7 +140,7 @@ export function PaywalledBody({ postId, paywalled, html, previewFraction = 0.4, 
   return (
     <div
       ref={ref}
-      className={cn("prose-prism mx-auto", phase === "locked" && "[&_[data-pw-rest]]:hidden")}
+      className="prose-prism mx-auto"
       style={style}
       onTransitionEnd={(e) => {
         if (e.target === e.currentTarget && e.propertyName === "max-height") setPhase("open")
@@ -192,10 +189,13 @@ export function UnlockedOnly({
 
 /** Inverse of UnlockedOnly: content shown only while the story is still locked (e.g. the gate). */
 export function LockedOnly({ postId, paywalled, children }: { postId: string; paywalled: boolean; children: React.ReactNode }) {
+  const locked = useLocked(paywalled)
+  const status = useAccessCheck(postId, locked)
   const unlocked = usePostUnlocked(postId, paywalled)
   return (
     <AnimatePresence initial={false}>
-      {paywalled && !unlocked && (
+      {/* While the server is checking (e.g. an Elite reader), don't flash the gate */}
+      {locked && !unlocked && status !== "checking" && (
         <motion.div
           key="locked"
           exit={{ opacity: 0, scale: 0.98, transition: { duration: dur.fast, ease: ease.in } }}

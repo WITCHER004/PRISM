@@ -12,6 +12,7 @@
 //
 // Snapshots are applied with `applyingRemote` set, so they're never echoed back as writes.
 
+import { PUBLIC_ARTICLES } from "@/lib/paywall"
 import {
   collection,
   deleteDoc,
@@ -69,7 +70,13 @@ const articleSources = new Map<string, Map<string, Draft>>()
 
 function publishArticles() {
   const merged: Record<string, Draft> = {}
+  // Later sources (the author's own, staff, panel: full documents) win over the public copies…
   for (const src of articleSources.values()) for (const [id, d] of src) merged[id] = d
+  // …but readers' likes and views live on the public copy, so take the counters from there
+  for (const [id, pub] of articleSources.get("published") ?? []) {
+    const d = merged[id]
+    if (d && d !== pub) merged[id] = { ...d, likes: pub.likes, views: Math.max(d.views ?? 0, pub.views ?? 0) }
+  }
   asRemote(() => useUIStore.getState().applyRemoteArticles(merged, pendingArticles))
 }
 
@@ -254,6 +261,8 @@ function onStoreChange(s: State, prev: State) {
         if (t) clearTimeout(t)
         articleTimers.delete(id)
         deleteDoc(doc(db, COL.articles, id)).catch((err) => warn(`couldn't delete articles/${id}`, err))
+        // A deleted story must not stay readable through its public copy
+        deleteDoc(doc(db, PUBLIC_ARTICLES, id)).catch(() => {})
       } else {
         scheduleArticle(id, isWorkflowChange(old, cur))
       }
@@ -324,7 +333,7 @@ export function bumpArticle(id: string, field: "views" | "likes", by = 1) {
       .catch((err) => warn(`couldn't count a view on ${id}`, err))
     return
   }
-  updateDoc(doc(db, COL.articles, id), { [field]: increment(by) }).catch((err) => warn(`couldn't count ${field} on ${id}`, err))
+  updateDoc(doc(db, PUBLIC_ARTICLES, id), { [field]: increment(by) }).catch((err) => warn(`couldn't count ${field} on ${id}`, err))
 }
 
 /* ── lifecycle ────────────────────────────────────────────────────────────── */
@@ -354,7 +363,8 @@ export function startLiveSync(): () => void {
     )
   )
 
-  stops.push(listenArticles("published", query(collection(db, COL.articles), where("verificationStatus", "==", "published"))))
+  // Readers get the public copies: locked stories carry only their preview there (audit F-02)
+  stops.push(listenArticles("published", collection(db, PUBLIC_ARTICLES)))
 
   // Per-user scope
   let scoped: Unsubscribe[] = []

@@ -34,6 +34,16 @@ service cloud.firestore {
         && userDoc().data.get('isPanelMember', false) == true
         && userDoc().data.get('suspended', false) != true;
     }
+    // Author fields a client writes (handle, name, avatar) must be the caller's own profile, so nobody can
+    // post or publish under someone else's name (audit F-03, F-06). The avatar may be the profile photo,
+    // the generated default avatar for the handle, or empty.
+    function authorIsMe(d) {
+      let p = userDoc().data;
+      return d.get('authorHandle', p.handle) == p.handle
+        && d.get('authorName', p.displayName) == p.displayName
+        && d.get('authorAvatar', '') in ['', p.get('photoURL', ''),
+             'https://api.dicebear.com/7.x/avataaars/svg?seed=' + p.handle + '&backgroundColor=b6e3f4'];
+    }
     // A list in which only the caller's uid was added or removed
     function onlyMeToggled(after, before) {
       return after.toSet().difference(before.toSet()).union(before.toSet().difference(after.toSet())).hasOnly([me()])
@@ -146,7 +156,7 @@ service cloud.firestore {
     function workflowFields() {
       return ['verificationStatus', 'workflowStatus', 'peerVotes', 'rebuttal', 'review', 'live', 'publishedAt',
               'liveAiPercent', 'panelPassed', 'phase1', 'aiScore', 'plagiarismScore', 'submitted', 'submittedAt',
-              'track', 'views', 'likes'];
+              'track', 'views', 'monetizedViews', 'likes'];
     }
     // The author's narration must be a Storage file in their own audiobooks/ folder
     function validAudiobook(d) {
@@ -169,15 +179,18 @@ service cloud.firestore {
         && d.get('authorNarrated', false) is bool;
     }
 
+    // articles/{id} holds the author's working copy, the submitted text and the full live text, so
+    // readers never read it directly: they read public_articles/{id} (below), where a locked story is
+    // only its preview, and get the full body from the server after an entitlement check (audit F-02).
     match /articles/{id} {
-      allow read: if resource.data.get('verificationStatus', 'draft') == 'published'
-        || (signedIn() && resource.data.authorId == me())
+      allow read: if (signedIn() && resource.data.authorId == me())
         || isAdmin()
         || (resource.data.get('verificationStatus', 'draft') == 'pending_panel' && isPanelMember());
 
       // A new story is a draft: none of the workflow fields, whatever the client sends
       allow create: if signedIn()
         && data().authorId == me()
+        && authorIsMe(data())
         && !data().keys().hasAny(workflowFields())
         && validArticle(data());
 
@@ -186,16 +199,40 @@ service cloud.firestore {
       allow update: if signedIn() && resource.data.authorId == me()
         && data().authorId == me()
         && !changed().hasAny(workflowFields())
+        // Byline fields can only be set to the author's own profile; the URL is fixed once published
+        && (!changed().hasAny(['authorHandle', 'authorName', 'authorAvatar']) || authorIsMe(data()))
+        && (!('live' in resource.data) || same('slug'))
         && same('voterIds')
         && validArticle(data());
 
-      // Claps: signed-in readers only, up to 50 at a time (views are counted by the server)
-      allow update: if signedIn() && changed().hasOnly(['likes'])
-        && data().likes > resource.data.get('likes', 0)
-        && data().likes <= resource.data.get('likes', 0) + 50;
+      // Claps moved to public_articles/{id}: readers can no longer write to the article itself
 
       allow update, delete: if isAdmin();
       allow delete: if signedIn() && resource.data.authorId == me();
+    }
+
+    // ── public_articles/{id} · article_bodies/{id} · article_unlocks · reader_meters ─────────────
+    // The server (workflow route, Admin SDK) writes the public copy of every published article. Readers
+    // may only clap (as before: signed in, up to 50 at a time) and its author or staff may remove it.
+    match /public_articles/{id} {
+      allow read: if true;
+      allow update: if signedIn() && changed().hasOnly(['likes'])
+        && data().likes > resource.data.get('likes', 0)
+        && data().likes <= resource.data.get('likes', 0) + 50;
+      allow delete: if (signedIn() && resource.data.authorId == me()) || isAdmin();
+    }
+    // Full text of published stories: server only, handed out by GET /api/articles/{id}/body
+    match /article_bodies/{id} {
+      allow read, write: if false;
+    }
+    // A reader's unlocks and monthly free-story count: written by the server, readable by that reader
+    match /article_unlocks/{id} {
+      allow read: if signedIn() && resource.data.uid == me();
+      allow write: if false;
+    }
+    match /reader_meters/{id} {
+      allow read: if signedIn() && resource.data.uid == me();
+      allow write: if false;
     }
 
     // ── instant_ideas/{id} ────────────────────────────────────────────────────────────────────
@@ -208,6 +245,7 @@ service cloud.firestore {
         && data().reactors.sparked.size() == 0 && data().reactors.deep.size() == 0
         && data().reactions.sparked == 0 && data().reactions.deep == 0
         && optStr(data().get('authorName', null), 100)
+        && authorIsMe(data())
         && throttled('idea', 30);
       // Reactions: the caller toggles only their own uid, and every count is derived from the lists,
       // so nobody can inflate totals or reach "immortal" without real, distinct reactors.
@@ -236,6 +274,7 @@ service cloud.firestore {
         && str(data().selectedText, 0, 2000)
         && data().paragraphIndex is int
         && str(data().articleId, 1, 128)
+        && authorIsMe(data())
         && throttled('margin_note', 5);
       allow delete: if (signedIn() && resource.data.authorId == me()) || isAdmin();
     }
@@ -246,6 +285,7 @@ service cloud.firestore {
         && str(data().articleId, 1, 128)
         && (data().parentId == null || str(data().parentId, 1, 128))
         && data().likerIds.size() == 0
+        && authorIsMe(data())
         && throttled('comment', 10);
       // Likes: a reader adds or removes only their own uid
       allow update: if signedIn() && changed().hasOnly(['likerIds'])
@@ -256,6 +296,9 @@ service cloud.firestore {
       allow read: if true;
       allow create, update: if signedIn() && reviewId == data().postId + '_' + me()
         && data().authorId == me()
+        && authorIsMe(data())
+        && (!exists(/databases/$(database)/documents/articles/$(data().postId))
+            || get(/databases/$(database)/documents/articles/$(data().postId)).data.authorId != me())
         && data().rating is int && data().rating >= 1 && data().rating <= 5
         && str(data().get('body', ''), 0, 1000);
       allow delete: if (signedIn() && resource.data.authorId == me()) || isAdmin();
@@ -340,6 +383,7 @@ service cloud.firestore {
         && str(data().title, 1, 160)
         && str(data().body, 0, 5000)
         && data().replyCount == 0 && data().upvoterIds.size() == 0
+        && authorIsMe(data())
         && throttled('forum_thread', 60);
       // The reply counter moves by exactly one with each reply posted or deleted, never below zero
       allow update: if signedIn() && changed().hasOnly(['replyCount', 'lastActivityAt'])
@@ -353,6 +397,7 @@ service cloud.firestore {
       allow create: if signedIn() && data().authorId == me()
         && str(data().body, 1, 5000)
         && data().upvoterIds.size() == 0
+        && authorIsMe(data())
         && exists(/databases/$(database)/documents/forum_threads/$(data().threadId))
         && throttled('forum_reply', 10);
       allow update: if signedIn() && onlyMyVoteChanged();

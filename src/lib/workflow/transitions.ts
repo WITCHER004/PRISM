@@ -41,6 +41,8 @@ export interface WorkflowNote {
 export interface WorkflowContext {
   /** Handle of the verified caller */
   actor: string
+  /** Firebase uid of the verified caller. Ownership is decided on uids, never on handles (audit F-03) */
+  actorUid?: string
   actorIsAdmin: boolean
   actorIsPanelMember: boolean
   /** Handles of every approved, active panel member */
@@ -51,6 +53,15 @@ export interface WorkflowContext {
   at: string
   /** Fresh short ids for votes and notifications */
   newId: () => string
+}
+
+/**
+ * Is the caller this story's author? Compared on uids when both are known: an author's handle on the
+ * article document is client-written, so a handle match alone could be forged (audit F-03).
+ */
+export function callerIsAuthor(d: Draft, ctx: WorkflowContext): boolean {
+  if (d.authorUid && ctx.actorUid) return d.authorUid === ctx.actorUid
+  return d.authorUsername === ctx.actor
 }
 
 export type Result = { ok: true; draft: Draft; notes: WorkflowNote[] } | { ok: false; error: string }
@@ -100,7 +111,7 @@ function applyPanel(d: Draft, ctx: WorkflowContext): Result {
   const notes: WorkflowNote[] = []
   const title = titleOf(d)
   const notify = (text: string, href: string) =>
-    notes.push({ id: "n_" + ctx.newId(), kind: "review", to: d.authorUsername, text, href, createdAt: ctx.at, read: false })
+    notes.push({ id: "n_" + ctx.newId(), kind: "review", to: d.authorUsername, toUid: d.authorUid, text, href, createdAt: ctx.at, read: false })
   if (next === "PUBLISHED" && before !== "PUBLISHED") {
     const pub = publishDraft(updated, ctx)
     updated = { ...pub.draft, panelPassed: true }
@@ -119,7 +130,7 @@ function applyPanel(d: Draft, ctx: WorkflowContext): Result {
  * other live story, for the plagiarism overlap. The submitted snapshot is what gets reviewed and published.
  */
 export function submitForReview(d: Draft, report: Phase1Report, corpus: { id: string; title: string; html: string }[], ctx: WorkflowContext): Result {
-  if (d.authorUsername !== ctx.actor) return fail("Only the author can submit this story.")
+  if (!callerIsAuthor(d, ctx)) return fail("Only the author can submit this story.")
   // Voice posts: the recording is the piece. Reviewers listen to it; the text check only runs on show
   // notes long enough to score (on a few lines the AI heuristics are noise, not evidence).
   const voice = d.postFormat === "voice"
@@ -151,7 +162,7 @@ export function submitForReview(d: Draft, report: Phase1Report, corpus: { id: st
 
 /** Author pulls a submission back. A live story stays live; an unpublished one becomes a draft again. */
 export function withdraw(d: Draft, ctx: WorkflowContext): Result {
-  if (d.authorUsername !== ctx.actor) return fail("Only the author can withdraw this story.")
+  if (!callerIsAuthor(d, ctx)) return fail("Only the author can withdraw this story.")
   if (d.status !== "PENDING_EMPLOYEE_REVIEW" && d.status !== "PENDING_PEER_PANEL") return fail("This story isn't waiting for review.")
   return { ok: true, draft: { ...d, status: d.live ? "PUBLISHED" : "DRAFT", panel: undefined }, notes: [] }
 }
@@ -161,7 +172,7 @@ export function decideReview(d: Draft, decision: "APPROVED" | "REJECTED", rawNot
   const reviewer = ctx.actor
   if (!ctx.actorIsAdmin) return fail("Only Prism staff can approve or reject stories.")
   if (d.status !== "PENDING_EMPLOYEE_REVIEW") return fail("This story is no longer waiting for review.")
-  if (d.authorUsername === reviewer) return fail("You can't review your own story.")
+  if (callerIsAuthor(d, ctx) || d.authorUsername === reviewer) return fail("You can't review your own story.")
   const notes = rawNotes.trim()
   if (decision === "REJECTED" && notes.length < 10) return fail("Tell the author what to change (10+ characters).")
   if (notes.length > TEXT_MAX) return fail(`Keep it under ${TEXT_MAX} characters.`)
@@ -189,7 +200,7 @@ export function decideReview(d: Draft, decision: "APPROVED" | "REJECTED", rawNot
   const note: WorkflowNote = {
     id: "n_" + ctx.newId(),
     kind: "review",
-    to: d.authorUsername,
+    to: d.authorUsername, toUid: d.authorUid,
     text: panelReady
       ? `“${title}” passed employee review and is now with the peer panel`
       : decision === "APPROVED"
@@ -208,6 +219,7 @@ export function castPanelVote(d: Draft, decision: PanelDecision, rawReason: stri
   const me = ctx.actor
   if (!ctx.actorIsPanelMember) return fail("Only peer-panel members can vote.")
   if (!d.panel || d.status !== "PENDING_PEER_PANEL") return fail("This paper isn't waiting for panel votes.")
+  if (callerIsAuthor(d, ctx)) return fail("You can't vote on your own paper.")
   const vote = d.panel.find((v) => v.reviewer === me)
   if (!vote) return fail("You aren't on this paper's panel.")
   if (vote.decision) return fail("You've already voted on this paper.")
@@ -232,7 +244,7 @@ export function castPanelVote(d: Draft, decision: PanelDecision, rawReason: stri
 
 /** The author contests an employee rejection ("employee") or one panel FAIL vote (its id) */
 export function submitCounter(d: Draft, target: string, rawReason: string, clarification: string | undefined, ctx: WorkflowContext): Result {
-  if (d.authorUsername !== ctx.actor) return fail("Only the author can submit a counter-reason.")
+  if (!callerIsAuthor(d, ctx)) return fail("Only the author can submit a counter-reason.")
   const text = rawReason.trim()
   const extra = clarification?.trim() || undefined
   if (text.length < COUNTER_REASON_MIN) return fail(`Make your case in ${COUNTER_REASON_MIN}+ characters.`)
@@ -274,7 +286,7 @@ export function submitCounter(d: Draft, target: string, rawReason: string, clari
 export function reconsiderCounter(d: Draft, target: string, verdict: "ACCEPT" | "UPHOLD", rawNote: string, ctx: WorkflowContext): Result {
   const me = ctx.actor
   if (d.status !== "COUNTER_SUBMITTED") return fail("There's no open counter-reason on this article.")
-  if (d.authorUsername === me) return fail("You can't rule on your own appeal.")
+  if (callerIsAuthor(d, ctx) || d.authorUsername === me) return fail("You can't rule on your own appeal.")
   const text = rawNote.trim()
   if (verdict === "UPHOLD" && text.length < CLOSING_NOTE_MIN) return fail(`Add a closing note for the writer (${CLOSING_NOTE_MIN}+ characters).`)
   if (text.length > TEXT_MAX) return fail(`Keep it under ${TEXT_MAX} characters.`)
@@ -304,7 +316,7 @@ export function reconsiderCounter(d: Draft, target: string, verdict: "ACCEPT" | 
     const n: WorkflowNote = {
       id: "n_" + ctx.newId(),
       kind: "review",
-      to: d.authorUsername,
+      to: d.authorUsername, toUid: d.authorUid,
       text: toPanel
         ? `Your counter-reason was accepted — “${titleOf(d)}” is now with the peer panel`
         : verdict === "ACCEPT"

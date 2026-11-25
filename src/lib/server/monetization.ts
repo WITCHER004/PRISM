@@ -31,7 +31,8 @@ export async function recordArticleView(postId: string, viewer: SessionUser | nu
   const dup = await db.articleView.findFirst({ where: { postId, fingerprint, createdAt: { gt: since } }, select: { id: true } })
   if (dup) return { counted: false, monetized: false }
 
-  const { monetized, amount } = priceView(isEliteActive(post.author), viewer?.id === post.authorId)
+  // Only signed-in readers' views earn money: anonymous views can be farmed by rotating headers (audit F-04)
+  const { monetized, amount } = priceView(isEliteActive(post.author) && !!viewer, viewer?.id === post.authorId)
   await db.$transaction([
     db.articleView.create({ data: { postId, viewerId: viewer?.id ?? null, fingerprint, monetized, amount } }),
     db.post.update({

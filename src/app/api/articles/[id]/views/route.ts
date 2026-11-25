@@ -6,6 +6,7 @@ import { recordArticleView, viewFingerprint } from "@/lib/server/monetization"
 import { adminConfigured, adminDb, verifyAppCheck, verifyRequestUser } from "@/lib/server/firebaseAdmin"
 import { clientIp } from "@/lib/server/rateLimit"
 import { COL } from "@/lib/live/schema"
+import { PUBLIC_ARTICLES } from "@/lib/paywall"
 
 // POST /api/articles/:id/views — counts a read once per reader (account, or salted IP + browser hash)
 // per 24 hours. Browsers can't touch the counter directly (Firestore rules); this is the only way in.
@@ -27,14 +28,17 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
     const db = adminDb()
     const articleRef = db.collection(COL.articles).doc(id)
     const seenRef = db.collection("view_dedupe").doc(`${id}_${fp}`)
+    const publicRef = db.collection(PUBLIC_ARTICLES).doc(id)
     const counted = await db.runTransaction(async (tx) => {
-      const [article, seen] = await Promise.all([tx.get(articleRef), tx.get(seenRef)])
+      const [article, seen, publicCopy] = await Promise.all([tx.get(articleRef), tx.get(seenRef), tx.get(publicRef)])
       if (!article.exists || article.data()!.verificationStatus !== "published") return false
       if (article.data()!.authorId && user?.uid === article.data()!.authorId) return false // authors don't count
       const now = Date.now()
       if (seen.exists && (seen.data()!.at ?? 0) > now - DAY_MS) return false
       tx.set(seenRef, { at: now, expireAt: Timestamp.fromMillis(now + DAY_MS + 60_000) })
-      tx.update(articleRef, { views: FieldValue.increment(1) })
+      // Every unique read counts toward `views`; only signed-in readers' reads earn money (audit F-04)
+      tx.update(articleRef, { views: FieldValue.increment(1), ...(user ? { monetizedViews: FieldValue.increment(1) } : {}) })
+      if (publicCopy.exists) tx.update(publicRef, { views: FieldValue.increment(1) })
       return true
     })
     return NextResponse.json({ counted })

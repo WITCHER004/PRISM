@@ -12,6 +12,7 @@ import { dur, ease } from "@/lib/motion"
 import { cn } from "@/lib/utils"
 import { ELITE_PRICE_USD } from "@/lib/elite/config"
 import { ArrowRight, BookOpen, Check, CreditCard, Loader2, Lock, LogIn, Share2, Sparkles } from "lucide-react"
+import { requestUnlock, type UnlockMethod } from "@/components/posts/paywallAccess"
 
 interface PaywallGateProps {
   post: Post
@@ -22,11 +23,22 @@ const primaryBtn =
 const secondaryBtn =
   "inline-flex items-center justify-center gap-2 h-12 px-6 rounded-full text-sm font-medium bg-[var(--panel)] text-[var(--fg)] border border-[var(--border)] hover:border-[var(--border-strong)] transition-colors disabled:opacity-50"
 
-// The end-of-preview card on locked stories. Every path ends in unlockPost (demo) or a real page.
+// The end-of-preview card on locked stories. Every unlock is recorded and granted by the server
+// (POST /api/articles/{id}/unlock); the browser only shows the result (audit F-02).
 export function PaywallGate({ post }: PaywallGateProps) {
   const pathname = usePathname()
   const currentUser = useUIStore((s) => s.currentUser)
-  const unlockPost = useUIStore((s) => s.unlockPost)
+  // Asks the server; false (with a toast) when it says no
+  const unlock = async (method: UnlockMethod, success: string) => {
+    const r = await requestUnlock(post.id, method)
+    if (!r.ok) {
+      toast(r.error, { tone: "error" })
+      return false
+    }
+    const left = r.remaining !== undefined ? ` · ${r.remaining} free ${r.remaining === 1 ? "story" : "stories"} left this month` : ""
+    toast(success + left, { tone: "success" })
+    return true
+  }
   const [sharing, setSharing] = useState(false)
   const [payOpen, setPayOpen] = useState(false)
   const price = post.paywallPrice ?? 2
@@ -39,8 +51,7 @@ export function PaywallGate({ post }: PaywallGateProps) {
     if (navigator.share) {
       try {
         await navigator.share({ title: post.title, text: post.subtitle ?? post.excerpt, url })
-        toast("Thanks for sharing — story unlocked", { tone: "success" })
-        unlockPost(post.id)
+        if (!(await unlock("share", "Thanks for sharing — story unlocked"))) setSharing(false)
         return
       } catch (err) {
         // Closing the share sheet means "not now"; any other failure falls back to copying the link
@@ -51,18 +62,14 @@ export function PaywallGate({ post }: PaywallGateProps) {
       }
     }
     if (await copyText(url)) {
-      toast("Link copied — share it anywhere. Story unlocked", { tone: "success" })
-      unlockPost(post.id)
+      if (!(await unlock("share", "Link copied — share it anywhere. Story unlocked"))) setSharing(false)
     } else {
       toast("Couldn’t share this story. Try again.", { tone: "error" })
       setSharing(false)
     }
   }
 
-  const readFree = () => {
-    unlockPost(post.id)
-    toast("Unlocked with one of your free stories this month", { tone: "success" })
-  }
+  const readFree = () => void unlock("meter", "Unlocked with one of your free stories this month")
 
   const heading =
     tier === "METERED" ? "Keep reading" : tier === "PAID" ? "Unlock this story" : "For Elite members"
@@ -149,10 +156,7 @@ export function PaywallGate({ post }: PaywallGateProps) {
         onPaid={() => {
           setPayOpen(false)
           // Let the dialog finish closing before the gate itself animates away
-          setTimeout(() => {
-            unlockPost(post.id)
-            toast(`Unlocked “${post.title}”`, { tone: "success" })
-          }, 220)
+          setTimeout(() => void unlock("purchase", `Unlocked “${post.title}”`), 220)
         }}
       />
     </div>

@@ -1,11 +1,14 @@
 import type { Phase1Report } from "./types"
+import { authHeaders } from "@/lib/workflow/client"
 
 /** Calls the Phase 1 analyzer endpoint (POST /api/moderation/analyze) */
 export async function requestPhase1(input: { title: string; contentHtml: string }): Promise<{ report: Phase1Report } | { error: string }> {
   try {
+    const auth = await authHeaders()
+    if (!auth) return { error: "Sign in to check a story." }
     const res = await fetch("/api/moderation/analyze", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", ...auth },
       body: JSON.stringify(input),
     })
     const body = (await res.json().catch(() => ({}))) as { report?: Phase1Report; error?: string }

@@ -17,8 +17,21 @@ export function paymentProvider(): PaymentProvider {
   return p === "stripe" || p === "razorpay" ? p : "mock"
 }
 
+/**
+ * Mock payments activate Elite without taking money. They are for local development only: in
+ * production they need an explicit ELITE_ALLOW_MOCK_CHECKOUT=true (audit finding F-01), so a missing
+ * or misspelled ELITE_PAYMENT_PROVIDER fails closed instead of handing out free subscriptions.
+ */
+export function mockPaymentsAllowed() {
+  return process.env.NODE_ENV !== "production" || process.env.ELITE_ALLOW_MOCK_CHECKOUT === "true"
+}
+
 export async function createCheckout(user: SessionUser) {
   const provider = paymentProvider()
+  if (provider === "mock" && !mockPaymentsAllowed()) {
+    console.error("[elite] checkout refused: ELITE_PAYMENT_PROVIDER is not set to stripe or razorpay in production")
+    throw new ActionError("Elite checkout is unavailable right now. Try again later.", 503)
+  }
   const reference = `${provider}_${user.id}_${Date.now().toString(36)}`
   if (provider === "mock") {
     await activateSubscription(user.id, "mock", reference)

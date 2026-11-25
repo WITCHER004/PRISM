@@ -126,7 +126,7 @@ export function earningsByDay(username: string, events: readonly ViewEvent[], da
  */
 export function walletFromArticles(
   username: string,
-  articles: readonly { id: string; authorUsername: string; views?: number; live?: unknown }[],
+  articles: readonly { id: string; authorUsername: string; views?: number; monetizedViews?: number; live?: unknown }[],
   payouts: readonly PayoutRecord[],
   elite: boolean
 ): Wallet & { rows: PostEarnings[] } {
@@ -134,7 +134,8 @@ export function walletFromArticles(
     .filter((a) => a.authorUsername === username && a.live)
     .map((a) => {
       const views = a.views ?? 0
-      const monetizedViews = elite ? views : 0
+      // Signed-in readers only (the server counts them separately); anonymous views don't earn
+      const monetizedViews = elite ? Math.min(views, a.monetizedViews ?? 0) : 0
       return { postId: a.id, views, monetizedViews, earnings: roundMoney(monetizedViews * PAYOUT_PER_VIEW_USD) }
     })
     .sort((a, b) => b.views - a.views)

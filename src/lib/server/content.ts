@@ -8,6 +8,7 @@ import "server-only"
 // Queries use single-field filters only, so no composite indexes need deploying; sorting happens here.
 // Every read fails soft: if Firestore is unreachable the pages render empty instead of throwing.
 
+import { PUBLIC_ARTICLES } from "@/lib/paywall"
 import { cache } from "react"
 import { unstable_rethrow } from "next/navigation"
 import type { Post, User } from "@/lib/data"
@@ -108,16 +109,33 @@ async function getDocument(collectionId: string, id: string): Promise<[string, R
 /** Every published article (newest first). Cached per request. */
 export const getPublishedArticles = cache(async (max = 500): Promise<ArticleWorkflow[]> => {
   try {
-    const rows = await runQuery(COL.articles, { where: { field: "verificationStatus", equals: "published" }, limit: max })
+    const [rows, handleOwners] = await Promise.all([
+      // Public copies only: a locked story's full text never leaves the server this way (audit F-02)
+      runQuery(PUBLIC_ARTICLES, { where: { field: "verificationStatus", equals: "published" }, limit: max }),
+      getHandleOwners(),
+    ])
     return rows
       .map(([id, data]) => articleFromDoc(id, data))
       .filter((a) => a.live && a.publishedAt)
+      // The handle on an article is client-written: only trust it when it belongs to the article's
+      // author account, so a story can't be shown under someone else's name and URL (audit F-03)
+      .filter((a) => {
+        const owner = handleOwners.get(a.authorUsername)
+        return !a.authorUid || owner === undefined || owner === a.authorUid
+      })
       .sort((a, b) => Date.parse(b.publishedAt!) - Date.parse(a.publishedAt!))
   } catch (err) {
     unstable_rethrow(err) // Next's own signals (e.g. dynamic rendering) must not be swallowed
     warn("couldn't load published articles", err)
     return []
   }
+})
+
+/** handle → uid of the account that holds it. Cached per request. */
+const getHandleOwners = cache(async (): Promise<Map<string, string>> => {
+  const map = new Map<string, string>()
+  for (const u of (await getUsersByHandle()).values()) map.set(u.username, u.id)
+  return map
 })
 
 /** All users, keyed by handle. Cached per request. */
@@ -161,11 +179,13 @@ export async function getPostBySlug(handle: string, slug: string): Promise<Post 
 
 export async function getPostById(id: string): Promise<Post | null> {
   try {
-    const row = await getDocument(COL.articles, id)
+    const row = await getDocument(PUBLIC_ARTICLES, id)
     if (!row) return null
     const a = articleFromDoc(row[0], row[1])
     const users = await getUsersByHandle()
-    return postFromArticle(a, users.get(a.authorUsername))
+    const u = users.get(a.authorUsername)
+    if (a.authorUid && u && u.id !== a.authorUid) return null // handle doesn't belong to the author (F-03)
+    return postFromArticle(a, u)
   } catch (err) {
     unstable_rethrow(err) // Next's own signals (e.g. dynamic rendering) must not be swallowed
     warn(`couldn't load articles/${id}`, err)

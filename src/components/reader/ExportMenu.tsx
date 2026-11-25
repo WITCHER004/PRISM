@@ -1,5 +1,6 @@
 "use client"
 
+import { usePaywallBody } from "@/components/posts/paywallAccess"
 import { useEffect, useRef, useState } from "react"
 import { AnimatePresence, motion } from "motion/react"
 import { Download, FileCode2, FileText, Lock, Printer, ScrollText } from "lucide-react"
@@ -31,7 +32,9 @@ const FORMATS = [
 type Format = (typeof FORMATS)[number]["id"]
 
 /** "↓ Export" pill: Markdown, plain text, offline HTML and a print edition, all generated in the browser */
-export function ExportMenu({ postId, html, meta, isAdvancedPaper, paywalled = false, className }: ExportMenuProps) {
+export function ExportMenu({ postId, html: pageHtml, meta, isAdvancedPaper, paywalled = false, className }: ExportMenuProps) {
+  // Locked stories reach the page as a preview; export the full text once the server has granted it
+  const html = usePaywallBody(postId) ?? pageHtml
   const [open, setOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const ref = useRef<HTMLDivElement>(null)

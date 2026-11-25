@@ -5,6 +5,7 @@ import { analyzeArticle, indexPublishedArticle } from "@/lib/moderation/analyzer
 import { articleFromDoc, articleToDoc, COL, readUserDoc } from "@/lib/live/schema"
 import { adminConfigured, adminDb, verifyAppCheck, verifyRequestUser } from "@/lib/server/firebaseAdmin"
 import { sharedRateLimit } from "@/lib/server/sharedRateLimit"
+import { syncPublicCopy } from "@/lib/server/publicArticles"
 import {
   castPanelVote,
   decideReview,
@@ -111,9 +112,11 @@ export async function POST(request: Request) {
 
       const ctx: WorkflowContext = {
         actor: me.handle,
+        actorUid: caller.uid,
         actorIsAdmin: caller.isAdmin,
         actorIsPanelMember: me.isPanelMember && !me.suspended,
-        panelPool: panel.map((u) => u.handle),
+        // The author never sits on their own panel: excluded by uid, which the client can't change
+        panelPool: panel.filter((u) => u.uid !== d.authorUid).map((u) => u.handle),
         authorIsElite: author?.tier === "elite",
         at: new Date().toISOString(),
         newId,
@@ -123,6 +126,8 @@ export async function POST(request: Request) {
 
       const data = articleToDoc({ ...result.draft, updatedAt: ctx.at }) as Record<string, unknown>
       tx.set(ref, data, { mergeFields: Object.keys(data) })
+      // Readers only ever see the public copy: a preview for locked stories, the full text otherwise (F-02)
+      syncPublicCopy(tx, db, ref.id, { ...raw, ...data })
       await writeNotes(tx, result.notes, [me, author, ...panel].filter(Boolean) as { uid: string; handle: string }[])
       return { status: 200, result }
     })

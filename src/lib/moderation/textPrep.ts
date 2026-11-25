@@ -14,7 +14,59 @@ export const DETECTOR_DOMAINS: readonly DetectorDomain[] = ["programming", "infr
 
 const ENTITIES: Record<string, string> = { "&nbsp;": " ", "&amp;": "&", "&lt;": "<", "&gt;": ">", "&quot;": '"', "&#39;": "'", "&apos;": "'" }
 const decode = (s: string) => s.replace(/&(?:nbsp|amp|lt|gt|quot|#39|apos);/g, (m) => ENTITIES[m] ?? m)
-const stripTags = (s: string) => s.replace(/<[^>]+>/g, " ")
+// Every pattern below runs in linear time on hostile input (no nested or overlapping unbounded
+// quantifiers): article text reaches this from an HTTP request, and a quadratic regex on a run of
+// "<" or "\n" characters would block the server (audit finding F-05).
+const stripTags = (s: string) => s.replace(/<[^<>]{0,2000}>/g, " ")
+
+/** Longest text the checks look at. Longer input is cut, so cost stays bounded even if a pattern regresses */
+export const MAX_ANALYZED_CHARS = 200_000
+
+/**
+ * Replaces every `<tag …>…</tag>` block (case-insensitive) using indexOf scans, so it is linear in the
+ * input. An unclosed block runs to the end of the text.
+ */
+export function replaceBlocks(src: string, tag: string, fn: (inner: string) => string): string {
+  const lower = src.toLowerCase()
+  const open = `<${tag}`
+  const close = `</${tag}`
+  let out = ""
+  let i = 0
+  for (;;) {
+    let j = lower.indexOf(open, i)
+    // Skip longer tag names that merely start the same way (<pre> vs <prelude>)
+    while (j !== -1 && /[a-z0-9]/.test(lower[j + open.length] ?? "")) j = lower.indexOf(open, j + 1)
+    if (j === -1) return out + src.slice(i)
+    const tagEnd = lower.indexOf(">", j)
+    if (tagEnd === -1) return out + src.slice(i, j) + fn("")
+    const c = lower.indexOf(close, tagEnd)
+    if (c === -1) return out + src.slice(i, j) + fn(src.slice(tagEnd + 1))
+    const closeEnd = lower.indexOf(">", c)
+    out += src.slice(i, j) + fn(src.slice(tagEnd + 1, c))
+    i = closeEnd === -1 ? src.length : closeEnd + 1
+  }
+}
+
+/** Removes ``` / ~~~ fenced blocks line by line (an unclosed fence runs to the end) */
+function stripFences(src: string, onBlock: () => void): string {
+  const out: string[] = []
+  let fence: string | null = null
+  for (const line of src.split("\n")) {
+    const m = /^[ \t]*(```|~~~)/.exec(line)
+    if (fence) {
+      if (m && m[1] === fence) fence = null
+      continue
+    }
+    if (m) {
+      fence = m[1]
+      onBlock()
+      out.push("")
+      continue
+    }
+    out.push(line)
+  }
+  return out.join("\n")
+}
 
 const WORD_RE = /[\p{L}\p{M}\p{N}’']+(?:-[\p{L}\p{M}\p{N}]+)*/gu
 export const tokens = (text: string) => text.toLowerCase().match(WORD_RE) ?? []
@@ -55,16 +107,16 @@ export interface PreparedText {
 export function prepareText(input: string): PreparedText {
   let codeBlocks = 0
   let excludedQuotes = 0
-  let t = input ?? ""
+  let t = (input ?? "").slice(0, MAX_ANALYZED_CHARS)
   const all = tokens(decode(stripTags(t.replace(/<\/(p|h[1-6]|li|blockquote|pre|div)>|<br\s*\/?>/gi, "\n")))).length
 
-  t = t.replace(/<pre\b[^>]*>[\s\S]*?<\/pre>/gi, () => (codeBlocks++, "\n\n"))
-  t = t.replace(/(^|\n)\s*(```|~~~)[^\n]*\n[\s\S]*?(\n\s*\2[^\n]*|$)/g, () => (codeBlocks++, "\n\n"))
-  t = t.replace(/<code\b[^>]*>[\s\S]*?<\/code>/gi, "CODE")
+  t = replaceBlocks(t, "pre", () => (codeBlocks++, "\n\n"))
+  t = stripFences(t, () => codeBlocks++)
+  t = replaceBlocks(t, "code", () => "CODE")
   t = t.replace(/`[^`\n]{1,200}`/g, "CODE")
-  t = t.replace(/<blockquote\b[^>]*>[\s\S]*?<\/blockquote>/gi, () => (excludedQuotes++, "\n\n"))
-  t = t.replace(/^[ \t]*>.*$/gm, () => (excludedQuotes++, ""))
-  t = t.replace(/<(script|style)[^>]*>[\s\S]*?<\/\1>/gi, " ")
+  t = replaceBlocks(t, "blockquote", () => (excludedQuotes++, "\n\n"))
+  t = t.replace(/^[ \t]*>[^\n]*$/gm, () => (excludedQuotes++, ""))
+  t = replaceBlocks(replaceBlocks(t, "script", () => " "), "style", () => " ")
   t = t.replace(/<\/(p|h[1-6]|li|div)>|<br\s*\/?>/gi, "\n")
   t = decode(stripTags(t)).replace(/[ \t]+/g, " ")
 
@@ -91,24 +143,21 @@ export function prepareText(input: string): PreparedText {
 
 /** HTML → markdown-ish text for the ML engine: keeps ``` fences and "> " quote markers so it can strip them */
 export function toEngineText(html: string): string {
+  html = html.slice(0, MAX_ANALYZED_CHARS)
   if (!/<(p|div|br|h\d|li|pre|code|blockquote)\b/i.test(html)) return html
-  return decode(
-    html
-      .replace(/<pre\b[^>]*>([\s\S]*?)<\/pre>/gi, (_, c: string) => `\n\`\`\`\n${stripTags(c)}\n\`\`\`\n`)
-      .replace(/<code\b[^>]*>([\s\S]*?)<\/code>/gi, (_, c: string) => "`" + stripTags(c).replace(/`/g, "'") + "`")
-      .replace(/<blockquote\b[^>]*>([\s\S]*?)<\/blockquote>/gi, (_, c: string) =>
-        "\n" +
-        stripTags(c.replace(/<\/(p|div)>|<br\s*\/?>/gi, "\n"))
-          .split("\n")
-          .filter((l) => l.trim())
-          .map((l) => `> ${l.trim()}`)
-          .join("\n") +
-        "\n"
-      )
-      .replace(/<(script|style)[^>]*>[\s\S]*?<\/\1>/gi, " ")
-      .replace(/<\/(p|h[1-6]|li|div)>|<br\s*\/?>/gi, "\n")
-      .replace(/<[^>]+>/g, " ")
+  let t = replaceBlocks(html, "pre", (c) => `\n\`\`\`\n${stripTags(c)}\n\`\`\`\n`)
+  t = replaceBlocks(t, "code", (c) => "`" + stripTags(c).replace(/`/g, "'") + "`")
+  t = replaceBlocks(t, "blockquote", (c) =>
+    "\n" +
+    stripTags(c.replace(/<\/(p|div)>|<br\s*\/?>/gi, "\n"))
+      .split("\n")
+      .filter((l) => l.trim())
+      .map((l) => `> ${l.trim()}`)
+      .join("\n") +
+    "\n"
   )
+  t = replaceBlocks(replaceBlocks(t, "script", () => " "), "style", () => " ")
+  return decode(stripTags(t.replace(/<\/(p|h[1-6]|li|div)>|<br\s*\/?>/gi, "\n")))
     .replace(/[ \t]+/g, " ")
     .replace(/\n{3,}/g, "\n\n")
     .trim()

@@ -17,17 +17,19 @@ import html as _html
 import re
 from dataclasses import dataclass, field
 
+# Every pattern here is linear on hostile input: article text arrives over HTTP, and a quadratic
+# regex on a run of "<" or newlines would pin a worker for minutes (audit finding F-05). Block-level
+# constructs (<pre>, <code>, <blockquote>, ``` fences) are cut with plain index scans instead.
+MAX_CHARS = 200_000
+
 # --- Code ---------------------------------------------------------------------------------------
-_FENCE = re.compile(r"(^|\n)\s*(```|~~~)[^\n]*\n.*?(\n\s*\2[^\n]*(?=\n|$)|$)", re.S)
-_HTML_PRE = re.compile(r"<pre\b[^>]*>.*?</pre>", re.S | re.I)
-_HTML_CODE = re.compile(r"<code\b[^>]*>.*?</code>", re.S | re.I)
+_FENCE_OPEN = re.compile(r"^[ \t]*(```|~~~)")
 _INLINE_CODE = re.compile(r"`[^`\n]{1,200}`")
 # Lines that are clearly code even without fences (indented 4+ spaces and full of symbols)
 _CODE_LINE = re.compile(r"^(?: {4,}|\t)\S.*$|^.*[;{}]\s*$|^\s*(?:def|class|import|from|const|let|var|function|return|if|for|while)\b.*[:({=].*$", re.M)
 
 # --- Quotes and citations -------------------------------------------------------------------------
-_HTML_BLOCKQUOTE = re.compile(r"<blockquote\b[^>]*>.*?</blockquote>", re.S | re.I)
-_MD_BLOCKQUOTE = re.compile(r"^[ \t]*>.*$", re.M)
+_MD_BLOCKQUOTE = re.compile(r"^[ \t]*>[^\n]*$", re.M)
 _QUOTED_SPAN = re.compile(r"[\"“]([^\"”]{25,600})[\"”]")
 _ATTRIBUTION = re.compile(
     r"\b(?:said|says|wrote|writes|argued|argues|noted|notes|observed|observes|according to|as .{1,40}? put it|in the words of|told|asked|explained|stated|states|claims|claimed)\b"
@@ -36,7 +38,7 @@ _ATTRIBUTION = re.compile(
     r"|[—–-]{1,2}\s*[A-Z][a-z]+(?:\s[A-Z][a-z]+){0,3}\s*$",
 )
 
-_TAGS = re.compile(r"<[^>]+>")
+_TAGS = re.compile(r"<[^<>]{0,2000}>")
 _WORD = re.compile(r"[^\W_]+(?:['’][^\W_]+)?(?:-[^\W_]+)*", re.U)
 _SENT_SPLIT = re.compile(r"(?<=[.!?…])[\"”’)\]]?\s+(?=[\"“‘(\[]?[A-Z0-9])")
 
@@ -80,13 +82,64 @@ def split_paragraphs(text: str, min_chars: int = 40) -> list[str]:
     return merged
 
 
+def replace_blocks(src: str, tag: str, fn) -> str:
+    """Replace every <tag ...>...</tag> block (case-insensitive) with fn(inner), in linear time.
+    An unclosed block runs to the end of the text."""
+    lower = src.lower()
+    open_, close = f"<{tag}", f"</{tag}"
+    out: list[str] = []
+    i = 0
+    while True:
+        j = lower.find(open_, i)
+        while j != -1 and j + len(open_) < len(lower) and lower[j + len(open_)].isalnum():
+            j = lower.find(open_, j + 1)  # <pre> vs <prelude>
+        if j == -1:
+            out.append(src[i:])
+            break
+        tag_end = lower.find(">", j)
+        if tag_end == -1:
+            out.append(src[i:j] + fn(""))
+            break
+        c = lower.find(close, tag_end)
+        if c == -1:
+            out.append(src[i:j] + fn(src[tag_end + 1 :]))
+            break
+        out.append(src[i:j] + fn(src[tag_end + 1 : c]))
+        close_end = lower.find(">", c)
+        i = len(src) if close_end == -1 else close_end + 1
+    return "".join(out)
+
+
+def strip_fences(src: str, on_block) -> str:
+    """Remove ``` / ~~~ fenced blocks line by line; an unclosed fence runs to the end."""
+    out: list[str] = []
+    fence = None
+    block: list[str] = []
+    for line in src.split("\n"):
+        m = _FENCE_OPEN.match(line)
+        if fence is not None:
+            block.append(line)
+            if m and m.group(1) == fence:
+                on_block("\n".join(block))
+                fence, block = None, []
+            continue
+        if m:
+            fence, block = m.group(1), [line]
+            out.append("")
+            continue
+        out.append(line)
+    if fence is not None:
+        on_block("\n".join(block))
+    return "\n".join(out)
+
+
 def html_to_text(raw: str) -> str:
     """Editor HTML → markdown-ish text that keeps code fences and blockquote markers."""
     if "<" not in raw or not re.search(r"<(p|div|br|h\d|li|pre|code|blockquote)\b", raw, re.I):
         return raw
-    t = re.sub(r"<pre\b[^>]*>(.*?)</pre>", lambda m: "\n```\n" + _TAGS.sub("", m.group(1)) + "\n```\n", raw, flags=re.S | re.I)
-    t = re.sub(r"<code\b[^>]*>(.*?)</code>", lambda m: "`" + _TAGS.sub("", m.group(1)).replace("`", "'") + "`", t, flags=re.S | re.I)
-    t = re.sub(r"<blockquote\b[^>]*>(.*?)</blockquote>", lambda m: "\n" + "\n".join("> " + ln for ln in _TAGS.sub("\n", m.group(1)).splitlines() if ln.strip()) + "\n", t, flags=re.S | re.I)
+    t = replace_blocks(raw, "pre", lambda c: "\n```\n" + _TAGS.sub("", c) + "\n```\n")
+    t = replace_blocks(t, "code", lambda c: "`" + _TAGS.sub("", c).replace("`", "'") + "`")
+    t = replace_blocks(t, "blockquote", lambda c: "\n" + "\n".join("> " + ln for ln in _TAGS.sub("\n", c).splitlines() if ln.strip()) + "\n")
     t = re.sub(r"</(p|h[1-6]|li|div)>|<br\s*/?>", "\n", t, flags=re.I)
     t = _TAGS.sub(" ", t)
     return _html.unescape(t)
@@ -110,21 +163,21 @@ class Prepared:
 
 
 def prepare(raw: str) -> Prepared:
-    text = html_to_text(raw or "")
+    text = html_to_text((raw or "")[:MAX_CHARS])
     original_words = len(words(_TAGS.sub(" ", text)))
 
     code_chars = 0
     code_blocks = 0
 
-    def _drop_code(m: re.Match) -> str:
+    def _count(block: str) -> str:
         nonlocal code_chars, code_blocks
-        code_chars += len(m.group(0))
+        code_chars += len(block)
         code_blocks += 1
         return "\n\n"
 
-    text = _FENCE.sub(_drop_code, text)
-    text = _HTML_PRE.sub(_drop_code, text)
-    text = _HTML_CODE.sub(_drop_code, text)
+    text = strip_fences(text, _count)
+    text = replace_blocks(text, "pre", _count)
+    text = replace_blocks(text, "code", _count)
 
     def _drop_inline(m: re.Match) -> str:
         nonlocal code_chars
@@ -158,7 +211,13 @@ def prepare(raw: str) -> Prepared:
             excluded.append(q)
         return "\n\n"
 
-    text = _HTML_BLOCKQUOTE.sub(_drop_quote, text)
+    def _drop_html_quote(inner: str) -> str:
+        q = _TAGS.sub(" ", inner).strip()
+        if q:
+            excluded.append(q)
+        return "\n\n"
+
+    text = replace_blocks(text, "blockquote", _drop_html_quote)
     text = _MD_BLOCKQUOTE.sub(_drop_quote, text)
     text = _TAGS.sub(" ", text)
     text = _html.unescape(text)

@@ -45,7 +45,7 @@ export default function LocalStoryPage() {
 
   // Proof of craft for the published version, and the panel's dossier once it has decided
   const certificate = useMemo(
-    () => (draft?.craft && live ? certificateFrom(draft.craft, wordCount(live.contentHtml), draft.liveAiPercent ?? draft.phase1?.aiPercent) : null),
+    () => (draft?.craft && live ? certificateFrom(draft.craft, live.fullWordCount ?? wordCount(live.contentHtml), draft.liveAiPercent ?? draft.phase1?.aiPercent) : null),
     [draft?.craft, draft?.liveAiPercent, draft?.phase1?.aiPercent, live]
   )
   const dossier = useMemo(

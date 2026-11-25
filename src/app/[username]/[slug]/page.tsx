@@ -1,5 +1,4 @@
-import { linkifyContacts } from "@/lib/linkify"
-import { sanitizeArticleHtml } from "@/lib/sanitize"
+import { renderArticleHtml } from "@/lib/articleHtml"
 import { deepReadMinutes, PAPER_MASK, PAPER_PREVIEW_FRACTION } from "@/lib/papers"
 import { certificateFrom } from "@/lib/craft"
 import { dossierFromPanel } from "@/lib/dossier"
@@ -29,7 +28,7 @@ import { ParallaxImage } from "@/components/motion/ParallaxImage"
 import { ReadTimeTracker } from "@/components/posts/ReadTimeTracker"
 import { hueStyle } from "@/lib/topics"
 import Link from "next/link"
-import { formatDate, generateSlug, numberWithCommas } from "@/lib/utils"
+import { formatDate, numberWithCommas } from "@/lib/utils"
 import { BadgeCheck, Lock, ArrowLeft } from "lucide-react"
 import type { Metadata } from "next"
 import type { Post } from "@/lib/data"
@@ -49,18 +48,7 @@ interface PostPageProps {
 }
 
 // Give each <h2> an id so the contents rail can link to and track it
-function withHeadingIds(html: string): { html: string; toc: TocItem[] } {
-  const toc: TocItem[] = []
-  const out = html.replace(/<h2(\s[^>]*)?>([\s\S]*?)<\/h2>/g, (match, attrs = "", inner: string) => {
-    if (/\sid=/.test(attrs)) return match
-    const text = inner.replace(/<[^>]+>/g, "").trim()
-    let id = generateSlug(text) || `section-${toc.length + 1}`
-    if (toc.some((t) => t.id === id)) id = `${id}-${toc.length + 1}`
-    toc.push({ id, text })
-    return `<h2${attrs} id="${id}">${inner}</h2>`
-  })
-  return { html: out, toc }
-}
+
 
 export async function generateMetadata({ params }: PostPageProps): Promise<Metadata> {
   const { username, slug } = await params
@@ -120,8 +108,7 @@ export default async function PostPage({ params }: PostPageProps) {
   const path = `/${post.author.username}/${post.slug}`
   const aiScore = article?.liveAiPercent ?? article?.phase1?.aiPercent ?? null
   // Author HTML is untrusted: allowlist it before linkifying and rendering
-  const safeHtml = sanitizeArticleHtml(post.contentHtml)
-  const { html, toc } = withHeadingIds(linkifyContacts(safeHtml))
+  const { html, toc } = renderArticleHtml(post.contentHtml)
   const dockProps = {
     postId: post.id,
     clapCount: post.clapCount,
@@ -264,7 +251,7 @@ export default async function PostPage({ params }: PostPageProps) {
                 </UnlockedOnly>
                 <ExportMenu
                   postId={post.id}
-                  html={safeHtml}
+                  html={html}
                   isAdvancedPaper={!!paper}
                   paywalled={isPaywalled}
                   meta={{

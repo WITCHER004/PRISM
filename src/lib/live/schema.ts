@@ -201,6 +201,10 @@ export interface ArticleVersion extends AudiobookFields {
   paywall: PaywallChoice
   paper?: AdvancedPaper
   coverImageUrl?: string
+  /** Set on public copies: the text above is only the preview of a locked story */
+  locked?: boolean
+  /** Set on public copies: the full story's word count (the preview is shorter) */
+  fullWordCount?: number
 }
 
 /** The workflow fields the store's Draft carries; mirrored 1:1 into the article document */
@@ -240,6 +244,8 @@ export interface ArticleWorkflow extends AudiobookFields {
   liveAiPercent?: number
   panelReview?: boolean
   views?: number
+  /** Unique signed-in, non-author reads: the only views that earn money (server-written) */
+  monetizedViews?: number
   likes?: number
 }
 
@@ -260,6 +266,7 @@ export interface ArticleDoc {
   peerVotes: PanelVote[]
   rebuttal: ArticleWorkflow["appeal"] | null
   views: number
+  monetizedViews?: number
   likes: number
   originIdeaId: string | null
   voterIds: string[]
@@ -420,6 +427,7 @@ export function articleFromDoc(id: string, raw: Record<string, unknown>): Articl
     liveAiPercent: undef(d.liveAiPercent),
     panelReview: undef(d.panelReview),
     views: num(d.views),
+    monetizedViews: num(d.monetizedViews),
     likes: num(d.likes),
   }
 }
@@ -451,7 +459,7 @@ function audiobookOf(v: ArticleVersion): Post["audiobook"] {
 export function postFromArticle(a: ArticleWorkflow, author?: User): Post | null {
   const v = a.live
   if (!v || !a.publishedAt) return null
-  const words = wordsIn(v.contentHtml)
+  const words = v.fullWordCount ?? wordsIn(v.contentHtml)
   const text = plain(v.contentHtml)
   const tags: Tag[] = v.tags.map((slug) => tagFor(slug))
   return {
