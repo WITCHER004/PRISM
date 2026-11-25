@@ -10,9 +10,18 @@ export async function getSessionDbUser() {
       data: { user },
     } = await supabase.auth.getUser()
     if (!user) return null
-    return await db.user.findFirst({
-      where: { OR: [{ supabaseId: user.id }, ...(user.email ? [{ email: user.email }] : [])] },
-    })
+    // Resolve by the auth id first. Linking by email is only safe when Supabase has confirmed that the
+    // caller owns the address, and only onto a row no other auth identity has claimed (audit F-18).
+    const linked = await db.user.findUnique({ where: { supabaseId: user.id } })
+    if (linked) return linked
+    const emailConfirmed = Boolean(user.email_confirmed_at || user.confirmed_at)
+    if (!user.email || !emailConfirmed) return null
+    const byEmail = await db.user.findUnique({ where: { email: user.email } })
+    if (!byEmail || byEmail.supabaseId) return null
+    // Guarded update: if a concurrent request linked the row first, nothing changes and we re-read
+    const { count } = await db.user.updateMany({ where: { id: byEmail.id, supabaseId: null }, data: { supabaseId: user.id } })
+    if (count === 0) return await db.user.findUnique({ where: { supabaseId: user.id } })
+    return { ...byEmail, supabaseId: user.id }
   } catch {
     return null
   }

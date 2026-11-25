@@ -87,7 +87,7 @@ export function useComments(articleId: string) {
         const [fsm, { db }] = await fs()
         const ref = fsm.doc(fsm.collection(db, COL.comments))
         const batch = fsm.writeBatch(db)
-        stampRateLimit(fsm, batch, db, uid, "comment")
+        stampRateLimit(fsm, batch, db, uid, "comment", ref.id)
         batch.set(ref, {
           articleId,
           parentId: parentId ?? null,

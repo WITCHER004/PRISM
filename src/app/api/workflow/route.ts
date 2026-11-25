@@ -6,6 +6,7 @@ import { articleFromDoc, articleToDoc, COL, readUserDoc } from "@/lib/live/schem
 import { adminConfigured, adminDb, verifyAppCheck, verifyRequestUser } from "@/lib/server/firebaseAdmin"
 import { sharedRateLimit } from "@/lib/server/sharedRateLimit"
 import { syncPublicCopy } from "@/lib/server/publicArticles"
+import { MY_PANEL_VOTES, PANEL_BALLOTS, sealVotes, unsealVotes, type PanelVote } from "@/lib/elite/panel"
 import {
   castPanelVote,
   decideReview,
@@ -38,6 +39,21 @@ const Body = z.discriminatedUnion("action", [
 export const maxDuration = 90
 
 const json = (body: unknown, status = 200) => NextResponse.json(body, { status })
+
+// Published stories for the plagiarism check, cached per server instance for 5 minutes: loading up to
+// 1,000 full articles on every submit made each submission expensive (audit F-20)
+const CORPUS_TTL_MS = 5 * 60_000
+let corpusCache: { at: number; docs: { id: string; title: string; html: string; url: string }[] } | null = null
+async function publishedCorpus(db: FirebaseFirestore.Firestore) {
+  if (corpusCache && Date.now() - corpusCache.at < CORPUS_TTL_MS) return corpusCache.docs
+  const published = await db.collection(COL.articles).where("verificationStatus", "==", "published").limit(1000).get()
+  const docs = published.docs
+    .map((x) => articleFromDoc(x.id, x.data()))
+    .filter((x) => x.live)
+    .map((x) => ({ id: x.id, title: x.live!.title, html: x.live!.contentHtml, url: `/${x.authorUsername}/${x.slug}` }))
+  corpusCache = { at: Date.now(), docs }
+  return docs
+}
 const newId = () => randomBytes(6).toString("base64url").toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 8) || "x"
 
 export async function POST(request: Request) {
@@ -84,12 +100,10 @@ export async function POST(request: Request) {
       const d = articleFromDoc(snap.id, snap.data()!)
       if (d.authorUid !== caller.uid) return json({ error: "Only the author can submit this story." }, 403)
       analyzedAt = snap.data()!.updatedAt ?? null
-      const published = await db.collection(COL.articles).where("verificationStatus", "==", "published").limit(1000).get()
-      corpus = published.docs
-        .filter((x) => x.id !== snap.id)
-        .map((x) => articleFromDoc(x.id, x.data()))
-        .filter((x) => x.live)
-        .map((x) => ({ id: x.id, title: x.live!.title, html: x.live!.contentHtml, url: `/${x.authorUsername}/${x.slug}` }))
+      // Each submit can reach the paid detector: a daily budget per account on top of the per-minute one (F-20)
+      const daily = await sharedRateLimit(`submit|${caller.uid}`, 20, 24 * 60 * 60_000)
+      if (!daily.ok) return json({ error: "You've submitted a lot today. Try again tomorrow." }, 429)
+      corpus = (await publishedCorpus(db)).filter((x) => x.id !== snap.id)
       report = await analyzeArticle({
         title: d.title,
         contentHtml: d.contentHtml,
@@ -106,7 +120,13 @@ export async function POST(request: Request) {
       const raw = snap.data()!
       if (body.action === "submit" && (raw.updatedAt ?? null) !== analyzedAt)
         return { status: 409, result: { ok: false, error: "The story changed while it was being checked. Submit again." } as Result }
-      const d = articleFromDoc(snap.id, raw)
+      const sealed = articleFromDoc(snap.id, raw)
+      // Blind panel (F-21): the article holds sealed votes; the real ballots are server-only
+      const ballotRef = db.collection(PANEL_BALLOTS).doc(snap.id)
+      const ballots = sealed.panel ? await tx.get(ballotRef) : null
+      const d = ballots?.exists && sealed.panel
+        ? { ...sealed, panel: unsealVotes(sealed.panel, (ballots.data()!.votes ?? []) as PanelVote[]) }
+        : sealed
       const authorSnap = d.authorUid ? await tx.get(db.collection(COL.users).doc(d.authorUid)) : null
       const author = authorSnap?.exists ? readUserDoc(authorSnap.id, authorSnap.data()!) : null
 
@@ -125,6 +145,19 @@ export async function POST(request: Request) {
       if (!result.ok) return { status: 400, result }
 
       const data = articleToDoc({ ...result.draft, updatedAt: ctx.at }) as Record<string, unknown>
+      const votes = result.draft.panel
+      if (votes && result.draft.status === "PENDING_PEER_PANEL") {
+        // Still open: keep the ballots sealed on the article, the real ones server-side
+        data.peerVotes = sealVotes(votes)
+        tx.set(ballotRef, { votes, updatedAt: ctx.at })
+        if (body.action === "vote") {
+          const mine = votes.find((v) => v.reviewer === me.handle && v.decision)
+          if (mine) tx.set(db.collection(MY_PANEL_VOTES).doc(`${snap.id}_${caller.uid}`), { uid: caller.uid, articleId: snap.id, vote: mine })
+        }
+      } else if (ballots?.exists) {
+        // The panel has decided: the full votes go on the article for the dossier
+        tx.delete(ballotRef)
+      }
       tx.set(ref, data, { mergeFields: Object.keys(data) })
       // Readers only ever see the public copy: a preview for locked stories, the full text otherwise (F-02)
       syncPublicCopy(tx, db, ref.id, { ...raw, ...data })

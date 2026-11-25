@@ -265,7 +265,7 @@ export async function createIdea(idea: InstantIdea): Promise<void> {
   // The rules allow one idea per 30s per member: the rate-limit stamp rides in the same batch
   const batch = writeBatch(db)
   batch.set(doc(db, COLLECTION, idea.id), data)
-  stampRateLimit({ doc, serverTimestamp }, batch, db, idea.authorUid, "idea")
+  stampRateLimit({ doc, serverTimestamp }, batch, db, idea.authorUid, "idea", idea.id)
   await batch.commit()
   markPosted("idea")
 }

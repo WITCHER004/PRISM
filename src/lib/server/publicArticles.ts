@@ -36,13 +36,14 @@ export function syncPublicCopy(tx: Transaction, db: Firestore, id: string, full:
   const { copy, body } = publicCopyOf(full)
   // Whole top-level fields are replaced (mergeFields), so nothing stale survives inside `live`; the copy's
   // own counters (views, likes) are not listed, so a republish keeps them
-  const data: Doc = { ...copy, submitted: FieldValue.delete(), review: FieldValue.delete(), rebuttal: FieldValue.delete() }
+  const data: Doc = { ...copy }
+  for (const k of ["submitted", "review", "rebuttal", "audiobookUrl", "audiobookDurationSec", "audiobookSource"]) data[k] = FieldValue.delete()
   tx.set(publicRef, data, { mergeFields: Object.keys(data) })
   if (body) tx.set(bodyRef, { ...body, updatedAt: Date.now() })
 }
 
 export type AccessResult =
-  | { ok: true; html: string; via: "free" | "author" | "staff" | "elite" | "unlock" }
+  | { ok: true; html: string; audiobookUrl: string | null; via: "free" | "author" | "staff" | "elite" | "unlock" }
   | { ok: false; status: 401 | 402 | 403 | 404; reason: string }
 
 async function isElite(db: Firestore, uid: string) {
@@ -54,17 +55,18 @@ async function isElite(db: Firestore, uid: string) {
 export async function readerAccess(db: Firestore, id: string, caller: { uid: string; isAdmin: boolean } | null): Promise<AccessResult> {
   const [pub, body] = await Promise.all([db.collection(PUBLIC_ARTICLES).doc(id).get(), db.collection(ARTICLE_BODIES).doc(id).get()])
   if (!pub.exists || !body.exists) return { ok: false, status: 404, reason: "Story not found." }
-  const b = body.data() as { contentHtml: string; paywall: string; paper: boolean; authorId: string }
-  const html = () => renderArticleHtml(b.contentHtml).html
-  if (!isLocked({ paywall: b.paywall, paper: b.paper })) return { ok: true, html: html(), via: "free" }
+  const b = body.data() as { contentHtml: string; paywall: string; paper: boolean; authorId: string; audiobookUrl?: string | null }
+  const grant = (via: "free" | "author" | "staff" | "elite" | "unlock") =>
+    ({ ok: true as const, html: renderArticleHtml(b.contentHtml).html, audiobookUrl: b.audiobookUrl ?? null, via })
+  if (!isLocked({ paywall: b.paywall, paper: b.paper })) return grant("free")
   if (!caller) return { ok: false, status: 401, reason: "Sign in to keep reading." }
-  if (caller.uid === b.authorId) return { ok: true, html: html(), via: "author" }
-  if (caller.isAdmin) return { ok: true, html: html(), via: "staff" }
-  if (await isElite(db, caller.uid)) return { ok: true, html: html(), via: "elite" }
+  if (caller.uid === b.authorId) return grant("author")
+  if (caller.isAdmin) return grant("staff")
+  if (await isElite(db, caller.uid)) return grant("elite")
   // Advanced Papers and member-only stories are Elite-only
   if (b.paper || b.paywall === "SUBSCRIBER") return { ok: false, status: 403, reason: "This story is for Elite members." }
   const unlock = await db.collection(ARTICLE_UNLOCKS).doc(`${caller.uid}_${id}`).get()
-  if (unlock.exists) return { ok: true, html: html(), via: "unlock" }
+  if (unlock.exists) return grant("unlock")
   return { ok: false, status: 402, reason: b.paywall === "PAID" ? "Unlock this story to keep reading." : "Use one of your free stories to keep reading." }
 }
 

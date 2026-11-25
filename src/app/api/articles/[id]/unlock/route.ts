@@ -32,5 +32,5 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
   if (!result.ok) return NextResponse.json({ error: result.reason }, { status: result.status })
   const access = await readerAccess(db, id, { uid: caller.uid, isAdmin: caller.isAdmin })
   if (!access.ok) return NextResponse.json({ error: access.reason }, { status: access.status })
-  return NextResponse.json({ html: access.html, remaining: result.remaining }, { headers: { "cache-control": "private, no-store" } })
+  return NextResponse.json({ html: access.html, audiobookUrl: access.audiobookUrl, remaining: result.remaining }, { headers: { "cache-control": "private, no-store" } })
 }

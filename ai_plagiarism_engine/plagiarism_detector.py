@@ -16,6 +16,7 @@ plagiarismScore = share of the author's prose words that sit in flagged sentence
 from __future__ import annotations
 
 import hashlib
+import logging
 import os
 import re
 import threading
@@ -28,6 +29,13 @@ from text_prep import Prepared, split_paragraphs, split_sentences, words
 
 K = 5  # shingle size (tokens)
 W = 4  # winnowing window
+
+# Work caps per check() (text is already truncated to text_prep.MAX_CHARS upstream)
+MAX_CHECK_SENTENCES = 2000
+MAX_CHECK_PARAGRAPHS = 500
+MAX_EXTERNAL_PARAGRAPHS = 500
+
+log = logging.getLogger("prism.plagiarism")
 
 
 def _h(s: str) -> int:
@@ -83,6 +91,7 @@ class SourcePara:
 class PlagiarismDetector:
     def __init__(self, cfg: dict, persist_directory: Optional[str] = None, load_embeddings: bool = True):
         self.cfg = cfg["plagiarism"]
+        self.revisions = cfg.get("revisions") or {}
         self.persist_directory = persist_directory
         self._lock = threading.RLock()
         self.paras: dict[str, SourcePara] = {}
@@ -109,9 +118,12 @@ class PlagiarismDetector:
             try:
                 from sentence_transformers import SentenceTransformer
 
-                self._encoder = SentenceTransformer(self.cfg["embedding_model"])
-            except Exception as e:  # noqa: BLE001
+                name = self.cfg["embedding_model"]
+                rev = (self.revisions or {}).get(name)
+                self._encoder = SentenceTransformer(name, **({"revision": rev} if rev else {}))
+            except Exception as e:  # noqa: BLE001 - logged server-side; reports only say "unavailable"
                 self._encoder_error = f"{type(e).__name__}: {e}"
+                log.warning("embedding model unavailable: %s", self._encoder_error)
         return self._encoder
 
     def embed(self, texts: list[str]):
@@ -134,6 +146,7 @@ class PlagiarismDetector:
         except Exception as e:  # noqa: BLE001
             self._collection = None
             self._encoder_error = self._encoder_error or f"vector store unavailable: {e}"
+            log.warning("vector store unavailable", exc_info=True)
 
     def _minhash(self, toks: list[str]):
         from datasketch import MinHash
@@ -226,6 +239,8 @@ class PlagiarismDetector:
             if not body:
                 continue
             for j, p in enumerate(split_paragraphs(body)):
+                if len(ext_paras) >= MAX_EXTERNAL_PARAGRAPHS:
+                    break
                 s = split_sentences(p)
                 ext_paras.append(SourcePara(f"ext{i}::p{j}", ref.get("id") or f"external-{i}", ref.get("url") or "", ref.get("title") or "", p, [words(x) for x in s], s))
         ext_fp: dict[int, set[int]] = defaultdict(set)
@@ -233,8 +248,10 @@ class PlagiarismDetector:
             for fp in winnow(shingles(words(sp.text))):
                 ext_fp[fp].add(idx)
 
-        sentences = prep.sentences
+        # Bound the work: indices stay aligned with prep.sentences, the tail beyond the cap is not checked
+        sentences = prep.sentences[:MAX_CHECK_SENTENCES]
         sent_tokens = [words(s) for s in sentences]
+        paras = prep.paragraphs[:MAX_CHECK_PARAGRAPHS]
         flagged: dict[int, dict] = {}
 
         def source_of(key_or_idx) -> Optional[SourcePara]:
@@ -282,7 +299,7 @@ class PlagiarismDetector:
 
             # Paragraph-level MinHash: catches patchwork that re-orders sentences
             if self._lsh is not None:
-                for para in prep.paragraphs:
+                for para in paras:
                     toks = words(para)
                     if len(toks) < 20:
                         continue
@@ -307,11 +324,10 @@ class PlagiarismDetector:
 
         # ---- Layer 2: semantic, per paragraph
         semantic_status = "ok"
-        paras = prep.paragraphs
         if paras and (self._collection is not None and self._collection.count() > 0 or ext_paras):
             q = self.embed(paras)
             if q is None:
-                semantic_status = f"unavailable: {self._encoder_error}"
+                semantic_status = "unavailable"
             else:
                 import numpy as np
 

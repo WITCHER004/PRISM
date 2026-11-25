@@ -7,7 +7,7 @@ rules_version = '2';
 //
 // Deploy:  firebase deploy --only firestore:rules,storage
 //
-// Admins are exactly the Google accounts below AND in ADMIN_EMAILS (src/lib/admin.ts): keep both lists
+// Admins are exactly the Google accounts below AND in ADMIN_EMAILS (src/lib/server/adminEmails.ts): keep both lists
 // in step. Admin rights come only from the verified sign-in email, never from a document field.
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -44,6 +44,22 @@ service cloud.firestore {
         && d.get('authorAvatar', '') in ['', p.get('photoURL', ''),
              'https://api.dicebear.com/7.x/avataaars/svg?seed=' + p.handle + '&backgroundColor=b6e3f4'];
     }
+    // A client-set millisecond timestamp within five minutes of the server's clock (audit F-29)
+    function nowish(t) {
+      return t is int && t > request.time.toMillis() - 300000 && t < request.time.toMillis() + 300000;
+    }
+    // Editor writing telemetry: known fields, sane bounds (audit F-12). It can still be made up within
+    // these bounds, so the server only lets it nudge borderline scores and checks it for plausibility.
+    function validCraft(c) {
+      return c == null || (c is map
+        && c.keys().hasOnly(['v', 'startedAt', 'activeMs', 'sessions', 'typedChars', 'pastedChars', 'dictatedChars', 'lastAt', 'growth'])
+        && c.get('activeMs', 0) is number && c.get('activeMs', 0) >= 0 && c.get('activeMs', 0) <= 31536000000
+        && c.get('sessions', 1) is int && c.get('sessions', 1) >= 1 && c.get('sessions', 1) <= 10000
+        && c.get('typedChars', 0) is int && c.get('typedChars', 0) >= 0 && c.get('typedChars', 0) <= 10000000
+        && c.get('pastedChars', 0) is int && c.get('pastedChars', 0) >= 0 && c.get('pastedChars', 0) <= 10000000
+        && c.get('dictatedChars', 0) is int && c.get('dictatedChars', 0) >= 0 && c.get('dictatedChars', 0) <= 10000000
+        && c.get('growth', []) is list && c.get('growth', []).size() <= 40);
+    }
     // A list in which only the caller's uid was added or removed
     function onlyMeToggled(after, before) {
       return after.toSet().difference(before.toSet()).union(before.toSet().difference(after.toSet())).hasOnly([me()])
@@ -55,8 +71,11 @@ service cloud.firestore {
     // write must stamp its field in the same batch (getAfter sees it), and the previous stamp must be
     // older than the cooldown. Bots can't post faster than this without new accounts.
     function rl() { return /databases/$(database)/documents/rate_limits/$(me()); }
-    function throttled(action, seconds) {
+    // The stamp also names the one document it covers (`<action>_doc`), so a batch can't create hundreds
+    // of documents under a single stamp (audit F-10).
+    function throttled(action, seconds, docId) {
       return getAfter(rl()).data.get(action, null) == request.time
+        && getAfter(rl()).data.get(action + '_doc', '') == docId
         && (!exists(rl())
             || get(rl()).data.get(action, null) == null
             || get(rl()).data.get(action, null) + duration.value(seconds, 's') <= request.time);
@@ -64,11 +83,22 @@ service cloud.firestore {
     match /rate_limits/{uid} {
       allow read: if signedIn() && me() == uid;
       allow create: if signedIn() && me() == uid
-        && data().keys().hasOnly(['forum_thread', 'forum_reply', 'idea', 'comment', 'margin_note'])
-        && stampsAreNow(data().keys());
+        && data().keys().hasOnly(rateKeys())
+        && stampsAreNow(data().keys())
+        && stampDocsValid();
       allow update: if signedIn() && me() == uid
-        && data().keys().hasOnly(['forum_thread', 'forum_reply', 'idea', 'comment', 'margin_note'])
-        && stampsAreNow(changed());
+        && data().keys().hasOnly(rateKeys())
+        && stampsAreNow(changed())
+        && stampDocsValid();
+    }
+    function rateKeys() {
+      return ['forum_thread', 'forum_reply', 'idea', 'comment', 'margin_note',
+              'forum_thread_doc', 'forum_reply_doc', 'idea_doc', 'comment_doc', 'margin_note_doc'];
+    }
+    function stampDocsValid() {
+      return optStr(data().get('forum_thread_doc', null), 128) && optStr(data().get('forum_reply_doc', null), 128)
+        && optStr(data().get('idea_doc', null), 128) && optStr(data().get('comment_doc', null), 128)
+        && optStr(data().get('margin_note_doc', null), 128);
     }
     function stampsAreNow(keys) {
       return (!('forum_thread' in keys) || data().forum_thread == request.time)
@@ -91,10 +121,20 @@ service cloud.firestore {
         && optStr(d.get('linkedinHandle', null), 100)
         && optStr(d.get('instagramHandle', null), 100)
         && optStr(d.get('githubHandle', null), 100)
+        && d.get('emailDigest', true) is bool && d.get('emailReplies', true) is bool
         && d.keys().hasOnly(['uid', 'displayName', 'handle', 'photoURL', 'bio', 'tier', 'isPanelMember',
             'panelApplicationStatus', 'isAdmin', 'suspended', 'eliteSince', 'websiteUrl', 'twitterHandle',
             'linkedinHandle', 'instagramHandle', 'githubHandle', 'emailDigest', 'emailReplies',
             'createdAt', 'lastLoginAt', 'email']);
+    }
+    // Moving to a new handle releases the old one in the same batch: one handle per account (audit F-30)
+    function releasesOldHandle(handle) {
+      let old = exists(/databases/$(database)/documents/users/$(me()))
+        ? get(/databases/$(database)/documents/users/$(me())).data.get('handle', '') : '';
+      return old == '' || old == handle
+        || !exists(/databases/$(database)/documents/handles/$(old))
+        || get(/databases/$(database)/documents/handles/$(old)).data.uid != me()
+        || !existsAfter(/databases/$(database)/documents/handles/$(old));
     }
     // A profile's handle must be registered to its owner (handles/{handle}), in the same batch
     function ownsHandle(h) {
@@ -118,8 +158,9 @@ service cloud.firestore {
         && (!('panelApplicationStatus' in changed())
             || (data().panelApplicationStatus == 'pending'
                 && resource.data.get('panelApplicationStatus', 'none') in ['none', 'rejected']))
-        // The public email field may only be removed (it moved to user_private)
+        // The public email and last-login fields may only be removed (they moved to user_private, F-31)
         && (!('email' in changed()) || !('email' in data()))
+        && (!('lastLoginAt' in changed()) || !('lastLoginAt' in data()))
         && (!('handle' in changed()) || ownsHandle(data().handle))
         && validProfile(data());
       allow update, delete: if isAdmin();
@@ -134,7 +175,8 @@ service cloud.firestore {
         && handle.matches('^[a-z0-9_]{1,40}$')
         && data().keys().hasOnly(['uid', 'createdAt'])
         && data().uid == me()
-        && getAfter(/databases/$(database)/documents/users/$(me())).data.handle == handle;
+        && getAfter(/databases/$(database)/documents/users/$(me())).data.handle == handle
+        && releasesOldHandle(handle);
       allow delete: if (signedIn() && resource.data.uid == me()
           && getAfter(/databases/$(database)/documents/users/$(me())).data.get('handle', '') != handle)
         || isAdmin();
@@ -146,7 +188,7 @@ service cloud.firestore {
     match /user_private/{uid} {
       allow read: if (signedIn() && me() == uid) || isAdmin();
       allow create, update: if signedIn() && me() == uid
-        && data().keys().hasOnly(['email', 'updatedAt'])
+        && data().keys().hasOnly(['email', 'lastLoginAt', 'updatedAt'])
         && data().email == request.auth.token.get('email', null);
       allow delete: if isAdmin();
     }
@@ -158,20 +200,23 @@ service cloud.firestore {
               'liveAiPercent', 'panelPassed', 'phase1', 'aiScore', 'plagiarismScore', 'submitted', 'submittedAt',
               'track', 'views', 'monetizedViews', 'likes'];
     }
-    // The author's narration must be a Storage file in their own audiobooks/ folder
+    // The author's narration must be a Storage file in their own audiobooks/ folder, in Prism's own bucket
+    // (audit F-13: another project's bucket would serve audio nobody reviewed)
     function validAudiobook(d) {
       return (d.get('audiobookUrl', null) == null
           && d.get('audiobookDurationSec', null) == null
           && d.get('audiobookSource', null) == null)
         || (d.audiobookUrl is string && d.audiobookUrl.size() <= 2048
-          && d.audiobookUrl.matches('^https://firebasestorage[.]googleapis[.]com/v0/b/[^/]+/o/audiobooks%2F' + me() + '%2F[^/?]+[?].*')
+          && d.audiobookUrl.matches('^https://firebasestorage[.]googleapis[.]com/v0/b/prism-2d284[.](firebasestorage[.]app|appspot[.]com)/o/audiobooks%2F' + me() + '%2F[^/?]+[?].*')
           && d.audiobookDurationSec is number && d.audiobookDurationSec >= 0 && d.audiobookDurationSec <= 14400
           && d.audiobookSource in ['recorded', 'uploaded']);
     }
     function validArticle(d) {
       return str(d.get('title', ''), 0, 300)
         && optStr(d.get('subtitle', null), 500)
-        && d.get('content', '') is string
+        && d.get('content', '') is string && d.get('content', '').size() <= 400000
+        && validCraft(d.get('craft', null))
+        && (d.get('coverImageUrl', null) == null || httpsUrl(d.get('coverImageUrl', null)))
         && d.get('tags', []) is list && d.get('tags', []).size() <= 10
         && d.get('voterIds', []) is list && d.get('voterIds', []).size() <= 100
         && validAudiobook(d)
@@ -191,6 +236,11 @@ service cloud.firestore {
       allow create: if signedIn()
         && data().authorId == me()
         && authorIsMe(data())
+        // "Sparked by": only a real idea, with that idea's actual voters (audit F-29)
+        && (data().get('originIdeaId', null) == null
+            || (exists(/databases/$(database)/documents/instant_ideas/$(data().originIdeaId))
+                && data().get('voterIds', []).toSet().difference(
+                     get(/databases/$(database)/documents/instant_ideas/$(data().originIdeaId)).data.get('voterIds', []).toSet()).size() == 0))
         && !data().keys().hasAny(workflowFields())
         && validArticle(data());
 
@@ -214,12 +264,37 @@ service cloud.firestore {
     // ── public_articles/{id} · article_bodies/{id} · article_unlocks · reader_meters ─────────────
     // The server (workflow route, Admin SDK) writes the public copy of every published article. Readers
     // may only clap (as before: signed in, up to 50 at a time) and its author or staff may remove it.
+    // Claps: the increase must equal the growth of the reader's own claps/{articleId}_{uid} record, which
+    // is capped at 50 per reader per story, so likes can't be inflated by repeating the write (audit F-11)
+    function clapRef(articleId) { return /databases/$(database)/documents/claps/$(articleId + '_' + me()); }
+    function clapsBefore(articleId) { return exists(clapRef(articleId)) ? get(clapRef(articleId)).data.count : 0; }
     match /public_articles/{id} {
       allow read: if true;
       allow update: if signedIn() && changed().hasOnly(['likes'])
         && data().likes > resource.data.get('likes', 0)
-        && data().likes <= resource.data.get('likes', 0) + 50;
+        && existsAfter(clapRef(id))
+        && data().likes - resource.data.get('likes', 0) == getAfter(clapRef(id)).data.count - clapsBefore(id);
       allow delete: if (signedIn() && resource.data.authorId == me()) || isAdmin();
+    }
+    match /claps/{id} {
+      allow read: if signedIn() && id.matches('.+_' + me());
+      allow create, update: if signedIn() && id == data().articleId + '_' + me()
+        && data().keys().hasOnly(['uid', 'articleId', 'count'])
+        && data().uid == me() && str(data().articleId, 1, 128)
+        && data().count is int && data().count >= 1 && data().count <= 50
+        && data().count > (resource == null ? 0 : resource.data.count)
+        && getAfter(/databases/$(database)/documents/public_articles/$(data().articleId)).data.get('likes', 0)
+           == get(/databases/$(database)/documents/public_articles/$(data().articleId)).data.get('likes', 0)
+              + data().count - (resource == null ? 0 : resource.data.count);
+    }
+    // Blind peer panel (audit F-21): real ballots are server-only while voting is open; a panelist
+    // can read only their own vote
+    match /panel_ballots/{id} {
+      allow read, write: if false;
+    }
+    match /panel_votes_mine/{id} {
+      allow read: if signedIn() && resource.data.uid == me();
+      allow write: if false;
     }
     // Full text of published stories: server only, handed out by GET /api/articles/{id}/body
     match /article_bodies/{id} {
@@ -240,13 +315,19 @@ service cloud.firestore {
       allow read: if true;
       allow create: if signedIn() && data().authorId == me()
         && str(data().content, 1, 280)
+        && data().keys().hasOnly(['authorId', 'authorHandle', 'authorName', 'authorAvatar', 'content', 'mode', 'canvasTheme',
+            'createdAt', 'expiresAt', 'reactions', 'reactors', 'totalReactions', 'voterIds', 'isImmortal'])
+        && optStr(data().get('mode', null), 40) && optStr(data().get('canvasTheme', null), 40)
+        && nowish(data().createdAt)
+        && data().expiresAt is int
+        && data().expiresAt - data().createdAt >= 3600000 && data().expiresAt - data().createdAt <= 86400000
         && data().totalReactions == 0 && data().isImmortal == false
         && data().voterIds.size() == 0
         && data().reactors.sparked.size() == 0 && data().reactors.deep.size() == 0
         && data().reactions.sparked == 0 && data().reactions.deep == 0
         && optStr(data().get('authorName', null), 100)
         && authorIsMe(data())
-        && throttled('idea', 30);
+        && throttled('idea', 30, id);
       // Reactions: the caller toggles only their own uid, and every count is derived from the lists,
       // so nobody can inflate totals or reach "immortal" without real, distinct reactors.
       allow update: if signedIn()
@@ -270,23 +351,29 @@ service cloud.firestore {
     match /margin_notes/{id} {
       allow read: if true;
       allow create: if signedIn() && data().authorId == me()
+        && data().keys().hasOnly(['articleId', 'paragraphIndex', 'selectedText', 'noteText', 'authorId', 'authorHandle',
+            'authorName', 'authorAvatar', 'createdAt'])
+        && nowish(data().createdAt)
         && str(data().noteText, 1, 1000)
         && str(data().selectedText, 0, 2000)
         && data().paragraphIndex is int
         && str(data().articleId, 1, 128)
         && authorIsMe(data())
-        && throttled('margin_note', 5);
+        && throttled('margin_note', 5, id);
       allow delete: if (signedIn() && resource.data.authorId == me()) || isAdmin();
     }
     match /comments/{id} {
       allow read: if true;
       allow create: if signedIn() && data().authorId == me()
+        && data().keys().hasOnly(['articleId', 'parentId', 'body', 'authorId', 'authorHandle', 'authorName', 'authorAvatar',
+            'likerIds', 'createdAt'])
+        && nowish(data().createdAt)
         && str(data().body, 1, 1000)
         && str(data().articleId, 1, 128)
         && (data().parentId == null || str(data().parentId, 1, 128))
         && data().likerIds.size() == 0
         && authorIsMe(data())
-        && throttled('comment', 10);
+        && throttled('comment', 10, id);
       // Likes: a reader adds or removes only their own uid
       allow update: if signedIn() && changed().hasOnly(['likerIds'])
         && onlyMeToggled(data().likerIds, resource.data.likerIds);
@@ -299,6 +386,9 @@ service cloud.firestore {
         && authorIsMe(data())
         && (!exists(/databases/$(database)/documents/articles/$(data().postId))
             || get(/databases/$(database)/documents/articles/$(data().postId)).data.authorId != me())
+        && data().keys().hasOnly(['postId', 'postAuthor', 'authorId', 'authorHandle', 'authorName', 'authorAvatar', 'rating',
+            'body', 'createdAt', 'updatedAt'])
+        && optStr(data().get('postAuthor', null), 40)
         && data().rating is int && data().rating >= 1 && data().rating <= 5
         && str(data().get('body', ''), 0, 1000);
       allow delete: if (signedIn() && resource.data.authorId == me()) || isAdmin();
@@ -380,26 +470,45 @@ service cloud.firestore {
     match /forum_threads/{id} {
       allow read: if true;
       allow create: if signedIn() && data().authorId == me()
+        && data().keys().hasOnly(['authorId', 'authorHandle', 'authorName', 'authorAvatar', 'title', 'body', 'topicTag',
+            'linkedArticleId', 'linkedArticleTitle', 'linkedArticleHref', 'replyCount', 'upvoterIds', 'createdAt', 'lastActivityAt'])
+        && nowish(data().createdAt) && data().lastActivityAt == data().createdAt
+        && optStr(data().get('topicTag', null), 40) && optStr(data().get('linkedArticleId', null), 128)
+        && optStr(data().get('linkedArticleTitle', null), 300) && optStr(data().get('linkedArticleHref', null), 500)
         && str(data().title, 1, 160)
         && str(data().body, 0, 5000)
         && data().replyCount == 0 && data().upvoterIds.size() == 0
         && authorIsMe(data())
-        && throttled('forum_thread', 60);
-      // The reply counter moves by exactly one with each reply posted or deleted, never below zero
-      allow update: if signedIn() && changed().hasOnly(['replyCount', 'lastActivityAt'])
-        && (data().replyCount == resource.data.replyCount + 1
-            || (data().replyCount == resource.data.replyCount - 1 && data().replyCount >= 0));
+        && throttled('forum_thread', 60, id);
+      // The reply counter moves by exactly one, and only together with the reply it counts: +1 when the
+      // reply named in lastReplyId is created in the same batch, -1 when it is deleted (audit F-15)
+      allow update: if signedIn() && changed().hasOnly(['replyCount', 'lastActivityAt', 'lastReplyId'])
+        && data().lastReplyId is string && data().lastReplyId.size() <= 128
+        && ((data().replyCount == resource.data.replyCount + 1
+              && nowish(data().lastActivityAt)
+              && !exists(/databases/$(database)/documents/forum_replies/$(data().lastReplyId))
+              && existsAfter(/databases/$(database)/documents/forum_replies/$(data().lastReplyId))
+              && getAfter(/databases/$(database)/documents/forum_replies/$(data().lastReplyId)).data.threadId == id)
+          || (data().replyCount == resource.data.replyCount - 1 && data().replyCount >= 0
+              && same('lastActivityAt')
+              && exists(/databases/$(database)/documents/forum_replies/$(data().lastReplyId))
+              && !existsAfter(/databases/$(database)/documents/forum_replies/$(data().lastReplyId))
+              && get(/databases/$(database)/documents/forum_replies/$(data().lastReplyId)).data.threadId == id));
       allow update: if signedIn() && onlyMyVoteChanged();
       allow delete: if (signedIn() && resource.data.authorId == me()) || isAdmin();
     }
     match /forum_replies/{id} {
       allow read: if true;
       allow create: if signedIn() && data().authorId == me()
+        && data().keys().hasOnly(['threadId', 'parentId', 'body', 'authorId', 'authorHandle', 'authorName', 'authorAvatar',
+            'upvoterIds', 'createdAt'])
+        && nowish(data().createdAt)
+        && (data().parentId == null || str(data().parentId, 1, 128))
         && str(data().body, 1, 5000)
         && data().upvoterIds.size() == 0
         && authorIsMe(data())
         && exists(/databases/$(database)/documents/forum_threads/$(data().threadId))
-        && throttled('forum_reply', 10);
+        && throttled('forum_reply', 10, id);
       allow update: if signedIn() && onlyMyVoteChanged();
       // Its author, the thread's author (deleting the whole discussion), or an admin
       allow delete: if (signedIn() && resource.data.authorId == me())
@@ -416,13 +525,13 @@ service cloud.firestore {
     }
     match /craft_certificates/{articleId} {
       allow read: if true;
-      allow create, update: if ownArticle(articleId) && data().get('articleId', articleId) == articleId;
+      // Earned records: the server derives them from the article; clients can't write them (audit F-32)
+      allow create, update: if false;
       allow delete: if ownArticle(articleId) || isAdmin();
     }
     match /peer_dossiers/{articleId} {
       allow read: if true;
-      allow create, update: if ownArticle(articleId)
-        && get(/databases/$(database)/documents/articles/$(articleId)).data.get('panelPassed', false) == true;
+      allow create, update: if false;
       allow delete: if ownArticle(articleId) || isAdmin();
     }
 

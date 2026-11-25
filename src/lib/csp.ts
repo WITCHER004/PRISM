@@ -32,7 +32,16 @@ export function buildCsp(nonce: string): string {
       .filter(Boolean)
       .join(" "),
     "style-src 'self' 'unsafe-inline'",
-    "img-src 'self' data: blob: https:",
+    // Only known image hosts, so injected markup can't load a tracking pixel: Firebase Storage
+    // (uploads, avatars, covers), Google/GitHub profile photos, DiceBear fallback avatars, Unsplash
+    // (next.config.ts image hosts) and Google Analytics' measurement pixels
+    [
+      "img-src 'self' data: blob:",
+      "https://firebasestorage.googleapis.com https://storage.googleapis.com",
+      "https://*.googleusercontent.com https://avatars.githubusercontent.com",
+      "https://api.dicebear.com https://images.unsplash.com",
+      "https://*.google-analytics.com https://*.googletagmanager.com https://www.google.com",
+    ].join(" "),
     "font-src 'self' data:",
     [
       "connect-src 'self'",

@@ -18,5 +18,5 @@ export async function GET(request: Request, ctx: { params: Promise<{ id: string 
   const access = await readerAccess(adminDb(), id, caller ? { uid: caller.uid, isAdmin: caller.isAdmin } : null)
   const headers = { "cache-control": "private, no-store" }
   if (!access.ok) return NextResponse.json({ error: access.reason }, { status: access.status, headers })
-  return NextResponse.json({ html: access.html, via: access.via }, { headers })
+  return NextResponse.json({ html: access.html, audiobookUrl: access.audiobookUrl, via: access.via }, { headers })
 }

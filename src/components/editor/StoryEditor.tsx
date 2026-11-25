@@ -38,8 +38,6 @@ import type { AudiobookFields, PostFormat } from "@/lib/live/schema"
 import { formatClock } from "@/lib/audioFormat"
 import { openUpgrade } from "@/components/elite/UpgradeDialog"
 import { useCraftTracker } from "@/components/craft/useCraftTracker"
-import { certificateFrom } from "@/lib/craft"
-import { mirrorRecord } from "@/lib/records"
 import { depthLabel, paperIsComplete, type AdvancedPaper } from "@/lib/papers"
 import { clearPromotedIdeaSeed, clearQuoteSeed, readPromotedIdeaSeed, readQuoteSeed } from "@/lib/ideas"
 import { SITE_HOST } from "@/lib/seo"
@@ -420,15 +418,6 @@ function EditorWorkspace({ initial }: { initial?: Draft }) {
       return
     }
     const report = result.report
-    // Mirror the craft certificate as submitted (best effort; the draft keeps the source copy)
-    if (saved.craft) {
-      mirrorRecord("craft_certificates", id, {
-        articleId: id,
-        author: saved.authorUsername,
-        ...certificateFrom(saved.craft, report.wordCount, report.aiPercent),
-        telemetry: saved.craft,
-      })
-    }
     setReport(report)
     setSettingsOpen(false)
     setPublishPhase(report.passed ? "queued" : "failed")

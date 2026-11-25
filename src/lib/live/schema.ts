@@ -205,6 +205,8 @@ export interface ArticleVersion extends AudiobookFields {
   locked?: boolean
   /** Set on public copies: the full story's word count (the preview is shorter) */
   fullWordCount?: number
+  /** Set on public copies of locked stories: the recording exists, its URL comes with the unlocked body */
+  audiobookLocked?: boolean
 }
 
 /** The workflow fields the store's Draft carries; mirrored 1:1 into the article document */
@@ -452,7 +454,11 @@ export const wordsIn = (html: string) => (plain(html) ? plain(html).split(" ").l
 
 function audiobookOf(v: ArticleVersion): Post["audiobook"] {
   const a = audiobookFrom(v)
-  return a.audiobookUrl ? { url: a.audiobookUrl, durationSec: a.audiobookDurationSec ?? 0, source: a.audiobookSource ?? "uploaded" } : undefined
+  if (a.audiobookUrl) return { url: a.audiobookUrl, durationSec: a.audiobookDurationSec ?? 0, source: a.audiobookSource ?? "uploaded" }
+  // Locked story: the player knows the recording exists; the server hands over its URL on unlock
+  if (v.audiobookLocked)
+    return { url: "", durationSec: Number(v.audiobookDurationSec ?? 0), source: v.audiobookSource === "recorded" ? "recorded" : "uploaded", locked: true }
+  return undefined
 }
 
 /** A published article as the `Post` the reader pages render (the live version only) */
@@ -472,10 +478,10 @@ export function postFromArticle(a: ArticleWorkflow, author?: User): Post | null 
     coverImageUrl: v.coverImageUrl ?? a.coverImageUrl,
     // Only the reviewed (live) narration is ever played to readers
     audiobook: audiobookOf(v),
-    format: v.postFormat === "voice" && v.audiobookUrl ? "voice" : "essay",
+    format: v.postFormat === "voice" && (v.audiobookUrl || v.audiobookLocked) ? "voice" : "essay",
     // A voice post takes as long as its recording; an essay as long as its words
     readingTimeMin:
-      v.postFormat === "voice" && v.audiobookUrl
+      v.postFormat === "voice" && (v.audiobookUrl || v.audiobookLocked)
         ? Math.max(1, Math.round((v.audiobookDurationSec ?? 0) / 60))
         : Math.max(1, Math.round(words / 230)),
     wordCount: words,

@@ -5,7 +5,7 @@ import { persist, createJSONStorage } from "zustand/middleware"
 import { reviewKey, REVIEW_BODY_MAX, type ArticleReview } from "@/lib/reviews"
 import { logOutFirebase } from "@/lib/firebase"
 import { callWorkflow, type WorkflowResult } from "@/lib/workflow/client"
-import { isAdminEmail, isAdminUser } from "@/lib/admin"
+import { cachedIsAdmin } from "@/lib/admin"
 import { handleFrom, type ArticleVersion, type AudiobookFields, type ArticleWorkflow, type UserDoc } from "@/lib/live/schema"
 import {
   DEMO_PAYOUT_SETTLE_MS,
@@ -384,8 +384,9 @@ export const useUIStore = create<UIState>()(
             authEmail: email || null,
             authUid: fbUser.uid,
             authLoading: false,
-            authIsAdmin: isAdminUser(fbUser),
-            adminSession: isAdminUser(fbUser) ? handle : null,
+            // Known only once GET /api/auth/role answers; AuthProvider sets both when it does
+            authIsAdmin: cachedIsAdmin(fbUser.uid),
+            adminSession: cachedIsAdmin(fbUser.uid) ? handle : null,
             profile: known
               ? profileFromUserDoc(known)
               : {
@@ -416,9 +417,8 @@ export const useUIStore = create<UIState>()(
               uid: u.uid,
               isPanelMember: u.isPanelMember,
               panelApplicationStatus: u.isPanelMember ? "approved" : u.panelApplicationStatus,
-              // Admin comes from the verified-email whitelist: legacy docs still carry the email, newer ones
-              // the isAdmin flag, which the Firestore rules only let a whitelisted, verified account set
-              isAdmin: isAdminEmail(u.email) || u.isAdmin === true,
+              // The isAdmin flag, which the Firestore rules only let a whitelisted, verified account set
+              isAdmin: u.isAdmin === true,
               suspended: !!u.suspended,
             })
             if (u.tier === "elite") {

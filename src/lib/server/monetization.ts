@@ -1,3 +1,4 @@
+import "server-only"
 import { createHash } from "node:crypto"
 import { db } from "@/lib/db"
 import { MIN_PAYOUT_USD, VIEW_DEDUPE_WINDOW_MS } from "@/lib/elite/config"
@@ -6,11 +7,12 @@ import { priceView } from "@/lib/elite/wallet"
 import { ActionError, requireElite } from "@/lib/session"
 import type { SessionUser } from "./api"
 import { awardBadges } from "./badges"
+import { clientIp } from "./rateLimit"
 
 /** Signed-in readers dedupe by user id; signed-out readers by a salted hash of IP + user agent */
 export function viewFingerprint(request: Request, user: SessionUser | null) {
   if (user) return `u:${user.id}`
-  const ip = (request.headers.get("x-forwarded-for") ?? "").split(",")[0].trim() || request.headers.get("x-real-ip") || "0.0.0.0"
+  const ip = clientIp(request.headers)
   const ua = request.headers.get("user-agent") ?? ""
   const salt = process.env.VIEW_FINGERPRINT_SALT ?? "prism"
   return "f:" + createHash("sha256").update(`${salt}|${ip}|${ua}`).digest("hex").slice(0, 32)

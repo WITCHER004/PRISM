@@ -18,7 +18,7 @@ const handle = (key: SocialKey) =>
 const ProfileInput = z.object({
   displayName: z.string().trim().min(1, "Your name can't be empty.").max(50),
   bio: z.string().trim().max(200),
-  websiteUrl: z.union([z.literal(""), z.url("That doesn't look like a web address.")]),
+  websiteUrl: z.union([z.literal(""), z.url({ protocol: /^https?$/, error: "Enter a web address starting with http:// or https://." })]),
   linkedinHandle: handle("linkedinHandle"),
   instagramHandle: handle("instagramHandle"),
   twitterHandle: handle("twitterHandle"),

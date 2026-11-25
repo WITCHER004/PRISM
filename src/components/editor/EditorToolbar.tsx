@@ -1,5 +1,6 @@
 "use client"
 
+import { toast } from "@/lib/store"
 import { useEffect, useRef, useState } from "react"
 import { type Editor, useEditorState } from "@tiptap/react"
 import { AnimatePresence, motion } from "motion/react"
@@ -210,6 +211,12 @@ export function EditorToolbar({ editor, urlMode, onUrlModeChange, dictation }: T
                   c().insertContent({ type: "text", text: raw.trim(), marks: [{ type: "link", attrs: { href: url } }] }).run()
                 } else c().extendMarkRange("link").setLink({ href: url }).run()
               } else if (url) {
+                // Readers only see images hosted in Prism's storage (no third-party tracking pixels):
+                // anything else would be stripped from the published story, so refuse it here
+                if (!/^https:\/\/(firebasestorage|storage)\.googleapis\.com\//.test(url)) {
+                  toast("Upload the image instead: images from other sites aren't shown to readers.", { tone: "error" })
+                  return
+                }
                 // Insert after the selection rather than replacing selected text
                 c().setTextSelection(editor.state.selection.to).setImage({ src: url, alt: "" }).run()
               }

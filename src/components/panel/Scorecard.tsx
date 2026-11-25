@@ -11,6 +11,8 @@ import { CounterDialog } from "./CounterDialog"
 /** One square per seat: emerald = PASS, rose = FAIL, outline = not yet voted */
 export function PanelMeter({ votes, className }: { votes: readonly PanelVote[]; className?: string }) {
   const t = tallyPanel(votes)
+  // Blind voting: while the panel is open, others' votes are sealed (cast, decision hidden)
+  const sealed = votes.filter((v) => v.cast && !v.decision).length
   return (
     <div className={className}>
       <div
@@ -25,14 +27,28 @@ export function PanelMeter({ votes, className }: { votes: readonly PanelVote[]; 
               key={v.id}
               className={cn(
                 "h-3 flex-1 rounded-[3px]",
-                v.decision === "PASS" ? "bg-emerald-500" : v.decision === "FAIL" ? "bg-rose-400" : "border border-dashed border-slate-300"
+                v.decision === "PASS"
+                  ? "bg-emerald-500"
+                  : v.decision === "FAIL"
+                    ? "bg-rose-400"
+                    : v.cast
+                      ? "bg-slate-400"
+                      : "border border-dashed border-slate-300"
               )}
             />
           ))}
       </div>
       <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-[var(--fg-muted)]">
         <span className="tabular-nums">
-          <b className="text-emerald-700">{t.pass} pass</b> · <b className="text-rose-700">{t.fail} fail</b> · {t.pending} pending
+          {sealed > 0 ? (
+            <>
+              {votes.filter((v) => v.cast || v.decision).length} of {t.total} voted · votes stay sealed until the panel closes
+            </>
+          ) : (
+            <>
+              <b className="text-emerald-700">{t.pass} pass</b> · <b className="text-rose-700">{t.fail} fail</b> · {t.pending} pending
+            </>
+          )}
         </span>
         <span>
           {passThreshold(t.total)} of {t.total} needed
@@ -42,7 +58,7 @@ export function PanelMeter({ votes, className }: { votes: readonly PanelVote[]; 
   )
 }
 
-const rank = (v: PanelVote) => (v.decision === "PASS" ? 0 : v.decision === "FAIL" ? 1 : 2)
+const rank = (v: PanelVote) => (v.decision === "PASS" ? 0 : v.decision === "FAIL" ? 1 : v.cast ? 2 : 3)
 
 /** Panelists are shown to the writer by number and field, not by name */
 export function panelistLabel(votes: readonly PanelVote[], vote: PanelVote) {

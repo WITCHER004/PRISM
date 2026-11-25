@@ -2,6 +2,19 @@ import { getPublishedPosts } from "@/lib/server/content"
 import { TOPICS } from "@/lib/topics"
 import { absoluteUrl } from "@/lib/seo"
 
+/**
+ * Makes user-supplied text (titles, display names) safe inside a Markdown link label or line: one line,
+ * Markdown-significant characters backslash-escaped, so a title can't inject links, headings or lists.
+ */
+function md(text: string | null | undefined, max = 200) {
+  const flat = String(text ?? "")
+    .replace(/[\u0000-\u001f\u007f\u2028\u2029]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, max)
+  return flat.replace(/[\\[\]()#*_`<>!|~]/g, "\\$&").replace(/^([-+])/, "\\$1")
+}
+
 // Reads live Firestore (uncached fetch), so it renders per request
 export const dynamic = "force-dynamic"
 
@@ -31,7 +44,7 @@ ${TOPICS.map((t) => `- [${t.name}](${u(`/explore/${t.slug}`)})`).join("\n")}
 
 ## Stories
 
-${posts.map((p) => `- [${p.title}](${u(`/${p.author.username}/${p.slug}`)}): by ${p.author.displayName}`).join("\n")}
+${posts.map((p) => `- [${md(p.title)}](${u(`/${p.author.username}/${p.slug}`)}): by ${md(p.author.displayName, 80)}`).join("\n")}
 
 ## Policies
 

@@ -90,7 +90,7 @@ export function AdminUsers() {
           {rows.length === 0 && <p className="px-5 py-10 text-center text-sm text-[var(--fg-muted)]">No users match.</p>}
         </div>
         <p className="mt-3 text-xs text-[var(--fg-muted)]">
-          Admin access isn&apos;t set here: it belongs to the accounts listed in <code className="font-mono">ADMIN_EMAILS</code> (src/lib/admin.ts and the security rules).
+          Admin access isn&apos;t set here: it belongs to the accounts listed in <code className="font-mono">ADMIN_EMAILS</code> (src/lib/server/adminEmails.ts and the security rules).
         </p>
       </div>
     </>

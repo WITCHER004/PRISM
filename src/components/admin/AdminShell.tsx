@@ -5,30 +5,30 @@ import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import { ArrowUpRight, ClipboardCheck, LayoutDashboard, LogOut, Scale, Users } from "lucide-react"
 import { useAuth } from "@/components/providers/AuthProvider"
-import { isAdminUser } from "@/lib/admin"
 import { findAccount } from "@/lib/data"
 import { useUIStore, toast } from "@/lib/store"
 import { cn } from "@/lib/utils"
 
 /**
  * The isolated admin portal. Nothing on the public site links here and it never renders the site
- * header. Only a signed-in Firebase user whose verified email is in ADMIN_EMAILS (src/lib/admin.ts)
- * gets in; everyone else is sent to /admin/login. Firestore rules enforce the same list.
+ * header. Only a signed-in Firebase user the server reports as an admin (GET /api/auth/role, checked
+ * against src/lib/server/adminEmails.ts) gets in; everyone else is sent to /admin/login. Firestore
+ * rules enforce the same list.
  */
 export function AdminShell({ children }: { children: React.ReactNode }) {
-  const { user, loading } = useAuth()
+  const { loading, isAdmin, roleLoading } = useAuth()
   const pathname = usePathname() ?? "/admin"
   const router = useRouter()
   const session = useUIStore((s) => s.adminSession)
   const onLogin = pathname === "/admin/login"
-  const allowed = isAdminUser(user) && !!session
+  const allowed = isAdmin && !!session
 
   useEffect(() => {
-    if (!loading && !onLogin && !isAdminUser(user)) router.replace(`/admin/login?next=${encodeURIComponent(pathname)}`)
-  }, [loading, onLogin, user, pathname, router])
+    if (!roleLoading && !onLogin && !isAdmin) router.replace(`/admin/login?next=${encodeURIComponent(pathname)}`)
+  }, [roleLoading, onLogin, isAdmin, pathname, router])
 
   if (onLogin) return <div className="min-h-screen bg-[#0B0B0D] text-[#EDEDEF]">{children}</div>
-  if (loading || !allowed)
+  if (loading || roleLoading || !allowed)
     return <div className="min-h-screen bg-[#0B0B0D]" aria-busy="true" aria-label="Checking admin access" />
 
   return (

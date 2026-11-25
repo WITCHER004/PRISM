@@ -22,7 +22,6 @@ import { PeerDossierCard } from "@/components/dossier/PeerDossierCard"
 import { wordCount } from "@/components/studio/studio-ui"
 import { certificateFrom } from "@/lib/craft"
 import { dossierFromPanel } from "@/lib/dossier"
-import { mirrorRecord } from "@/lib/records"
 import { usePublishedPosts } from "@/lib/live/hooks"
 import { MoreLikeThis } from "@/components/reader/MoreLikeThis"
 
@@ -53,12 +52,6 @@ export default function LocalStoryPage() {
     [draft, live]
   )
 
-  // Keep standalone copies of the earned records (best effort, never blocks)
-  useEffect(() => {
-    if (!isAuthor || !draft) return
-    if (certificate) mirrorRecord("craft_certificates", draft.id, { articleId: draft.id, author: draft.authorUsername, ...certificate })
-    if (dossier) mirrorRecord("peer_dossiers", draft.id, dossier)
-  }, [isAuthor, draft, certificate, dossier])
   // The author previews the working copy until something is live; everyone else only sees live versions
   const view = live ?? (isAuthor ? draft : undefined)
 

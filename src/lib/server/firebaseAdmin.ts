@@ -3,7 +3,7 @@ import { applicationDefault, cert, getApps, initializeApp, type App } from "fire
 import { getAuth } from "firebase-admin/auth"
 import { getFirestore, type Firestore } from "firebase-admin/firestore"
 import { firebaseConfig } from "@/lib/firebase-config"
-import { isAdminEmail } from "@/lib/admin"
+import { isAdminEmail } from "@/lib/server/adminEmails"
 
 // Trusted server access to Firebase (bypasses security rules — only ever used after verifying the caller).
 //

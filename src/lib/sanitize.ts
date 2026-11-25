@@ -4,9 +4,22 @@ import sanitizeHtml from "sanitize-html"
 // markup that never went through the editor. Everything rendered with dangerouslySetInnerHTML goes
 // through this allowlist first: only what the TipTap editor produces survives. Scripts, iframes,
 // event handlers (onerror=…), inline styles beyond alignment/highlight colours, and javascript:/data:
-// links are all dropped.
+// links are all dropped. Images load only from Prism's own uploads (Firebase Storage) or same-origin
+// paths, so a story can't embed a third-party tracking pixel that logs every reader's IP.
 
 const TEXT_ALIGN = [/^(left|right|center|justify)$/]
+// Where the editor's uploads live (src/lib/storage.ts → getDownloadURL)
+const IMAGE_ORIGINS = ["https://firebasestorage.googleapis.com/", "https://storage.googleapis.com/"]
+
+/** An <img src> readers may load: Prism's Firebase Storage or a same-origin path */
+export function isAllowedImageSrc(src: string | null | undefined): boolean {
+  if (!src) return false
+  // Browsers ignore tabs/newlines inside URLs, so "/<TAB>/evil.com" would load as //evil.com
+  const u = src.replace(/[\u0000-\u0020\u007f]/g, "")
+  if (u.startsWith("/")) return !u.startsWith("//") && !u.startsWith("/\\")
+  return IMAGE_ORIGINS.some((origin) => u.startsWith(origin))
+}
+
 const COLOR = [/^#[0-9a-f]{3,8}$/i, /^rgba?\(\s*[\d.]+%?\s*,\s*[\d.]+%?\s*,\s*[\d.]+%?\s*(,\s*[\d.]+\s*)?\)$/i, /^var\(--[\w-]+\)$/]
 
 const OPTIONS: sanitizeHtml.IOptions = {
@@ -30,7 +43,7 @@ const OPTIONS: sanitizeHtml.IOptions = {
     mark: { "background-color": COLOR, color: COLOR },
   },
   allowedSchemes: ["http", "https", "mailto", "tel"],
-  allowedSchemesByTag: { img: ["https", "http", "data"] },
+  allowedSchemesByTag: { img: ["https"] },
   allowedSchemesAppliedToAttributes: ["href", "src"],
   allowProtocolRelative: false,
   disallowedTagsMode: "discard",
@@ -43,7 +56,8 @@ const OPTIONS: sanitizeHtml.IOptions = {
       return { tagName, attribs: external ? { ...rest, target: "_blank", rel: "noopener noreferrer nofollow ugc" } : rest }
     },
   },
-  exclusiveFilter: (frame) => frame.tag === "img" && !frame.attribs.src,
+  // Images from anywhere else are dropped entirely
+  exclusiveFilter: (frame) => frame.tag === "img" && !isAllowedImageSrc(frame.attribs.src),
 }
 
 /** Story HTML made safe to render */

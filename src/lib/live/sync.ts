@@ -12,6 +12,7 @@
 //
 // Snapshots are applied with `applyingRemote` set, so they're never echoed back as writes.
 
+import { MY_PANEL_VOTES, type PanelVote } from "@/lib/elite/panel"
 import { PUBLIC_ARTICLES } from "@/lib/paywall"
 import {
   collection,
@@ -20,6 +21,7 @@ import {
   increment,
   limit,
   onSnapshot,
+  runTransaction,
   query,
   setDoc,
   updateDoc,
@@ -66,12 +68,19 @@ function asRemote(fn: () => void) {
 /* ── Firestore → store ────────────────────────────────────────────────────── */
 
 const pendingArticles = new Set<string>()
+/** articleId → the signed-in panelist's own (otherwise sealed) vote */
+const myVotes = new Map<string, PanelVote>()
 const articleSources = new Map<string, Map<string, Draft>>()
 
 function publishArticles() {
   const merged: Record<string, Draft> = {}
   // Later sources (the author's own, staff, panel: full documents) win over the public copies…
   for (const src of articleSources.values()) for (const [id, d] of src) merged[id] = d
+  // Blind panel (F-21): votes arrive sealed; a panelist's own vote comes from their private record
+  for (const [articleId, vote] of myVotes) {
+    const d = merged[articleId]
+    if (d?.panel) merged[articleId] = { ...d, panel: d.panel.map((v) => (v.id === vote.id ? vote : v)) }
+  }
   // …but readers' likes and views live on the public copy, so take the counters from there
   for (const [id, pub] of articleSources.get("published") ?? []) {
     const d = merged[id]
@@ -333,7 +342,29 @@ export function bumpArticle(id: string, field: "views" | "likes", by = 1) {
       .catch((err) => warn(`couldn't count a view on ${id}`, err))
     return
   }
-  updateDoc(doc(db, PUBLIC_ARTICLES, id), { [field]: increment(by) }).catch((err) => warn(`couldn't count ${field} on ${id}`, err))
+  clap(id, by).catch((err) => warn(`couldn't count claps on ${id}`, err))
+}
+
+/** Max claps one reader can give one story (enforced by the rules: claps/{articleId}_{uid}) */
+const MAX_CLAPS = 50
+
+/**
+ * A reader's claps: their own claps/{articleId}_{uid} record and the story's total move together in
+ * one transaction, and the rules check that the total grows by exactly the record's growth (audit F-11).
+ */
+async function clap(id: string, by: number) {
+  const uid = useUIStore.getState().authUid
+  if (!uid || by <= 0) return
+  const clapRef = doc(db, "claps", `${id}_${uid}`)
+  const pubRef = doc(db, PUBLIC_ARTICLES, id)
+  await runTransaction(db, async (tx) => {
+    const cur = await tx.get(clapRef)
+    const prev = cur.exists() ? Number(cur.data().count) || 0 : 0
+    const next = Math.min(MAX_CLAPS, prev + by)
+    if (next <= prev) return
+    tx.set(clapRef, { uid, articleId: id, count: next })
+    tx.update(pubRef, { likes: increment(next - prev) })
+  })
 }
 
 /* ── lifecycle ────────────────────────────────────────────────────────────── */
@@ -379,6 +410,10 @@ export function startLiveSync(): () => void {
     scoped.forEach((u) => u())
     scoped = []
     for (const k of ["mine", "all", "panel"]) dropArticleSource(k)
+    if (myVotes.size) {
+      myVotes.clear()
+      publishArticles()
+    }
     asRemote(() => {
       useUIStore.getState().applyRemoteApplications([])
       useUIStore.getState().applyRemoteNotifications([])
@@ -389,6 +424,21 @@ export function startLiveSync(): () => void {
     scoped.push(listenArticles("mine", query(collection(db, COL.articles), where("authorId", "==", uid))))
     if (admin) scoped.push(listenArticles("all", query(collection(db, COL.articles), limit(1000))))
     else if (panel) scoped.push(listenArticles("panel", query(collection(db, COL.articles), where("verificationStatus", "==", "pending_panel"))))
+    if (panel || admin)
+      scoped.push(
+        onSnapshot(
+          query(collection(db, MY_PANEL_VOTES), where("uid", "==", uid)),
+          (snap) => {
+            myVotes.clear()
+            for (const d of snap.docs) {
+              const v = d.data() as { articleId?: string; vote?: PanelVote }
+              if (v.articleId && v.vote) myVotes.set(v.articleId, v.vote)
+            }
+            publishArticles()
+          },
+          (err) => warn("your panel votes listener stopped", err)
+        )
+      )
 
     // Staff see members' emails, which live in user_private (owner + staff only)
     if (admin)

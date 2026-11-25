@@ -19,9 +19,10 @@ def download_all():
     if b.get("enabled"):
         repos += [b["observer"], b["performer"]]
     repos.append(cfg["plagiarism"]["embedding_model"])
+    revs = cfg.get("revisions") or {}
     for i, repo in enumerate(repos, 1):
-        print(f"[{i}/{len(repos)}] {repo}")
-        snapshot_download(repo, allow_patterns=["*.json", "*.safetensors", "*.txt", "*.model", "vocab*", "merges.txt", "1_Pooling/*"])
+        print(f"[{i}/{len(repos)}] {repo} @ {revs.get(repo) or 'latest'}")
+        snapshot_download(repo, revision=revs.get(repo), allow_patterns=["*.json", "*.safetensors", "*.txt", "*.model", "vocab*", "merges.txt", "1_Pooling/*"])
     print("All weights cached.")
 
 

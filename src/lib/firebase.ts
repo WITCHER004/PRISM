@@ -198,22 +198,33 @@ export function consumeLoginRedirect(): Promise<UserCredential | null> {
 
 /**
  * Asks Prism's server whether this email/password attempt is within the rate limits (per IP and per
- * address). Throws an error carrying a readable message when it isn't. If our server can't be reached,
- * the attempt goes ahead: Firebase Auth still applies its own lockouts.
+ * address). Throws an error carrying a readable message when it isn't.
+ *
+ * This is a courtesy pre-check, not the enforcement point: the browser calls Firebase Auth directly, so
+ * a script can skip it. Real enforcement must come from the Firebase console: enforce App Check for
+ * Authentication and turn on email enumeration protection (Authentication → Settings).
+ *
+ * Only a network failure lets the attempt go ahead (Firebase Auth still applies its own lockouts). Any
+ * answer from the server that isn't OK (429 above all) blocks it.
  */
 async function guardAuthAttempt(kind: "signin" | "signup" | "reset", email: string) {
   if (typeof window === "undefined") return
-  let res: Response
+  let check: string | null | undefined
   try {
     const { appCheckToken } = await import("@/lib/appCheck")
-    const check = await appCheckToken()
+    check = await appCheckToken()
+  } catch {
+    check = null // the server decides whether a missing App Check token is acceptable
+  }
+  let res: Response
+  try {
     res = await fetch("/api/auth/attempt", {
       method: "POST",
       headers: { "Content-Type": "application/json", ...(check ? { "X-Firebase-AppCheck": check } : {}) },
       body: JSON.stringify({ kind, email: email.trim().toLowerCase() }),
     })
   } catch {
-    return
+    return // network error only: the server never answered
   }
   if (res.ok) return
   const data = (await res.json().catch(() => ({}))) as { error?: string }

@@ -65,8 +65,17 @@ export function publicCopyOf(full: Doc): { copy: Doc; body: Doc | null } {
   const locked = isLocked(live)
   const shownHtml = locked ? previewHtml(html, previewFraction(live)) : html
   const copy: Doc = { ...full }
-  for (const k of ["submitted", "content", "views", "likes", "monetizedViews", "rebuttal", "review"]) delete copy[k]
-  copy.live = { ...live, contentHtml: shownHtml, locked, fullWordCount: wordCountOf(html) }
+  // Working copies (draft text, draft recording, submitted version), review-only fields and counters
+  for (const k of ["submitted", "content", "views", "likes", "monetizedViews", "rebuttal", "review", "audiobookUrl", "audiobookDurationSec", "audiobookSource"])
+    delete copy[k]
+  const liveCopy: Doc = { ...live, contentHtml: shownHtml, locked, fullWordCount: wordCountOf(html) }
+  // A locked voice post's recording is part of what's paid for: its URL goes with the body (F-14)
+  const audioUrl = typeof live.audiobookUrl === "string" ? live.audiobookUrl : ""
+  if (locked && audioUrl) {
+    delete liveCopy.audiobookUrl
+    liveCopy.audiobookLocked = true
+  }
+  copy.live = liveCopy
   // What older readers of the doc expect in `content`: the version readers see
   copy.content = shownHtml
   const body: Doc = {
@@ -74,6 +83,7 @@ export function publicCopyOf(full: Doc): { copy: Doc; body: Doc | null } {
     paywall: live.paywall ?? "FREE",
     paper: !!live.paper,
     authorId: full.authorId ?? "",
+    audiobookUrl: audioUrl || null,
   }
   return { copy, body }
 }

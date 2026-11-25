@@ -44,3 +44,9 @@ next-env.d.ts
 # python
 __pycache__/
 *.pyc
+
+# service account keys (Firebase Admin SDK)
+*adminsdk*.json
+serviceAccount*.json
+service-account*.json
+*-firebase-adminsdk-*.json

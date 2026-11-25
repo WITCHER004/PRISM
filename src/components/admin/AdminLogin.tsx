@@ -5,19 +5,19 @@ import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { Loader2, ShieldX } from "lucide-react"
 import { useAuth } from "@/components/providers/AuthProvider"
-import { isAdminUser } from "@/lib/admin"
 import { useUIStore } from "@/lib/store"
 
 /**
- * /admin/login: Google sign-in, then a hard check of the verified email against ADMIN_EMAILS.
+ * /admin/login: Google sign-in, then the server checks the verified email against the admin list
+ * (GET /api/auth/role, via AuthProvider).
  * Whitelisted accounts go straight into the portal; anyone else is told no and can switch accounts.
  */
 export function AdminLogin() {
   const router = useRouter()
-  const { user, loading, signInWithGoogle, logout } = useAuth()
+  const { user, loading, isAdmin, roleLoading, signInWithGoogle, logout } = useAuth()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
-  const authorized = isAdminUser(user)
+  const authorized = isAdmin
   const adminSession = useUIStore((s) => s.adminSession)
 
   useEffect(() => {
@@ -67,7 +67,7 @@ export function AdminLogin() {
         </p>
 
         <div className="mt-8 space-y-3" aria-busy={loading}>
-          {loading || (authorized && !adminSession) ? (
+          {loading || roleLoading || (authorized && !adminSession) ? (
             <div className="h-24 rounded-[14px] bg-white/[0.04] animate-pulse" />
           ) : authorized ? (
             <p className="flex items-center gap-2 text-sm text-[#A1A1AA]">

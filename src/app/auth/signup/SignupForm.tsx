@@ -167,8 +167,10 @@ export function SignupForm({ initialWriter = false }: { initialWriter?: boolean 
     } catch (authErr: any) {
       console.error("Firebase email sign-up error:", authErr)
       setStatus("idle")
+      // Same wording whether or not the address has an account, so the form can't be used to probe
+      // which emails are registered (pair with email enumeration protection in the Firebase console)
       if (authErr?.code === "auth/email-already-in-use") {
-        setErrors({ email: "This email is already registered. Please sign in instead." })
+        setErrors({ email: "Couldn't create an account with that email. If you already have one, sign in or reset your password." })
         emailRef.current?.focus()
         return
       }

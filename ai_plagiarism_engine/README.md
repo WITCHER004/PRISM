@@ -73,12 +73,31 @@ benchmark. It only ever moves scores inside the 18–25 band.
 ## API
 
 ```bash
-ENGINE_API_KEY=... uvicorn api:app --host 0.0.0.0 --port 8000
+ENGINE_API_KEY=... python api.py                                   # binds 127.0.0.1:8000
+ENGINE_API_KEY=... ENGINE_HOST=0.0.0.0 PORT=8000 python api.py     # behind a firewall / private network
 ```
 
-When `ENGINE_API_KEY` is set, every call except `/health` needs `Authorization: Bearer <key>` or
-`x-api-key`. Point the app at it with `AI_DETECTION_API_URL=https://engine/evaluate` and
-`AI_DETECTION_API_KEY=<key>`.
+| env var | default | meaning |
+|---|---|---|
+| `ENGINE_API_KEY` | **required** | Every call except `/health` needs `Authorization: Bearer <key>` or `x-api-key: <key>` (constant-time compare). The service refuses to start without it. |
+| `ENGINE_INSECURE_DEV` | unset | `1` lets the engine start without `ENGINE_API_KEY` for local development. It logs a loud warning; never use it on a reachable network. |
+| `ENGINE_INDEX_KEY` | unset | Separate key for corpus writes. When set, `POST /index` and `DELETE /index/{id}` require it instead of `ENGINE_API_KEY`. |
+| `ENGINE_HOST` | `127.0.0.1` | Bind address for `python api.py`. Set `0.0.0.0` only behind a firewall or private network. |
+| `PORT` | `8000` | Bind port. |
+| `ENGINE_MAX_BODY_BYTES` | `2000000` | Request bodies larger than this get `413`, checked against `Content-Length` and while reading chunked bodies. |
+
+Point the app at it with `AI_DETECTION_API_URL=https://engine/evaluate` and `AI_DETECTION_API_KEY=<key>`.
+
+Input limits: `text` ≤ 200,000 characters (the same cap `text_prep` applies), at most 50 `external_refs`
+with ≤ 200,000 characters of reference text in total, and `craft` is validated against the
+`CraftTelemetry` shape (bounded numbers, ≤ 200 `growth` points, unknown keys ignored). The plagiarism
+check processes at most 2,000 sentences and 500 paragraphs per request. Errors return a generic
+`500 internal error`; details go to the server log only. Report status fields are coarse
+(`ok` / `unavailable` / `disabled`, and for `plagiarism.semantic` also `empty corpus` / `no prose`).
+
+Model downloads are pinned to Hub commits in `detector_calibration.json` → `revisions` (repo id → commit
+sha) and transformers loads use `use_safetensors=True`. Update a pin deliberately when changing a model,
+then rerun the benchmark.
 
 `POST /evaluate`
 
@@ -108,8 +127,8 @@ Response (abridged):
 ```
 
 `POST /index` `{article_id, text, url, title}` adds a published story to the corpus. The app calls it
-after a story publishes. `DELETE /index/{article_id}` removes one. `GET /health` reports the
-calibration version and corpus size.
+after a story publishes. `DELETE /index/{article_id}` removes one. `GET /health` returns only
+`{"status": "ok", "service": "prism-detection-engine"}` and needs no key.
 
 ## Tests
 

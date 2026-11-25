@@ -104,8 +104,9 @@ export function useMarginNotes(articleId: string) {
       fs()
         .then(([fsm, { db }]) => {
           const batch = fsm.writeBatch(db)
-          batch.set(fsm.doc(fsm.collection(db, NOTES)), data)
-          stampRateLimit(fsm, batch, db, uid, "margin_note")
+          const ref = fsm.doc(fsm.collection(db, NOTES))
+          batch.set(ref, data)
+          stampRateLimit(fsm, batch, db, uid, "margin_note", ref.id)
           return batch.commit().then(() => markPosted("margin_note"))
         })
         .catch((err) => {

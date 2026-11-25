@@ -15,6 +15,7 @@ machine-written", 0–100).
 """
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import Optional
 
@@ -24,6 +25,8 @@ from classifiers import Binoculars, DesklibDetector, RobertaDetector, logit, sig
 from text_prep import Prepared, words
 
 _CLIP = 8.0
+
+log = logging.getLogger("prism.detectors")
 
 
 def _clip(x: float) -> float:
@@ -49,10 +52,11 @@ class AIDetector:
     def __init__(self, cfg: Optional[dict] = None, device: Optional[str] = None):
         self.cfg = cfg or cal.load()
         m = self.cfg["models"]
-        self.desklib = DesklibDetector(device) if m.get("desklib") else None
-        self.roberta = RobertaDetector(device) if m.get("roberta") else None
+        revs = self.cfg.get("revisions") or {}
+        self.desklib = DesklibDetector(device, revs) if m.get("desklib") else None
+        self.roberta = RobertaDetector(device, revs) if m.get("roberta") else None
         b = m.get("binoculars") or {}
-        self.binoculars = Binoculars(b["observer"], b["performer"], device) if b.get("enabled") else None
+        self.binoculars = Binoculars(b["observer"], b["performer"], device, revisions=revs) if b.get("enabled") else None
 
     def warmup(self) -> dict:
         return {
@@ -106,8 +110,9 @@ class AIDetector:
             try:
                 raw[key] = getattr(det, fn)(sample)
                 models[key] = "ok"
-            except Exception as e:  # noqa: BLE001
-                models[key] = f"unavailable: {e}"[:200]
+            except Exception:  # noqa: BLE001 - details go to the server log, never into the report
+                log.warning("%s scoring failed", key, exc_info=True)
+                models[key] = "unavailable"
                 raw[key] = [None] * len(sample)
 
         chunk_scores: list[dict] = []

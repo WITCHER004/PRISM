@@ -4,7 +4,7 @@ rules_version = '2';
 //   avatars/{uid}/…    profile photos        (written by that user)
 //   articles/{uid}/…   cover + inline images (written by that user)
 //   audiobooks/{uid}/… author-narrated audiobook editions (written by that user)
-// All are publicly readable: they appear on public profiles and stories.
+// Files are readable by exact path (they appear on public profiles and stories); folders can't be listed.
 // Image uploads: the owner's own folder only, ≤ 5 MB, JPEG/PNG/WebP with a matching extension.
 // Audio uploads: the owner's own folder only, < 50 MB, MP3/WAV/M4A/OGG (plus WebM/MP4 from in-browser recording).
 // Keep in step with src/lib/storage.ts and src/lib/audiobook.ts.
@@ -29,19 +29,26 @@ service firebase.storage {
         && file.lower().matches('.+[.](mp3|wav|m4a|ogg|webm|mp4)$');
     }
 
+    // Reads are by exact path only: listing a folder is closed, so nobody can enumerate other people's
+    // recordings or images (audit F-14). A locked voice post's URL is only handed out by the server.
+    // Uploads are create-only: a file a reviewer approved can't be swapped afterwards (audit F-13).
+    // Every upload gets a fresh timestamped name (src/lib/storage.ts, src/lib/audiobook.ts).
     match /audiobooks/{uid}/{file} {
-      allow read: if true;
-      allow create, update: if ownAudio(uid, file);
+      allow get: if true;
+      allow list: if false;
+      allow create: if ownAudio(uid, file);
       allow delete: if (request.auth != null && request.auth.uid == uid) || isAdmin();
     }
     match /avatars/{uid}/{file} {
-      allow read: if true;
-      allow create, update: if ownImage(uid, file);
+      allow get: if true;
+      allow list: if false;
+      allow create: if ownImage(uid, file);
       allow delete: if (request.auth != null && request.auth.uid == uid) || isAdmin();
     }
     match /articles/{uid}/{file} {
-      allow read: if true;
-      allow create, update: if ownImage(uid, file);
+      allow get: if true;
+      allow list: if false;
+      allow create: if ownImage(uid, file);
       allow delete: if (request.auth != null && request.auth.uid == uid) || isAdmin();
     }
     // Everything else is closed

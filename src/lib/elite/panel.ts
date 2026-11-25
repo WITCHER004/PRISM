@@ -38,6 +38,8 @@ export interface PanelVote {
   /** Optional comment on a PASS */
   note?: string
   decidedAt?: string
+  /** Blind voting: on a sealed vote (panel still open) the decision is hidden and this says it was cast */
+  cast?: boolean
   /** Set when a FAIL was flipped to PASS on reconsideration */
   originalDecision?: PanelDecision
   counter?: CounterReason
@@ -137,4 +139,23 @@ export function resolveVote(vote: PanelVote, verdict: "ACCEPT" | "UPHOLD", note:
   return verdict === "ACCEPT"
     ? { ...vote, decision: "PASS", originalDecision: vote.decision ?? "FAIL", reconsideration }
     : { ...vote, reconsideration }
+}
+
+/*
+ * Blind voting (audit F-21). While a panel is open, the article document carries sealed votes: who
+ * holds each seat and whether they have voted, never how. The real ballots live server-side
+ * (panel_ballots/{articleId}); each panelist can read only their own (panel_votes_mine/{articleId}_{uid}).
+ * Once the panel decides, the full votes go back on the article for the dossier.
+ */
+export const PANEL_BALLOTS = "panel_ballots"
+export const MY_PANEL_VOTES = "panel_votes_mine"
+
+export function sealVotes(votes: readonly PanelVote[]): PanelVote[] {
+  return votes.map((v) => ({ id: v.id, reviewer: v.reviewer, decision: null, cast: !!v.decision }))
+}
+
+/** Sealed votes from the article + the full ballots → the votes the workflow rules run on */
+export function unsealVotes(sealed: readonly PanelVote[], ballots: readonly PanelVote[]): PanelVote[] {
+  const byId = new Map(ballots.map((b) => [b.id, b]))
+  return sealed.map((v) => byId.get(v.id) ?? v)
 }

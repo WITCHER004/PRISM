@@ -1,5 +1,6 @@
 "use client"
 
+import { usePaywallAudio } from "@/components/posts/paywallAccess"
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react"
 import { AnimatePresence, motion } from "motion/react"
 import { Download, Headphones, Loader2, Pause, Play, RotateCcw, RotateCw, X } from "lucide-react"
@@ -71,7 +72,10 @@ interface ProviderProps {
   children: React.ReactNode
 }
 
-export function AudiobookProvider({ src, slug, paywalled, durationSec, title, authorName, articleId, children }: ProviderProps) {
+export function AudiobookProvider({ src: publicSrc, slug, paywalled, durationSec, title, authorName, articleId, children }: ProviderProps) {
+  // A locked story's recording URL only arrives once the server grants the story (audit F-14)
+  const grantedSrc = usePaywallAudio(articleId)
+  const src = publicSrc || grantedSrc || ""
   // Same rule as the story body: Advanced Papers need Elite, member stories need a plan or an unlock
   const canDownload = usePostUnlocked(articleId, paywalled)
   const downloadName = `${slug || "prism-audiobook"}.${extensionOf(src)}`
@@ -260,7 +264,7 @@ export function AudiobookProvider({ src, slug, paywalled, durationSec, title, au
     <AudiobookContext.Provider value={engine}>
       <audio
         ref={audioRef}
-        src={src}
+        src={src || undefined}
         preload="metadata"
         onPlay={() => setPlaying(true)}
         onPause={() => {

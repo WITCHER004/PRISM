@@ -44,7 +44,8 @@ export interface Post {
   contentHtml: string
   coverImageUrl?: string
   /** The author's own narration of the live version, when they attached one */
-  audiobook?: { url: string; durationSec: number; source: "recorded" | "uploaded" }
+  /** `locked`: a paywalled story's recording; `url` is empty until the server grants it */
+  audiobook?: { url: string; durationSec: number; source: "recorded" | "uploaded"; locked?: boolean }
   /** "voice": the recording is the piece and the body holds show notes */
   format?: "essay" | "voice"
   readingTimeMin: number

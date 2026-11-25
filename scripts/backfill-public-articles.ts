@@ -47,7 +47,8 @@ async function main() {
     const existing = await publicRef.get()
     // First copy: carry the article's counters over; later runs keep the copy's own
     const counters = existing.exists ? {} : { likes: Number(full.likes ?? 0), views: Number(full.views ?? 0) }
-    const data = { ...copy, ...counters, submitted: FieldValue.delete(), review: FieldValue.delete(), rebuttal: FieldValue.delete() }
+    const data: Record<string, unknown> = { ...copy, ...counters }
+    for (const k of ["submitted", "review", "rebuttal", "audiobookUrl", "audiobookDurationSec", "audiobookSource"]) data[k] = FieldValue.delete()
     await publicRef.set(data, { mergeFields: Object.keys(data) })
     if (body) await bodyRef.set({ ...body, updatedAt: Date.now() })
   }

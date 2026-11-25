@@ -173,7 +173,7 @@ export function useForumActions() {
       const now = Date.now()
       try {
         const batch = writeBatch(db)
-        stampRateLimit({ doc, serverTimestamp }, batch, db, me.uid, "forum_thread")
+        stampRateLimit({ doc, serverTimestamp }, batch, db, me.uid, "forum_thread", ref.id)
         batch.set(ref, {
           authorId: me.authorId,
           authorHandle: me.authorHandle,
@@ -213,8 +213,9 @@ export function useForumActions() {
       const now = Date.now()
       try {
         const batch = writeBatch(db)
-        stampRateLimit({ doc, serverTimestamp }, batch, db, me.uid, "forum_reply")
-        batch.set(doc(collection(db, REPLIES)), {
+        const replyRef = doc(collection(db, REPLIES))
+        stampRateLimit({ doc, serverTimestamp }, batch, db, me.uid, "forum_reply", replyRef.id)
+        batch.set(replyRef, {
           threadId,
           parentId,
           body: body.trim().slice(0, BODY_MAX),
@@ -225,7 +226,8 @@ export function useForumActions() {
           upvoterIds: [],
           createdAt: now,
         })
-        batch.update(doc(db, THREADS, threadId), { replyCount: increment(1), lastActivityAt: now })
+        // The rules only accept the +1 together with the reply it counts (lastReplyId, audit F-15)
+        batch.update(doc(db, THREADS, threadId), { replyCount: increment(1), lastActivityAt: now, lastReplyId: replyRef.id })
         await batch.commit()
         markPosted("forum_reply")
         return true
@@ -258,7 +260,7 @@ export function useForumActions() {
     try {
       const batch = writeBatch(db)
       batch.delete(doc(db, REPLIES, r.id))
-      batch.update(doc(db, THREADS, r.threadId), { replyCount: increment(-1) })
+      batch.update(doc(db, THREADS, r.threadId), { replyCount: increment(-1), lastReplyId: r.id })
       await batch.commit()
     } catch (err) {
       warn("couldn't delete the reply", err)

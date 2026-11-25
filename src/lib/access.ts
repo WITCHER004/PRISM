@@ -4,7 +4,7 @@
 //
 // Free, Elite and Panel Member are the SAME account on the SAME site: each step unlocks
 // capabilities in place. Admin is separate: it only exists inside the isolated /admin portal, and only
-// for the emails in ADMIN_EMAILS (src/lib/admin.ts).
+// for the emails in ADMIN_EMAILS (src/lib/server/adminEmails.ts, server-only).
 
 import { isEliteActive, type Subscription } from "@/lib/elite/subscription"
 
@@ -74,7 +74,7 @@ export function resolveAccess(input: { subscription?: Subscription; record?: Acc
     isElite,
     isPanelMember,
     panelApplicationStatus: isPanelMember ? "approved" : (record?.panelApplicationStatus ?? "none"),
-    // record.isAdmin is set from the ADMIN_EMAILS whitelist (src/lib/admin.ts)
+    // record.isAdmin comes from the server (/api/auth/role), which checks ADMIN_EMAILS in src/lib/server/adminEmails.ts
     isAdmin: !suspended && !!record?.isAdmin,
     suspended,
   }

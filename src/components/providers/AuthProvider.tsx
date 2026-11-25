@@ -12,7 +12,7 @@ import {
   type FirebaseUser,
 } from "@/lib/firebase"
 import { useUIStore } from "@/lib/store"
-import { isAdminUser } from "@/lib/admin"
+import { resolveAdminRole, type AdminRole } from "@/lib/admin"
 import { handleFrom } from "@/lib/live/schema"
 import { claimHandle, ensureHandleRegistered } from "@/lib/handles"
 
@@ -35,6 +35,10 @@ type AuthContextValue = {
   userProfile: UserProfile | null
   /** True until Firebase reports the initial auth state */
   loading: boolean
+  /** The signed-in account is a Prism admin (asked of the server; UI only, the rules enforce it) */
+  isAdmin: boolean
+  /** True while the admin role of the signed-in user is still being checked */
+  roleLoading: boolean
   signInWithGoogle: () => Promise<FirebaseUser | null>
   logout: () => Promise<void>
   /** Update the in-memory profile right away (role changes); persisting is the caller's job */
@@ -60,16 +64,17 @@ const profileFromAuth = (u: FirebaseUser): UserProfile => ({
  * isPanelMember, panelApplicationStatus, isAdmin, createdAt) and refreshes the login fields after.
  * Never throws: if Firestore is unreachable the session carries on with the auth profile.
  */
-async function syncUserProfile(u: FirebaseUser): Promise<UserProfile> {
+async function syncUserProfile(u: FirebaseUser, role: AdminRole): Promise<UserProfile> {
   const base = profileFromAuth(u)
   try {
     const [{ doc, getDoc, setDoc, serverTimestamp, deleteField }, { db }] = await Promise.all([import("firebase/firestore"), import("@/lib/firebase")])
     const ref = doc(db, "users", u.uid)
     const snap = await getDoc(ref)
-    const admin = isAdminUser(u)
+    const admin = role.isAdmin
     // users/{uid} is world-readable, so the email lives in user_private/{uid} (owner + staff only)
     if (u.email)
-      setDoc(doc(db, "user_private", u.uid), { email: u.email, updatedAt: serverTimestamp() }).catch((err) =>
+      // Last sign-in time is private too (audit F-31): it shows when someone is active
+      setDoc(doc(db, "user_private", u.uid), { email: u.email, lastLoginAt: serverTimestamp(), updatedAt: serverTimestamp() }).catch((err) =>
         warn(`Could not save user_private/${u.uid}.`, err)
       )
 
@@ -84,7 +89,6 @@ async function syncUserProfile(u: FirebaseUser): Promise<UserProfile> {
         panelApplicationStatus: "none",
         isAdmin: admin,
         createdAt: serverTimestamp(),
-        lastLoginAt: serverTimestamp(),
       }
       // The profile and its handle-registry entry are written together (the rules require both)
       const handle = await claimHandle(u.uid, handleFrom(u.displayName, u.email, u.uid), { data: fields, merge: false })
@@ -94,7 +98,13 @@ async function syncUserProfile(u: FirebaseUser): Promise<UserProfile> {
 
     const existing = snap.data() as UserProfile & { handle?: string }
     // Older docs carried the email publicly: remove it on the next sign-in
-    const patch: Record<string, unknown> = { isAdmin: admin, lastLoginAt: serverTimestamp(), ...("email" in existing ? { email: deleteField() } : {}) }
+    // isAdmin is rewritten only from a server answer; a fallback guess leaves the stored flag alone
+    const patch: Record<string, unknown> = {
+      ...(role.definitive ? { isAdmin: admin } : {}),
+      // Older docs carried the email and last sign-in publicly: both now live in user_private
+      ...("email" in existing ? { email: deleteField() } : {}),
+      ...("lastLoginAt" in existing ? { lastLoginAt: deleteField() } : {}),
+    }
     // Older docs may predate handles; the profile photo stays whatever the user last uploaded
     if (!existing.photoURL && u.photoURL) patch.photoURL = u.photoURL
     if (!existing.handle) {
@@ -115,6 +125,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<FirebaseUser | null>(null)
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null)
   const [loading, setLoading] = useState(true)
+  /** The resolved admin role and the uid it belongs to */
+  const [role, setRole] = useState<{ uid: string; isAdmin: boolean } | null>(null)
 
   useEffect(() => {
     getClientAnalytics().catch(() => {})
@@ -142,14 +154,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         if (!firebaseUser) {
           setUserProfile(null)
+          setRole(null)
           return
         }
         // Usable profile right away; replaced by the Firestore doc if it loads
         setUserProfile(profileFromAuth(firebaseUser))
+        const uid = firebaseUser.uid
+        const rolePromise = resolveAdminRole(firebaseUser)
+        rolePromise.then(({ isAdmin }) => {
+          if (auth.currentUser?.uid !== uid) return
+          setRole({ uid, isAdmin })
+          useUIStore.setState((s) =>
+            s.authUid === uid ? { authIsAdmin: isAdmin, adminSession: isAdmin ? s.currentUser : null } : {}
+          )
+        })
         // The sign-in page may be about to delete a brand-new account: wait, then skip if it's gone
-        awaitLoginGate().then(() => {
+        awaitLoginGate().then(async () => {
           if (auth.currentUser?.uid !== firebaseUser.uid) return
-          return syncUserProfile(firebaseUser).then((profile) => {
+          const adminRole = await rolePromise
+          if (auth.currentUser?.uid !== firebaseUser.uid) return
+          return syncUserProfile(firebaseUser, adminRole).then((profile) => {
             if (auth.currentUser?.uid === firebaseUser.uid) setUserProfile(profile)
           })
         })
@@ -184,9 +208,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUserProfile((p) => (p ? { ...p, ...patch } : p))
   }, [])
 
+  const isAdmin = !!user && role?.uid === user.uid && role.isAdmin
+  const roleLoading = loading || (!!user && role?.uid !== user.uid)
+
   const value = useMemo(
-    () => ({ user, userProfile, loading, signInWithGoogle, logout, patchUserProfile }),
-    [user, userProfile, loading, signInWithGoogle, logout, patchUserProfile]
+    () => ({ user, userProfile, loading, isAdmin, roleLoading, signInWithGoogle, logout, patchUserProfile }),
+    [user, userProfile, loading, isAdmin, roleLoading, signInWithGoogle, logout, patchUserProfile]
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

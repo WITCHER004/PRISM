@@ -156,6 +156,24 @@ export function htmlToPlainText(html: string) {
 }
 
 /**
+ * Editor telemetry is written by the browser, so it can be made up (audit F-12). Before it may nudge a
+ * score it has to be physically plausible for this text: at least as much text entered as the story
+ * holds, not absurdly more, and no faster than ~25 characters a second of sustained typing.
+ */
+export function plausibleCraft(craft: CraftTelemetry | null | undefined, contentChars: number): CraftTelemetry | null {
+  if (!craft) return null
+  const n = (v: unknown) => (typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : NaN)
+  const typed = n(craft.typedChars) + n(craft.dictatedChars ?? 0)
+  const inserted = typed + n(craft.pastedChars)
+  if (!Number.isFinite(inserted) || !Number.isFinite(n(craft.activeMs))) return null
+  if (inserted < contentChars * 0.8) return null
+  if (inserted > Math.max(5_000, contentChars * 30)) return null
+  if (n(craft.typedChars) > 0 && craft.activeMs < n(craft.typedChars) * 40) return null
+  if (!(craft.sessions >= 1 && craft.sessions <= 1_000) || (craft.growth?.length ?? 0) > 40) return null
+  return craft
+}
+
+/**
  * Proof of Craft: editor telemetry nudges a borderline AI score (BORDERLINE_AI, 18–25%).
  * Organic typing, several sittings and passages cut/rewritten pull it down by up to 6 points;
  * a mostly pasted draft pushes it up by up to 3. Scores outside the band are never moved.
@@ -204,6 +222,7 @@ export async function analyzeArticle(
   provider: AIDetectionProvider | null = getExternalProvider()
 ): Promise<Phase1Report> {
   const prepared = prepareText(input.contentHtml)
+  const craft = plausibleCraft(input.craft, htmlToPlainText(input.contentHtml).length)
   const { domain } = detectDomain(prepared, input.topic)
   const heuristic: HeuristicResult = analyzeHeuristically(prepared.prose, domain)
   const wordCount = prepared.wordCount
@@ -217,7 +236,7 @@ export async function analyzeArticle(
         articleId: input.articleId ?? "phase1_check",
         text: toEngineText(input.contentHtml),
         topic: input.topic,
-        craft: input.craft ?? undefined,
+        craft: craft ?? undefined,
       })
       if (ext.engine) {
         engine = ext.engine
@@ -236,7 +255,7 @@ export async function analyzeArticle(
   let aiPercent = r1(probability * 100)
   let craftDelta = engine ? (engine.signals?.craft?.applied ?? 0) : 0
   if (!engine) {
-    craftDelta = craftAdjustment(aiPercent, input.craft)
+    craftDelta = craftAdjustment(aiPercent, craft)
     aiPercent = r1(Math.max(0, aiPercent + craftDelta))
   }
 

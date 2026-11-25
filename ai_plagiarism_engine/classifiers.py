@@ -44,8 +44,10 @@ def default_device() -> str:
 class _Lazy:
     name = "model"
 
-    def __init__(self, device: Optional[str] = None):
+    def __init__(self, device: Optional[str] = None, revisions: Optional[dict] = None):
         self.device = device or default_device()
+        # Pinned Hub commits keyed by repo id (detector_calibration.json "revisions"); None = latest
+        self.revisions = dict(revisions or {})
         self._loaded = False
         self._error: Optional[str] = None
         self._lock = threading.Lock()
@@ -58,6 +60,11 @@ class _Lazy:
     @property
     def error(self) -> Optional[str]:
         return self._error
+
+    def _hub(self, repo: str) -> dict:
+        """from_pretrained kwargs for a Hub repo: pinned revision when configured."""
+        rev = self.revisions.get(repo)
+        return {"revision": rev} if rev else {}
 
     def _ensure(self):
         if self._loaded:
@@ -99,8 +106,8 @@ class DesklibDetector(_Lazy):
                 pooled = (hidden * mask).sum(1) / mask.sum(1).clamp(min=1e-9)
                 return self.classifier(pooled)
 
-        self.tok = AutoTokenizer.from_pretrained(self.name)
-        self.model = DesklibAIDetectionModel.from_pretrained(self.name).to(self.device).eval()
+        self.tok = AutoTokenizer.from_pretrained(self.name, **self._hub(self.name))
+        self.model = DesklibAIDetectionModel.from_pretrained(self.name, use_safetensors=True, **self._hub(self.name)).to(self.device).eval()
         self._torch = torch
 
     def logits(self, texts: list[str], batch: int = 4) -> list[float]:
@@ -123,11 +130,11 @@ class RobertaDetector(_Lazy):
 
         name = self.name
         try:
-            self.tok = AutoTokenizer.from_pretrained(name)
+            self.tok = AutoTokenizer.from_pretrained(name, **self._hub(name))
         except Exception:
             name = "openai-community/roberta-base-openai-detector"
-            self.tok = AutoTokenizer.from_pretrained(name)
-        self.model = AutoModelForSequenceClassification.from_pretrained(name).to(self.device).eval()
+            self.tok = AutoTokenizer.from_pretrained(name, **self._hub(name))
+        self.model = AutoModelForSequenceClassification.from_pretrained(name, use_safetensors=True, **self._hub(name)).to(self.device).eval()
         self.ai_idx = 0  # {0: "Fake", 1: "Real"}
         for idx, label in (self.model.config.id2label or {}).items():
             if any(k in str(label).lower() for k in ("fake", "ai", "generated")):
@@ -152,8 +159,8 @@ class RobertaDetector(_Lazy):
 class Binoculars(_Lazy):
     """observer = base model, performer = its instruction-tuned sibling (must share a tokenizer)."""
 
-    def __init__(self, observer: str, performer: str, device: Optional[str] = None, max_tokens: int = 512):
-        super().__init__(device)
+    def __init__(self, observer: str, performer: str, device: Optional[str] = None, max_tokens: int = 512, revisions: Optional[dict] = None):
+        super().__init__(device, revisions)
         self.observer_name = observer
         self.performer_name = performer
         self.name = f"binoculars({observer} / {performer})"
@@ -164,11 +171,15 @@ class Binoculars(_Lazy):
         from transformers import AutoModelForCausalLM, AutoTokenizer
 
         dtype = torch.bfloat16 if self.device.startswith("cuda") else torch.float32
-        self.tok = AutoTokenizer.from_pretrained(self.observer_name)
+        self.tok = AutoTokenizer.from_pretrained(self.observer_name, **self._hub(self.observer_name))
         if self.tok.pad_token is None:
             self.tok.pad_token = self.tok.eos_token
-        self.observer = AutoModelForCausalLM.from_pretrained(self.observer_name, dtype=dtype).to(self.device).eval()
-        self.performer = AutoModelForCausalLM.from_pretrained(self.performer_name, dtype=dtype).to(self.device).eval()
+        self.observer = (
+            AutoModelForCausalLM.from_pretrained(self.observer_name, dtype=dtype, use_safetensors=True, **self._hub(self.observer_name)).to(self.device).eval()
+        )
+        self.performer = (
+            AutoModelForCausalLM.from_pretrained(self.performer_name, dtype=dtype, use_safetensors=True, **self._hub(self.performer_name)).to(self.device).eval()
+        )
 
     def scores(self, texts: list[str], batch: int = 2) -> list[float]:
         """Binoculars score per text. Lower = more machine-like (paper threshold ≈0.90 for Falcon-7B)."""

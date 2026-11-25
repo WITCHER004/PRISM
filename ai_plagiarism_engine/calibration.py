@@ -56,6 +56,16 @@ DEFAULTS: dict[str, Any] = {
         "min_sentence_words": 8,
     },
     "flag_sentence_min": 0.6,
+    # Pinned Hugging Face Hub commits, keyed by repo id; passed as revision= when a model loads, so a
+    # compromised or force-pushed upstream repo can't silently swap weights. Missing key = latest.
+    "revisions": {
+        "desklib/ai-text-detector-v1.01": "5fdea974cd4287c61674951ec78803aa274e2fb7",
+        "roberta-base-openai-detector": "6cba99c003b711c7fe94f8a3aa2be35a792cb6fa",
+        "openai-community/roberta-base-openai-detector": "6cba99c003b711c7fe94f8a3aa2be35a792cb6fa",
+        "Qwen/Qwen2.5-0.5B": "060db6499f32faf8b98477b0a26969ef7d8b9987",
+        "Qwen/Qwen2.5-0.5B-Instruct": "7ae557604adf67be50417f59c2c2f167def9a775",
+        "BAAI/bge-base-en-v1.5": "a5beb1e3e68b9ab74eb54cfd186867f64f240e1a",
+    },
 }
 
 

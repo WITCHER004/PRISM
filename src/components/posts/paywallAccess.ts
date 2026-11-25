@@ -11,11 +11,13 @@ type Status = "checking" | "locked" | "open"
 interface PaywallState {
   /** postId → full rendered body, once the server granted it */
   bodies: Record<string, string>
+  /** postId → a locked voice post's recording URL, granted with the body */
+  audio: Record<string, string>
   /** `${uid}|${postId}` → where the check stands for that reader */
   status: Record<string, Status>
 }
 
-export const usePaywallStore = create<PaywallState>(() => ({ bodies: {}, status: {} }))
+export const usePaywallStore = create<PaywallState>(() => ({ bodies: {}, audio: {}, status: {} }))
 
 const keyOf = (uid: string | null | undefined, postId: string) => `${uid ?? "anon"}|${postId}`
 
@@ -31,14 +33,20 @@ export async function checkAccess(postId: string, uid: string | null | undefined
   if (st.bodies[postId] || st.status[key]) return
   usePaywallStore.setState((s) => ({ status: { ...s.status, [key]: "checking" } }))
   let html: string | null = null
+  let audio: string | null = null
   try {
     const res = await fetch(`/api/articles/${encodeURIComponent(postId)}/body`, { headers: (await headers(false)) ?? {}, cache: "no-store" })
-    if (res.ok) html = ((await res.json()) as { html?: string }).html ?? null
+    if (res.ok) {
+      const data = (await res.json()) as { html?: string; audiobookUrl?: string | null }
+      html = data.html ?? null
+      audio = data.audiobookUrl ?? null
+    }
   } catch {
     // Offline or the server is down: the story stays at its preview
   }
   usePaywallStore.setState((s) => ({
     bodies: html ? { ...s.bodies, [postId]: html } : s.bodies,
+    audio: audio ? { ...s.audio, [postId]: audio } : s.audio,
     status: { ...s.status, [key]: html ? "open" : "locked" },
   }))
 }
@@ -55,9 +63,12 @@ export async function requestUnlock(postId: string, method: UnlockMethod): Promi
       headers: { ...h, "content-type": "application/json" },
       body: JSON.stringify({ method }),
     })
-    const data = (await res.json().catch(() => ({}))) as { html?: string; remaining?: number; error?: string }
+    const data = (await res.json().catch(() => ({}))) as { html?: string; audiobookUrl?: string | null; remaining?: number; error?: string }
     if (!res.ok || !data.html) return { ok: false, error: data.error ?? "Couldn't unlock this story. Try again." }
-    usePaywallStore.setState((s) => ({ bodies: { ...s.bodies, [postId]: data.html! } }))
+    usePaywallStore.setState((s) => ({
+      bodies: { ...s.bodies, [postId]: data.html! },
+      audio: data.audiobookUrl ? { ...s.audio, [postId]: data.audiobookUrl } : s.audio,
+    }))
     return { ok: true, remaining: data.remaining }
   } catch {
     return { ok: false, error: "Couldn't reach Prism. Check your connection and try again." }
@@ -65,4 +76,5 @@ export async function requestUnlock(postId: string, method: UnlockMethod): Promi
 }
 
 export const usePaywallBody = (postId: string) => usePaywallStore((s) => s.bodies[postId])
+export const usePaywallAudio = (postId: string) => usePaywallStore((s) => s.audio[postId])
 export const useAccessStatus = (postId: string, uid: string | null | undefined) => usePaywallStore((s) => s.status[keyOf(uid, postId)])

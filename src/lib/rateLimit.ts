@@ -15,9 +15,12 @@ export const COOLDOWN_SECONDS: Record<RateAction, number> = {
 
 type FirestoreFns = Pick<typeof import("firebase/firestore"), "doc" | "serverTimestamp">
 
-/** Adds the rate-limit stamp the rules require to a batch that creates a throttled document */
-export function stampRateLimit(fs: FirestoreFns, batch: WriteBatch, db: Firestore, uid: string, action: RateAction) {
-  batch.set(fs.doc(db, "rate_limits", uid), { [action]: fs.serverTimestamp() }, { merge: true })
+/**
+ * Adds the rate-limit stamp the rules require to a batch that creates a throttled document. The stamp
+ * names that document's id, so one batch can't create many documents under one stamp (audit F-10).
+ */
+export function stampRateLimit(fs: FirestoreFns, batch: WriteBatch, db: Firestore, uid: string, action: RateAction, docId: string) {
+  batch.set(fs.doc(db, "rate_limits", uid), { [action]: fs.serverTimestamp(), [`${action}_doc`]: docId }, { merge: true })
 }
 
 // Client-side mirror, so people get a clear message instead of a refused write
