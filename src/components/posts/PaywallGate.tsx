@@ -10,9 +10,10 @@ import { DialogShell } from "@/components/posts/DialogShell"
 import { copyText } from "@/components/posts/copyText"
 import { dur, ease } from "@/lib/motion"
 import { cn } from "@/lib/utils"
-import { ELITE_PRICE_USD } from "@/lib/elite/config"
+import { ELITE_OPEN, ELITE_PRICE_INR } from "@/lib/elite/config"
 import { ArrowRight, BookOpen, Check, CreditCard, Loader2, Lock, LogIn, Share2, Sparkles } from "lucide-react"
 import { requestUnlock, type UnlockMethod } from "@/components/posts/paywallAccess"
+import { EliteComingSoon } from "@/components/elite/EliteComingSoon"
 
 interface PaywallGateProps {
   post: Post
@@ -80,7 +81,9 @@ export function PaywallGate({ post }: PaywallGateProps) {
         : "You’ve reached the end of the preview. Sign in for free to keep reading, or get full access with Elite."
       : tier === "PAID"
       ? `Support ${post.author.displayName} directly and unlock this story with a one-time payment.`
-      : `This story is for Elite members. Go Elite to read it, and everything else on Prism.`
+      : ELITE_OPEN
+        ? `This story is for Elite members. Go Elite to read it, and everything else on Prism.`
+        : `This story is for Elite members. Prism Elite isn't open yet: it's coming soon.`
 
   return (
     <div className="relative mt-2">
@@ -97,12 +100,16 @@ export function PaywallGate({ post }: PaywallGateProps) {
             {tier === "PAID" || tier === "SUBSCRIBER" ? (
               tier === "PAID" ? (
                 <button type="button" className={primaryBtn} onClick={() => setPayOpen(true)}>
-                  <Sparkles className="w-4 h-4" /> Unlock for ${price.toFixed(2)}
+                  <Sparkles className="w-4 h-4" /> Unlock for ₹{price.toFixed(2)}
                 </button>
               ) : (
-                <Link href="/elite" className={primaryBtn}>
-                  <Sparkles className="w-4 h-4" /> Go Elite
-                </Link>
+                ELITE_OPEN ? (
+                  <Link href="/elite" className={primaryBtn}>
+                    <Sparkles className="w-4 h-4" /> Go Elite
+                  </Link>
+                ) : (
+                  <EliteComingSoon />
+                )
               )
             ) : currentUser ? (
               <button type="button" className={primaryBtn} onClick={readFree}>
@@ -125,7 +132,7 @@ export function PaywallGate({ post }: PaywallGateProps) {
               href="/elite"
               className="inline-flex items-center gap-1 text-[var(--fg-muted)] hover:text-[var(--fg)] transition-colors"
             >
-              Prism Elite · ${ELITE_PRICE_USD}/mo <ArrowRight className="w-3.5 h-3.5" />
+              {ELITE_OPEN ? <>Prism Elite · ₹{ELITE_PRICE_INR}/mo</> : <>Prism Elite · coming soon</>} <ArrowRight className="w-3.5 h-3.5" />
             </Link>
             {tier === "SUBSCRIBER" && (
               <button
@@ -133,7 +140,7 @@ export function PaywallGate({ post }: PaywallGateProps) {
                 onClick={() => setPayOpen(true)}
                 className="text-[var(--fg-muted)] hover:text-[var(--fg)] underline underline-offset-4 decoration-[var(--border-strong)] transition-colors"
               >
-                Or unlock just this story · ${price.toFixed(2)}
+                Or unlock just this story · ₹{price.toFixed(2)}
               </button>
             )}
             {!currentUser && (
@@ -205,7 +212,7 @@ function UnlockDialog({
         <p className="mt-1 text-sm text-[var(--fg-muted)]">by {post.author.displayName}</p>
         <div className="mt-4 pt-3 border-t border-[var(--border)] flex items-center justify-between text-sm">
           <span className="text-[var(--fg-muted)]">Total</span>
-          <span className="font-semibold tabular-nums">${price.toFixed(2)}</span>
+          <span className="font-semibold tabular-nums">₹{price.toFixed(2)}</span>
         </div>
       </div>
 
@@ -239,7 +246,7 @@ function UnlockDialog({
                 <Check className="w-4 h-4" /> Paid — unlocking
               </>
             ) : (
-              <>Pay ${price.toFixed(2)}</>
+              <>Pay ₹{price.toFixed(2)}</>
             )}
           </motion.span>
         </AnimatePresence>

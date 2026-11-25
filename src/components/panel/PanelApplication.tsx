@@ -13,6 +13,7 @@ import { hueStyle } from "@/lib/topics"
 import { useUIStore, toast } from "@/lib/store"
 import { cn, formatRelativeDate } from "@/lib/utils"
 import { safeHref } from "@/lib/sanitize"
+import { ELITE_OPEN } from "@/lib/elite/config"
 
 const openApply = () => useUIStore.getState().setPanelDialog("apply")
 const openPending = () => useUIStore.getState().setPanelDialog("pending")
@@ -66,7 +67,7 @@ export function PanelApplyButton({ variant = "button", onNavigate, className }: 
         className={cn(base, "border border-dashed border-[var(--border-strong)] text-[var(--fg-muted)] hover:text-[var(--fg)] hover:border-[var(--fg)] text-left")}
       >
         <Lock className="w-3.5 h-3.5 shrink-0" />
-        <span className={variant === "menu" ? "truncate" : undefined}>Upgrade to Elite to apply for the Peer Review Panel</span>
+        <span className={variant === "menu" ? "truncate" : undefined}>{ELITE_OPEN ? "Upgrade to Elite to apply for the Peer Review Panel" : "Peer Review Panel · coming soon with Elite"}</span>
       </button>
     )
 

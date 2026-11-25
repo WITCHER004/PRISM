@@ -1,7 +1,7 @@
 import "server-only"
 import { createHmac, timingSafeEqual } from "node:crypto"
 import { db } from "@/lib/db"
-import { ELITE_PRICE_USD } from "@/lib/elite/config"
+import { ELITE_PRICE_INR } from "@/lib/elite/config"
 import { activateElite } from "@/lib/elite/subscription"
 import { ActionError } from "@/lib/session"
 import type { SessionUser } from "./api"
@@ -36,12 +36,12 @@ export async function createCheckout(user: SessionUser) {
   const reference = `${provider}_${user.id}_${Date.now().toString(36)}`
   if (provider === "mock") {
     await activateSubscription(user.id, "mock", reference)
-    return { provider, reference, amount: ELITE_PRICE_USD, currency: "USD", status: "complete" as const }
+    return { provider, reference, amount: ELITE_PRICE_INR, currency: "INR", status: "complete" as const }
   }
   // Stripe: stripe.checkout.sessions.create({ mode: "subscription", client_reference_id: user.id, ... })
   // Razorpay: razorpay.subscriptions.create({ plan_id, notes: { userId: user.id } })
   // Return the session/subscription id for the client to redirect or open the provider modal.
-  return { provider, reference, amount: ELITE_PRICE_USD, currency: "USD", status: "requires_payment" as const }
+  return { provider, reference, amount: ELITE_PRICE_INR, currency: "INR", status: "requires_payment" as const }
 }
 
 /** Idempotent: a webhook delivered twice for the same reference is a no-op */

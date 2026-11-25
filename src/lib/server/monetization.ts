@@ -1,7 +1,7 @@
 import "server-only"
 import { createHash } from "node:crypto"
 import { db } from "@/lib/db"
-import { MIN_PAYOUT_USD, VIEW_DEDUPE_WINDOW_MS } from "@/lib/elite/config"
+import { MIN_PAYOUT_INR, VIEW_DEDUPE_WINDOW_MS } from "@/lib/elite/config"
 import { isEliteActive } from "@/lib/elite/subscription"
 import { priceView } from "@/lib/elite/wallet"
 import { ActionError, requireElite } from "@/lib/session"
@@ -109,8 +109,8 @@ export async function requestPayout(user: SessionUser) {
   return db.$transaction(async (tx) => {
     const wallet = await tx.writerWallet.findUnique({ where: { userId: user.id } })
     const amount = Math.floor(num(wallet?.availableBalance) * 100) / 100
-    if (!wallet || amount < MIN_PAYOUT_USD)
-      throw new ActionError(`You can withdraw once your balance reaches $${MIN_PAYOUT_USD.toFixed(2)}.`, 422)
+    if (!wallet || amount < MIN_PAYOUT_INR)
+      throw new ActionError(`You can withdraw once your balance reaches ₹${MIN_PAYOUT_INR.toFixed(2)}.`, 422)
     // Guarded decrement so concurrent requests can't overdraw
     const { count } = await tx.writerWallet.updateMany({
       where: { userId: user.id, availableBalance: { gte: amount } },

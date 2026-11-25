@@ -1,4 +1,4 @@
-import { PAYOUT_PER_VIEW_USD, VIEW_DEDUPE_WINDOW_MS } from "./config"
+import { PAYOUT_PER_VIEW_INR, VIEW_DEDUPE_WINDOW_MS } from "./config"
 
 // View-based monetization: dedupe, pricing and the writer wallet, as pure functions.
 
@@ -49,7 +49,7 @@ export function isDuplicateView(
 /** Whether a valid view earns money, and how much */
 export function priceView(authorIsElite: boolean, viewerIsAuthor: boolean) {
   const monetized = authorIsElite && !viewerIsAuthor
-  return { monetized, amount: monetized ? PAYOUT_PER_VIEW_USD : 0 }
+  return { monetized, amount: monetized ? PAYOUT_PER_VIEW_INR : 0 }
 }
 
 export const roundMoney = (n: number) => Math.round(n * 10000) / 10000
@@ -122,7 +122,7 @@ export function earningsByDay(username: string, events: readonly ViewEvent[], da
 
 /**
  * The wallet from live Firestore counters: each published article's `views` (unique readers, the
- * author's own reads excluded) earns PAYOUT_PER_VIEW_USD while the writer is Elite.
+ * author's own reads excluded) earns PAYOUT_PER_VIEW_INR while the writer is Elite.
  */
 export function walletFromArticles(
   username: string,
@@ -136,7 +136,7 @@ export function walletFromArticles(
       const views = a.views ?? 0
       // Signed-in readers only (the server counts them separately); anonymous views don't earn
       const monetizedViews = elite ? Math.min(views, a.monetizedViews ?? 0) : 0
-      return { postId: a.id, views, monetizedViews, earnings: roundMoney(monetizedViews * PAYOUT_PER_VIEW_USD) }
+      return { postId: a.id, views, monetizedViews, earnings: roundMoney(monetizedViews * PAYOUT_PER_VIEW_INR) }
     })
     .sort((a, b) => b.views - a.views)
   const totalViews = rows.reduce((n, r) => n + r.views, 0)

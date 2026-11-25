@@ -10,14 +10,14 @@ import { PageHead, StatTile, money, useWriter } from "@/components/studio/studio
 import { EliteGate } from "@/components/elite/EliteGate"
 import { UserBadges } from "@/components/elite/EliteBadges"
 import { useWallet } from "@/components/elite/hooks"
-import { DEMO_PAYOUT_SETTLE_MS, MIN_PAYOUT_USD, PAYOUT_RPM_USD, TOP_MONETIZED_VIEWS } from "@/lib/elite/config"
+import { DEMO_PAYOUT_SETTLE_MS, MIN_PAYOUT_INR, PAYOUT_RPM_INR, TOP_MONETIZED_VIEWS } from "@/lib/elite/config"
 import { cn, formatRelativeDate, numberWithCommas } from "@/lib/utils"
 
 export default function EarningsPage() {
   return (
     <EliteGate
       feature="Earn from every unique reader"
-      description={`Elite writers earn $${PAYOUT_RPM_USD.toFixed(2)} per 1,000 unique views of their published articles, with a per-article breakdown and payouts on request.`}
+      description={`Elite writers earn ₹${PAYOUT_RPM_INR.toFixed(2)} per 1,000 unique views of their published articles, with a per-article breakdown and payouts on request.`}
     >
       <EarningsDashboard />
     </EliteGate>
@@ -50,11 +50,11 @@ function EarningsDashboard() {
 
   const rows = wallet.rows
   const myPayouts = payouts.filter((p) => p.username === me)
-  const canWithdraw = wallet.availableBalance >= MIN_PAYOUT_USD
+  const canWithdraw = wallet.availableBalance >= MIN_PAYOUT_INR
 
   const exportCsv = () => {
     const lines = [
-      ["article", "views", "monetized_views", "earnings_usd"],
+      ["article", "views", "monetized_views", "earnings_inr"],
       ...rows.map((r) => [titles.get(r.postId)?.title ?? r.postId, String(r.views), String(r.monetizedViews), r.earnings.toFixed(4)]),
     ]
     const csv = lines.map((r) => r.map((c) => (/[",\n]/.test(c) ? `"${c.replace(/"/g, '""')}"` : c)).join(",")).join("\n")
@@ -72,7 +72,7 @@ function EarningsDashboard() {
         title="Earnings"
         lede={
           <>
-            You earn <b className="text-[var(--fg)]">${PAYOUT_RPM_USD.toFixed(2)} per 1,000 unique views</b> of your published
+            You earn <b className="text-[var(--fg)]">₹{PAYOUT_RPM_INR.toFixed(2)} per 1,000 unique views</b> of your published
             articles. Each reader counts once per article every 24 hours; your own reads don&apos;t count. Payouts are
             simulated: no money moves.
           </>
@@ -96,7 +96,7 @@ function EarningsDashboard() {
                 ? `${money(wallet.pendingPayout)} on its way to your bank.`
                 : canWithdraw
                   ? "Ready to withdraw to your bank account •••• 4242."
-                  : `Withdrawals unlock at ${money(MIN_PAYOUT_USD)}.`}
+                  : `Withdrawals unlock at ${money(MIN_PAYOUT_INR)}.`}
             </p>
           </div>
           <Button

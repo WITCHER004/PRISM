@@ -7,7 +7,7 @@ import { Reveal } from "@/components/motion/Reveal"
 import { RevealText } from "@/components/motion/RevealText"
 import { hueStyle } from "@/lib/topics"
 import { pageMetadata } from "@/lib/seo"
-import { ELITE_PRICE_USD, MIN_PAYOUT_USD, PAYOUT_RPM_USD } from "@/lib/elite/config"
+import { ELITE_PRICE_INR, MIN_PAYOUT_INR, PAYOUT_RPM_INR } from "@/lib/elite/config"
 
 export const metadata: Metadata = pageMetadata({
   title: "About: independent publishing, read by humans",
@@ -20,7 +20,7 @@ const STEPS = [
   {
     icon: Users,
     title: "You go Elite",
-    body: `Reading free stories costs nothing. Elite is $${ELITE_PRICE_USD} a month: it unlocks every member story and lets you earn from what you publish.`,
+    body: `Reading free stories costs nothing. Elite is ₹${ELITE_PRICE_INR} a month: it unlocks every member story and lets you earn from what you publish.`,
   },
   {
     icon: Clock,
@@ -30,7 +30,7 @@ const STEPS = [
   {
     icon: Scale,
     title: "Readers become earnings",
-    body: `While you're Elite, you earn $${PAYOUT_RPM_USD} for every 1,000 unique readers, paid into your wallet. Withdraw any time your balance reaches $${MIN_PAYOUT_USD}.`,
+    body: `While you're Elite, you earn ₹${PAYOUT_RPM_INR} for every 1,000 unique readers, paid into your wallet. Withdraw any time your balance reaches ₹${MIN_PAYOUT_INR}.`,
   },
   {
     icon: HandCoins,

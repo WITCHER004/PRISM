@@ -1,18 +1,28 @@
 // Elite tier configuration. Every money, panel and badge threshold lives here.
 
+/**
+ * Elite is built but not open to the public yet. While this is false nobody is Elite (no checkout,
+ * no Elite reading, earnings or review track) and every upgrade button says "Coming soon".
+ * Open it by setting NEXT_PUBLIC_ELITE_OPEN=true and redeploying.
+ */
+export const ELITE_OPEN = process.env.NEXT_PUBLIC_ELITE_OPEN === "true"
+
 /** Elite subscription price and billing period */
-export const ELITE_PRICE_USD = 12
+/** Prices and payouts are in Indian rupees (₹) */
+export const CURRENCY = "INR"
+export const CURRENCY_SYMBOL = "₹"
+export const ELITE_PRICE_INR = 12
 export const ELITE_PERIOD_DAYS = 30
 
-/** Writer payout rate: dollars per 1,000 monetized views (RPM) */
-export const PAYOUT_RPM_USD = 4
-export const PAYOUT_PER_VIEW_USD = PAYOUT_RPM_USD / 1000
+/** Writer payout rate: rupees per 1,000 monetized views (RPM) */
+export const PAYOUT_RPM_INR = 4
+export const PAYOUT_PER_VIEW_INR = PAYOUT_RPM_INR / 1000
 
 /** A reader counts once per article in this rolling window */
 export const VIEW_DEDUPE_WINDOW_MS = 24 * 60 * 60 * 1000
 
 /** Smallest balance a writer can withdraw */
-export const MIN_PAYOUT_USD = 1
+export const MIN_PAYOUT_INR = 1
 /** Demo mode: how long a requested payout stays "processing" before it shows as paid */
 export const DEMO_PAYOUT_SETTLE_MS = 60 * 1000
 

@@ -10,7 +10,7 @@ import { BadgePill } from "@/components/elite/EliteBadges"
 import { useRoleActions } from "@/components/providers/useAccess"
 import { Button } from "@/components/ui/Button"
 import { BADGES } from "@/lib/elite/badges"
-import { ELITE_PERIOD_DAYS, ELITE_PRICE_USD } from "@/lib/elite/config"
+import { ELITE_OPEN, ELITE_PERIOD_DAYS, ELITE_PRICE_INR } from "@/lib/elite/config"
 import { useUIStore } from "@/lib/store"
 import { cn } from "@/lib/utils"
 
@@ -62,6 +62,22 @@ export function UpgradeDialog() {
   const input =
     "mt-1.5 w-full h-11 px-3.5 rounded-[12px] bg-[var(--bg)] border border-[var(--border)] text-sm outline-none focus:border-[var(--fg)] tabular-nums"
 
+  if (!ELITE_OPEN)
+    return (
+      <StudioDialog
+        open={open}
+        onOpenChange={(o) => setOpen(o)}
+        title="Prism Elite is coming soon"
+        description="Elite isn't open yet. Everyone uses Prism free for now, and every free feature stays free. We'll open Elite in the future."
+      >
+        <DialogActions>
+          <Button size="lg" onClick={() => setOpen(false)}>
+            Got it
+          </Button>
+        </DialogActions>
+      </StudioDialog>
+    )
+
   return (
     <StudioDialog
       open={open}
@@ -73,7 +89,7 @@ export function UpgradeDialog() {
           ? "Elite is attached to your writer account, so sign in first."
           : phase === "done"
             ? "Everything unlocked right here: your ✦ Elite badge, full Advanced Papers, per-view earnings, and the Peer Review Panel."
-            : `$${ELITE_PRICE_USD}.00 every ${ELITE_PERIOD_DAYS} days. Cancel any time.`
+            : `₹${ELITE_PRICE_INR}.00 every ${ELITE_PERIOD_DAYS} days. Cancel any time.`
       }
     >
       {!currentUser ? (
@@ -154,7 +170,7 @@ export function UpgradeDialog() {
             </Button>
             <Button type="submit" size="lg" disabled={phase === "processing"}>
               {phase === "processing" && <Loader2 className="w-4 h-4 animate-spin" />}
-              Pay ${ELITE_PRICE_USD}.00
+              Pay ₹{ELITE_PRICE_INR}.00
             </Button>
           </DialogActions>
         </form>

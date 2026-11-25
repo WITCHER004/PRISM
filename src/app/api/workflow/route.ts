@@ -7,6 +7,7 @@ import { adminConfigured, adminDb, verifyAppCheck, verifyRequestUser } from "@/l
 import { sharedRateLimit } from "@/lib/server/sharedRateLimit"
 import { syncPublicCopy } from "@/lib/server/publicArticles"
 import { MY_PANEL_VOTES, PANEL_BALLOTS, sealVotes, unsealVotes, type PanelVote } from "@/lib/elite/panel"
+import { ELITE_OPEN } from "@/lib/elite/config"
 import {
   castPanelVote,
   decideReview,
@@ -137,7 +138,7 @@ export async function POST(request: Request) {
         actorIsPanelMember: me.isPanelMember && !me.suspended,
         // The author never sits on their own panel: excluded by uid, which the client can't change
         panelPool: panel.filter((u) => u.uid !== d.authorUid).map((u) => u.handle),
-        authorIsElite: author?.tier === "elite",
+        authorIsElite: ELITE_OPEN && author?.tier === "elite",
         at: new Date().toISOString(),
         newId,
       }

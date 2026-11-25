@@ -8,7 +8,7 @@ import { openUpgrade } from "@/components/elite/UpgradeDialog"
 import { useSubscription, useWallet } from "@/components/elite/hooks"
 import { useAccess, usePanelInbox } from "@/components/providers/useAccess"
 import { PanelApplyButton } from "@/components/panel/PanelApplication"
-import { PANEL_PASS_THRESHOLD, PANEL_SIZE, PAYOUT_RPM_USD } from "@/lib/elite/config"
+import { PANEL_PASS_THRESHOLD, PANEL_SIZE, PAYOUT_RPM_INR } from "@/lib/elite/config"
 import { useUIStore, type Draft } from "@/lib/store"
 import { summarize } from "@/lib/reviews"
 import { STATUS_META } from "@/lib/moderation/workflow"
@@ -277,9 +277,9 @@ function Capabilities({ username }: { username: string }) {
           </p>
           {access.isElite ? (
             <>
-              <p className="mt-2 display text-[2rem] leading-none tabular-nums">${wallet.availableBalance.toFixed(2)}</p>
+              <p className="mt-2 display text-[2rem] leading-none tabular-nums">₹{wallet.availableBalance.toFixed(2)}</p>
               <p className="mt-2 text-sm text-[var(--fg-muted)] flex-1">
-                {wallet.totalViews.toLocaleString("en-US")} views counted · ${PAYOUT_RPM_USD.toFixed(2)} per 1,000 unique readers
+                {wallet.totalViews.toLocaleString("en-US")} views counted · ₹{PAYOUT_RPM_INR.toFixed(2)} per 1,000 unique readers
               </p>
               <Link
                 href="/dashboard/earnings"
@@ -292,7 +292,7 @@ function Capabilities({ username }: { username: string }) {
             <>
               <p className="mt-2 font-display text-lg font-semibold text-[var(--fg-muted)]">Locked</p>
               <p className="mt-2 text-sm text-[var(--fg-muted)] leading-relaxed flex-1">
-                Elite writers earn ${PAYOUT_RPM_USD.toFixed(2)} for every 1,000 unique readers, with payouts from this card.
+                Elite writers earn ₹{PAYOUT_RPM_INR.toFixed(2)} for every 1,000 unique readers, with payouts from this card.
               </p>
             </>
           )}

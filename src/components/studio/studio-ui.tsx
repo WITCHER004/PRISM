@@ -73,7 +73,7 @@ export function hasBody(html: string) {
 }
 
 export const money = (n: number) =>
-  n.toLocaleString("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2 })
+  n.toLocaleString("en-IN", { style: "currency", currency: "INR", minimumFractionDigits: 2 })
 
 export function PageHead({
   title,

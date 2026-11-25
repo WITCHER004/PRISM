@@ -31,7 +31,8 @@ import { dur, ease, spring } from "@/lib/motion"
 import { cn } from "@/lib/utils"
 import { Dialog } from "@/components/ui/Dialog"
 import { useSubscription } from "@/components/elite/hooks"
-import { ELITE_PRICE_USD } from "@/lib/elite/config"
+import { ELITE_OPEN, ELITE_PRICE_INR } from "@/lib/elite/config"
+import { EliteComingSoon } from "@/components/elite/EliteComingSoon"
 import { AvatarUploader } from "@/components/profile/AvatarUploader"
 import { cleanProfileFields, profileFieldErrors } from "@/components/profile/EditProfileDialog"
 import { SOCIALS } from "@/lib/social"
@@ -966,16 +967,22 @@ function AccountPanel() {
             <p className="font-medium">{isElite ? "Elite" : "Free plan"}</p>
             <p className="text-sm text-[var(--fg-muted)]">
               {isElite
-                ? `$${ELITE_PRICE_USD}/month${subscription.expiresAt ? ` · ${subscription.cancelAtPeriodEnd ? "ends" : "renews"} ${new Date(subscription.expiresAt).toLocaleDateString()}` : ""}`
-                : `Upgrade to Elite for $${ELITE_PRICE_USD}/month to read every member story and earn from your writing.`}
+                ? `₹${ELITE_PRICE_INR}/month${subscription.expiresAt ? ` · ${subscription.cancelAtPeriodEnd ? "ends" : "renews"} ${new Date(subscription.expiresAt).toLocaleDateString()}` : ""}`
+                : ELITE_OPEN
+                  ? `Upgrade to Elite for ₹${ELITE_PRICE_INR}/month to read every member story and earn from your writing.`
+                  : "Everyone is on the free plan for now. Prism Elite is coming soon."}
             </p>
           </div>
-          <Link
-            href="/elite"
-            className="h-11 px-5 inline-flex items-center gap-2 rounded-full bg-[var(--fg)] text-[var(--bg)] font-medium hover:bg-[var(--fg-secondary)] transition-colors"
-          >
-            {isElite ? "Manage Elite" : "Go Elite"} <ArrowRight className="w-4 h-4" />
-          </Link>
+          {ELITE_OPEN ? (
+            <Link
+              href="/elite"
+              className="h-11 px-5 inline-flex items-center gap-2 rounded-full bg-[var(--fg)] text-[var(--bg)] font-medium hover:bg-[var(--fg-secondary)] transition-colors"
+            >
+              {isElite ? "Manage Elite" : "Go Elite"} <ArrowRight className="w-4 h-4" />
+            </Link>
+          ) : (
+            <EliteComingSoon />
+          )}
         </div>
       </Section>
 

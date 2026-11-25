@@ -14,6 +14,7 @@ import {
 } from "@/lib/paywall"
 import { renderArticleHtml } from "@/lib/articleHtml"
 import { mockPaymentsAllowed } from "@/lib/server/subscriptions"
+import { ELITE_OPEN } from "@/lib/elite/config"
 
 // Server side of the paywall (audit F-02). Readers never get a locked story's text from Firestore:
 // they read public_articles/{id} (preview only), and the full body comes from article_bodies/{id}
@@ -47,6 +48,7 @@ export type AccessResult =
   | { ok: false; status: 401 | 402 | 403 | 404; reason: string }
 
 async function isElite(db: Firestore, uid: string) {
+  if (!ELITE_OPEN) return false
   const u = await db.collection(COL.users).doc(uid).get()
   return u.exists && u.data()!.tier === "elite" && u.data()!.suspended !== true
 }

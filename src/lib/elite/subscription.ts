@@ -1,4 +1,5 @@
 import { ELITE_PERIOD_DAYS } from "./config"
+import { ELITE_OPEN } from "./config"
 
 export type Tier = "FREE" | "ELITE"
 export type SubscriptionStatus = "ACTIVE" | "INACTIVE"
@@ -23,6 +24,7 @@ export function isEliteActive(
   sub: { tier: string; subscriptionStatus: string; expiresAt?: string | Date | null } | null | undefined,
   now = Date.now()
 ) {
+  if (!ELITE_OPEN) return false // Elite isn't open yet: everyone is on the free plan
   if (!sub || sub.tier !== "ELITE" || sub.subscriptionStatus !== "ACTIVE") return false
   if (!sub.expiresAt) return true
   return new Date(sub.expiresAt).getTime() > now

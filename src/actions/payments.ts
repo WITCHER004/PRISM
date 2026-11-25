@@ -16,7 +16,7 @@ const TipInput = z.object({
   authorId: z.string().min(1).max(128),
   authorName: z.string().max(200).optional(),
   authorUsername: z.string().max(200).optional(),
-  amountDollars: z.number().finite().min(1).max(500),
+  amountRupees: z.number().finite().min(1).max(500),
   message: z.string().max(2000).optional(),
 })
 
@@ -38,11 +38,11 @@ export async function createTipSession(data: {
   authorId: string
   authorName?: string
   authorUsername?: string
-  amountDollars: number
+  amountRupees: number
   message?: string
 }) {
   const parsed = TipInput.safeParse(data)
-  if (!parsed.success) return { success: false as const, error: "Choose a tip between $1 and $500." }
+  if (!parsed.success) return { success: false as const, error: "Choose a tip between ₹1 and ₹500." }
   const input = parsed.data
   try {
     const user = await requireUser()
@@ -63,19 +63,19 @@ export async function createTipSession(data: {
         console.error("[payments] tip refused: STRIPE_SECRET_KEY is not configured in production")
         return { success: false as const, error: "Tips are unavailable right now. Try again later." }
       }
-      return { success: true as const, url: `${profileUrl}?tipped=${input.amountDollars}`, isSimulated: true }
+      return { success: true as const, url: `${profileUrl}?tipped=${input.amountRupees}`, isSimulated: true }
     }
 
     const session = await stripe().checkout.sessions.create({
       line_items: [
         {
           price_data: {
-            currency: "usd",
+            currency: "inr",
             product_data: {
               name: `Tip for ${authorName}`,
               description: "Thank you for supporting independent writing!",
             },
-            unit_amount: Math.round(input.amountDollars * 100),
+            unit_amount: Math.round(input.amountRupees * 100),
           },
           quantity: 1,
         },
@@ -84,7 +84,7 @@ export async function createTipSession(data: {
       client_reference_id: user.id,
       // The supporter's note travels as metadata (Stripe caps values at 500 chars), not as product text
       metadata: { authorId: author.id, tipperId: user.id, ...(message ? { message } : {}) },
-      success_url: `${profileUrl}?tipped=${input.amountDollars}`,
+      success_url: `${profileUrl}?tipped=${input.amountRupees}`,
       cancel_url: profileUrl,
     })
 

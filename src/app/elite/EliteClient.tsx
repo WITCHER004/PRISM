@@ -15,10 +15,11 @@ import { PanelApplyButton } from "@/components/panel/PanelApplication"
 import { useRoleActions } from "@/components/providers/useAccess"
 import { Button } from "@/components/ui/Button"
 import { BADGE_ORDER } from "@/lib/elite/badges"
-import { ELITE_PRICE_USD, PANEL_PASS_THRESHOLD, PANEL_SIZE, PAYOUT_RPM_USD } from "@/lib/elite/config"
+import { ELITE_OPEN, ELITE_PRICE_INR, PANEL_PASS_THRESHOLD, PANEL_SIZE, PAYOUT_RPM_INR } from "@/lib/elite/config"
 import { TIER_FEATURES } from "@/lib/elite/subscription"
 import { useUIStore, toast } from "@/lib/store"
 import { formatDate } from "@/lib/utils"
+import { EliteComingSoon, ELITE_COMING_SOON_NOTE } from "@/components/elite/EliteComingSoon"
 
 export function EliteClient() {
   const hydrated = useHydrated()
@@ -39,7 +40,7 @@ export function EliteClient() {
             Prism Elite
           </h1>
           <p className="mt-5 text-lg sm:text-xl text-[var(--fg-muted)] leading-relaxed">
-            Earn ${PAYOUT_RPM_USD.toFixed(2)} for every 1,000 unique readers, put your work in front of a {PANEL_SIZE}-member
+            Earn ₹{PAYOUT_RPM_INR.toFixed(2)} for every 1,000 unique readers, put your work in front of a {PANEL_SIZE}-member
             peer panel, and carry badges that show how it was earned.
           </p>
         </section>
@@ -50,7 +51,7 @@ export function EliteClient() {
             <h2 className="font-display text-xl font-semibold">Free</h2>
             <p className="mt-1 text-sm text-[var(--fg-muted)]">Publish, get read, get rated.</p>
             <p className="mt-6 display text-[2.75rem] leading-none tabular-nums">
-              $0<span className="text-base font-normal text-[var(--fg-muted)]"> / month</span>
+              ₹0<span className="text-base font-normal text-[var(--fg-muted)]"> / month</span>
             </p>
             <ul className="mt-6 space-y-2.5 text-sm flex-1">
               {TIER_FEATURES.filter((f) => f.free).map((f) => (
@@ -61,7 +62,7 @@ export function EliteClient() {
               ))}
             </ul>
             <p className="mt-8 h-11 grid place-items-center rounded-full border border-[var(--border)] text-sm text-[var(--fg-muted)]">
-              {hydrated && currentUser && !isElite ? "Your current plan" : "Included with every account"}
+              {!ELITE_OPEN ? "Everyone's plan for now" : hydrated && currentUser && !isElite ? "Your current plan" : "Included with every account"}
             </p>
           </div>
 
@@ -72,7 +73,7 @@ export function EliteClient() {
             </div>
             <p className="mt-1 text-sm text-[var(--fg-muted)]">Everything in Free, plus earnings, the panel and badges.</p>
             <p className="mt-6 display text-[2.75rem] leading-none tabular-nums">
-              ${ELITE_PRICE_USD}
+              ₹{ELITE_PRICE_INR}
               <span className="text-base font-normal text-[var(--fg-muted)]"> / month</span>
             </p>
             <ul className="mt-6 space-y-2.5 text-sm flex-1">
@@ -87,7 +88,12 @@ export function EliteClient() {
               ))}
             </ul>
             <div className="mt-8">
-              {!hydrated ? (
+              {!ELITE_OPEN ? (
+                <div className="space-y-3">
+                  <EliteComingSoon className="w-full" label="Coming soon" />
+                  <p className="text-xs text-center text-[var(--fg-muted)]">{ELITE_COMING_SOON_NOTE}</p>
+                </div>
+              ) : !hydrated ? (
                 <div className="h-11 rounded-full bg-[var(--surface)] animate-pulse" />
               ) : !currentUser ? (
                 <Link
@@ -198,7 +204,7 @@ export function EliteClient() {
             <p className="meta">Monetization</p>
             <h3 className="mt-2 font-display text-lg font-semibold">Paid per unique view</h3>
             <p className="mt-2 text-sm text-[var(--fg-muted)] leading-relaxed">
-              Each reader counts once per article per 24 hours. ${PAYOUT_RPM_USD.toFixed(2)} RPM goes to your balance, and you can
+              Each reader counts once per article per 24 hours. ₹{PAYOUT_RPM_INR.toFixed(2)} RPM goes to your balance, and you can
               withdraw it from your earnings dashboard.
             </p>
           </div>

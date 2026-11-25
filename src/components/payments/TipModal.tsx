@@ -56,9 +56,9 @@ export function TipModal({ authorName, authorUsername, isOpen, onClose }: TipMod
     : !Number.isFinite(parsed) || parsed <= 0
     ? "Enter an amount"
     : parsed < MIN
-    ? `The minimum tip is $${MIN}`
+    ? `The minimum tip is ₹${MIN}`
     : parsed > MAX
-    ? `The maximum tip is $${MAX}`
+    ? `The maximum tip is ₹${MAX}`
     : null
   const valid = amount >= MIN && amount <= MAX && !error
 
@@ -70,7 +70,7 @@ export function TipModal({ authorName, authorUsername, isOpen, onClose }: TipMod
     timer.current = setTimeout(() => {
       recordTip(authorUsername, amount)
       setPhase("done")
-      toast(`You tipped ${authorName} $${amount.toFixed(2)}`, { tone: "success" })
+      toast(`You tipped ${authorName} ₹${amount.toFixed(2)}`, { tone: "success" })
     }, 1000)
   }
 
@@ -117,7 +117,7 @@ export function TipModal({ authorName, authorUsername, isOpen, onClose }: TipMod
               initial={{ opacity: 0, y: 6 }}
               animate={{ opacity: 1, y: 0, transition: { delay: stagger * 5, duration: dur.base, ease: ease.out } }}
             >
-              Your ${amount.toFixed(2)} tip is on its way to {authorName}.
+              Your ₹{amount.toFixed(2)} tip is on its way to {authorName}.
               {note.trim() && " They’ll see your note too."}
             </motion.p>
             <button
@@ -177,16 +177,16 @@ export function TipModal({ authorName, authorUsername, isOpen, onClose }: TipMod
                           transition={spring.snappy}
                         />
                       )}
-                      <span className="relative">${amt}</span>
+                      <span className="relative">₹{amt}</span>
                     </button>
                   )
                 })}
               </div>
 
               <label className="block mt-3">
-                <span className="sr-only">Custom amount in dollars</span>
+                <span className="sr-only">Custom amount in rupees</span>
                 <div className="relative">
-                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-semibold text-[var(--fg-muted)]">$</span>
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-semibold text-[var(--fg-muted)]">₹</span>
                   <input
                     type="text"
                     inputMode="decimal"
@@ -257,7 +257,7 @@ export function TipModal({ authorName, authorUsername, isOpen, onClose }: TipMod
                     </>
                   ) : (
                     <>
-                      Send {valid ? `$${amount.toFixed(2)}` : "tip"} <ArrowRight className="w-4 h-4" />
+                      Send {valid ? `₹${amount.toFixed(2)}` : "tip"} <ArrowRight className="w-4 h-4" />
                     </>
                   )}
                 </motion.span>

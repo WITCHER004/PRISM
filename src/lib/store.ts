@@ -9,7 +9,7 @@ import { cachedIsAdmin } from "@/lib/admin"
 import { handleFrom, type ArticleVersion, type AudiobookFields, type ArticleWorkflow, type UserDoc } from "@/lib/live/schema"
 import {
   DEMO_PAYOUT_SETTLE_MS,
-  MIN_PAYOUT_USD,
+  MIN_PAYOUT_INR,
   PANEL_SIZE,
 } from "@/lib/elite/config"
 import {
@@ -28,6 +28,7 @@ import {
 } from "@/lib/access"
 import type { ReviewCriterion } from "@/lib/elite/panel"
 import { isDuplicateView, priceView, walletFromArticles, type PayoutRecord, type ViewEvent } from "@/lib/elite/wallet"
+import { ELITE_OPEN } from "@/lib/elite/config"
 
 // Client state. Shared data (users, articles, panel applications, notifications) lives in Firestore:
 // src/lib/live/sync.ts mirrors those collections into this store and writes local changes back, so
@@ -689,9 +690,9 @@ export const useUIStore = create<UIState>()(
         const me = s.currentUser
         if (!me) return { ok: false, error: "Sign in first." }
         if (!isEliteActive(s.subscriptions[me])) return { ok: false, error: "Payouts are an Elite feature." }
-        const wallet = walletFromArticles(me, Object.values(s.drafts), s.payouts, true)
+        const wallet = walletFromArticles(me, Object.values(s.drafts), s.payouts, ELITE_OPEN)
         const amount = Math.floor(wallet.availableBalance * 100) / 100
-        if (amount < MIN_PAYOUT_USD) return { ok: false, error: `You can withdraw once your balance reaches $${MIN_PAYOUT_USD.toFixed(2)}.` }
+        if (amount < MIN_PAYOUT_INR) return { ok: false, error: `You can withdraw once your balance reaches ₹${MIN_PAYOUT_INR.toFixed(2)}.` }
         const payout: PayoutRecord = { id: "po_" + uid().toUpperCase(), username: me, amount, status: "PENDING", requestedAt: now() }
         set((st) => ({ payouts: [payout, ...st.payouts] }))
         return { ok: true, amount }

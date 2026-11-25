@@ -8,6 +8,7 @@ import { PANEL_PASS_THRESHOLD, PANEL_SIZE } from "@/lib/elite/config"
 import { newPaper, PAPER_DEPTHS, type AdvancedPaper } from "@/lib/papers"
 import { dur, ease } from "@/lib/motion"
 import { cn } from "@/lib/utils"
+import { ELITE_OPEN } from "@/lib/elite/config"
 
 const TAKEAWAY_MAX = 200
 
@@ -73,7 +74,7 @@ export function PanelReviewSetting({ on, locked, onChange }: { on: boolean; lock
             After employee review, {PANEL_SIZE} Elite reviewers vote; {PANEL_PASS_THRESHOLD} PASS votes publish it. Earns per view and the
             Peer-Reviewed Scholar badge.
           </p>
-          {locked && <LockedNote id="panel-review-title-lock">Upgrade to Elite to unlock panel review</LockedNote>}
+          {locked && <LockedNote id="panel-review-title-lock">{ELITE_OPEN ? "Upgrade to Elite to unlock panel review" : "Panel review is coming soon with Elite"}</LockedNote>}
         </div>
         <EliteSwitch on={on && !locked} locked={locked} labelledBy="panel-review-title" onToggle={() => onChange(!on)} />
       </div>
@@ -111,7 +112,7 @@ export function PaperSettings({
           <p className="mt-1 text-xs leading-relaxed text-[var(--fg-muted)]">
             Elite members read it in full. Everyone else sees your abstract and the opening quarter.
           </p>
-          {locked && !on && <LockedNote id="paper-settings-title-lock">Upgrade to Elite to publish Advanced Papers</LockedNote>}
+          {locked && !on && <LockedNote id="paper-settings-title-lock">{ELITE_OPEN ? "Upgrade to Elite to publish Advanced Papers" : "Advanced Papers are coming soon with Elite"}</LockedNote>}
         </div>
         <EliteSwitch on={on} locked={locked} labelledBy="paper-settings-title" onToggle={() => onChange(on ? undefined : newPaper())} />
       </div>
