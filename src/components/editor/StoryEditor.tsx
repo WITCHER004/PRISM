@@ -41,6 +41,7 @@ import { useCraftTracker } from "@/components/craft/useCraftTracker"
 import { depthLabel, paperIsComplete, type AdvancedPaper } from "@/lib/papers"
 import { clearPromotedIdeaSeed, clearQuoteSeed, readPromotedIdeaSeed, readQuoteSeed } from "@/lib/ideas"
 import { SITE_HOST } from "@/lib/seo"
+import { ELITE_OPEN } from "@/lib/elite/config"
 
 const RichEditor = dynamic(() => import("@/components/editor/RichEditor"), {
   ssr: false,
@@ -1067,9 +1068,13 @@ function EditorWorkspace({ initial }: { initial?: Draft }) {
                 ) : (
                   <li className="px-4 py-3 text-xs text-[var(--fg-muted)]">
                     Elite writers also get a {PANEL_SIZE}-member peer panel review.{" "}
-                    <button type="button" onClick={openUpgrade} className="inline-flex items-center gap-1 font-medium text-[var(--elite-ink)] hover:underline">
-                      Upgrade to Prism Elite <ArrowRight className="w-3 h-3" />
-                    </button>
+                    {ELITE_OPEN ? (
+                      <button type="button" onClick={openUpgrade} className="inline-flex items-center gap-1 font-medium text-[var(--elite-ink)] hover:underline">
+                        Upgrade to Prism Elite <ArrowRight className="w-3 h-3" />
+                      </button>
+                    ) : (
+                      <span className="font-medium">Elite is coming soon.</span>
+                    )}
                   </li>
                 )}
               </ol>

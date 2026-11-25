@@ -25,6 +25,8 @@ import { SocialLinks } from "./SocialLinks"
 import { EditProfileDialog } from "./EditProfileDialog"
 import { ReadingVault } from "./ReadingVault"
 import { cn, formatDate, formatRelativeDate } from "@/lib/utils"
+import { ELITE_OPEN } from "@/lib/elite/config"
+import { EliteComingSoon } from "@/components/elite/EliteComingSoon"
 
 const TRACKED: ArticleStatus[] = [
   "PHASE_1_FAILED",
@@ -259,13 +261,17 @@ function Capabilities({ username }: { username: string }) {
               <p className="mt-2 text-sm text-[var(--fg-muted)] leading-relaxed flex-1">
                 Elite opens every Advanced Paper, Elite-only publishing and panel review, and earnings.
               </p>
-              <button
-                type="button"
-                onClick={openUpgrade}
-                className="mt-4 inline-flex items-center justify-center gap-2 h-10 px-4 rounded-full text-sm font-medium bg-[var(--fg)] text-[var(--bg)] hover:opacity-90"
-              >
-                <Sparkles className="w-4 h-4 text-[var(--gold)]" /> Upgrade to Prism Elite
-              </button>
+              {ELITE_OPEN ? (
+                <button
+                  type="button"
+                  onClick={openUpgrade}
+                  className="mt-4 inline-flex items-center justify-center gap-2 h-10 px-4 rounded-full text-sm font-medium bg-[var(--fg)] text-[var(--bg)] hover:opacity-90"
+                >
+                  <Sparkles className="w-4 h-4 text-[var(--gold)]" /> Upgrade to Prism Elite
+                </button>
+              ) : (
+                <EliteComingSoon className="mt-4 h-10" />
+              )}
             </>
           )}
         </article>

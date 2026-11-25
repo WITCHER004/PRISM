@@ -8,6 +8,8 @@ import { useViewer } from "@/components/providers/useViewer"
 import { openUpgrade } from "@/components/elite/UpgradeDialog"
 import { depthLabel, type AdvancedPaper } from "@/lib/papers"
 import { cn } from "@/lib/utils"
+import { ELITE_OPEN } from "@/lib/elite/config"
+import { EliteComingSoon } from "@/components/elite/EliteComingSoon"
 
 /* ── Mark & badge ──────────────────────────────────────────────────────────── */
 
@@ -172,15 +174,19 @@ export function PaperGate({ wordCount, deepReadMin, review }: PaperGateProps) {
 
         <div className="mt-7 flex flex-wrap items-center gap-2.5">
           {/* Upgrades in place: the gate disappears and the full paper renders without leaving the page */}
-          <button
-            type="button"
-            onClick={openUpgrade}
-            className="inline-flex items-center gap-2 h-12 px-6 rounded-full bg-[var(--nav-cta)] hover:bg-[var(--nav-cta-hover)] text-[var(--nav-cta-fg)] text-[0.9375rem] font-medium tracking-tight shadow-xs hover:shadow transition-all"
-          >
-            <EliteSpark className="w-3.5 h-3.5 text-[var(--gold)]" />
-            Upgrade to Prism Elite
-            <ArrowRight className="w-4 h-4" />
-          </button>
+          {ELITE_OPEN ? (
+            <button
+              type="button"
+              onClick={openUpgrade}
+              className="inline-flex items-center gap-2 h-12 px-6 rounded-full bg-[var(--nav-cta)] hover:bg-[var(--nav-cta-hover)] text-[var(--nav-cta-fg)] text-[0.9375rem] font-medium tracking-tight shadow-xs hover:shadow transition-all"
+            >
+              <EliteSpark className="w-3.5 h-3.5 text-[var(--gold)]" />
+              Upgrade to Prism Elite
+              <ArrowRight className="w-4 h-4" />
+            </button>
+          ) : (
+            <EliteComingSoon className="h-12" />
+          )}
           {!viewer && (
             <Link
               href={`/auth/login?redirectTo=${encodeURIComponent(pathname)}`}

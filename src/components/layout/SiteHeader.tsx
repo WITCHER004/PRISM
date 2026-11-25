@@ -34,6 +34,7 @@ import {
   Highlighter,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { ELITE_OPEN } from "@/lib/elite/config"
 
 const THEMES = [
   { value: "light", icon: Sun, label: "Light" },
@@ -315,18 +316,25 @@ export function SiteHeader() {
                         {/* Progressive capabilities: upgrade in place, then the panel button's own states */}
                         <div className="my-1 h-px bg-[var(--border)]" />
                         {!isElite && (
-                          <button
-                            type="button"
-                            role="menuitem"
-                            onClick={() => {
-                              setUserMenuOpen(false)
-                              openUpgrade()
-                            }}
-                            className={cn(menuItem, "w-full font-medium text-[var(--elite-ink)]")}
-                          >
-                            <Sparkles className="w-[15px] h-[15px]" strokeWidth={1.75} />
-                            Upgrade to Prism Elite
-                          </button>
+                          ELITE_OPEN ? (
+                            <button
+                              type="button"
+                              role="menuitem"
+                              onClick={() => {
+                                setUserMenuOpen(false)
+                                openUpgrade()
+                              }}
+                              className={cn(menuItem, "w-full font-medium text-[var(--elite-ink)]")}
+                            >
+                              <Sparkles className="w-[15px] h-[15px]" strokeWidth={1.75} />
+                              Upgrade to Prism Elite
+                            </button>
+                          ) : (
+                            <span role="menuitem" aria-disabled className={cn(menuItem, "w-full text-[var(--fg-muted)] cursor-not-allowed")}>
+                              <Sparkles className="w-[15px] h-[15px]" strokeWidth={1.75} />
+                              Prism Elite · Coming soon
+                            </span>
+                          )
                         )}
                         <PanelApplyButton variant="menu" onNavigate={() => setUserMenuOpen(false)} className="mt-0.5" />
 
