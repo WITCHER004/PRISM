@@ -7,6 +7,7 @@ import { Reveal } from "@/components/motion/Reveal"
 import { RevealText } from "@/components/motion/RevealText"
 import { hueStyle } from "@/lib/topics"
 import { pageMetadata } from "@/lib/seo"
+import { ELITE_PRICE_USD, MIN_PAYOUT_USD, PAYOUT_RPM_USD } from "@/lib/elite/config"
 
 export const metadata: Metadata = pageMetadata({
   title: "About: independent publishing, read by humans",
@@ -18,23 +19,23 @@ export const metadata: Metadata = pageMetadata({
 const STEPS = [
   {
     icon: Users,
-    title: "You become a member",
-    body: "Reading free stories costs nothing. If you choose a membership, your monthly fee goes into your own writers' pool.",
+    title: "You go Elite",
+    body: `Reading free stories costs nothing. Elite is $${ELITE_PRICE_USD} a month: it unlocks every member story and lets you earn from what you publish.`,
   },
   {
     icon: Clock,
-    title: "You read, at your pace",
-    body: "We measure active reading time: a story open, in view, and being read or listened to. Idle tabs and quick bounces don't count.",
+    title: "Readers find your work",
+    body: "Every published story counts its unique readers. Each reader counts once per story every 24 hours, and your own visits never count.",
   },
   {
     icon: Scale,
-    title: "Your pool follows your attention",
-    body: "At the end of the month, your pool is divided between the writers you read, in proportion to the time you spent with each.",
+    title: "Readers become earnings",
+    body: `While you're Elite, you earn $${PAYOUT_RPM_USD} for every 1,000 unique readers, paid into your wallet. Withdraw any time your balance reaches $${MIN_PAYOUT_USD}.`,
   },
   {
     icon: HandCoins,
     title: "Tips go straight through",
-    body: "Loved one story in particular? Tips skip the pool entirely and go to that writer directly.",
+    body: "Loved one story in particular? Tips are separate from Elite and go to that writer directly.",
   },
 ]
 
@@ -43,7 +44,7 @@ const VALUES = [
     hue: "writing",
     icon: BookOpenText,
     title: "Curiosity isn't punished",
-    body: "A link from a friend should open the story, not a wall. Previews are generous, and members unlock everything.",
+    body: "A link from a friend should open the story, not a wall. Previews are generous, and Elite unlocks everything.",
   },
   {
     hue: "climate",
@@ -79,7 +80,7 @@ export default function AboutPage() {
             delay={0.05}
           />
           <p className="mt-7 max-w-2xl text-lg sm:text-xl leading-relaxed text-[var(--fg-muted)]">
-            Prism is a publishing platform where readers fund the writers they actually read, writers keep their
+            Prism is a publishing platform where writers are paid for the real readers they reach, keep their
             audience, and nothing is designed to keep you scrolling after you&apos;ve had enough.
           </p>
         </section>
@@ -112,10 +113,10 @@ export default function AboutPage() {
         <section id="payouts" className="scroll-mt-28 max-w-7xl mx-auto px-4 sm:px-6 pb-20">
           <Reveal className="max-w-2xl">
             <p className="meta">How payouts work, in principle</p>
-            <h2 className="display mt-3 text-[2rem] sm:text-[2.75rem]">Money follows minutes, not clicks.</h2>
+            <h2 className="display mt-3 text-[2rem] sm:text-[2.75rem]">Paid per reader, not per click.</h2>
             <p className="mt-4 text-[var(--fg-muted)] leading-relaxed">
-              The model is simple enough to explain in four steps, and it rewards the writing that genuinely holds your
-              attention.
+              The model is simple enough to explain in four steps, and it rewards writing that real people come back
+              to read.
             </p>
           </Reveal>
           <ol className="mt-10 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -202,9 +203,9 @@ export default function AboutPage() {
             </div>
           </Reveal>
           <p className="mt-6 text-sm text-[var(--fg-muted)]">
-            Curious about membership?{" "}
-            <Link href="/membership" className="font-medium text-[var(--fg)] underline decoration-[var(--border-strong)] underline-offset-4 hover:decoration-[var(--fg)]">
-              See the plans
+            Curious about Elite?{" "}
+            <Link href="/elite" className="font-medium text-[var(--fg)] underline decoration-[var(--border-strong)] underline-offset-4 hover:decoration-[var(--fg)]">
+              See what it includes
             </Link>
             . House rules live in our{" "}
             <Link href="/content-policy" className="font-medium text-[var(--fg)] underline decoration-[var(--border-strong)] underline-offset-4 hover:decoration-[var(--fg)]">

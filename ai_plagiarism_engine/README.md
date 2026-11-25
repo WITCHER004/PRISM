@@ -1,115 +1,119 @@
-# AI & Plagiarism Detection ML Engine
+# Prism AI & Plagiarism Detection Engine
 
-Standalone Machine Learning Engine providing unified **AI-Generated Text Detection** and **Dual-Layer Plagiarism Detection** for article publishing pipelines.
+FastAPI service behind Prism's Phase 1 check. The Next.js app calls it through `AI_DETECTION_API_URL`
+(see `src/lib/moderation/analyzer.ts`); without it, the app falls back to its in-process heuristic.
 
----
+Pass rules: **AI ≤ 20%** and **plagiarism ≤ 15%**.
 
-## Architecture Overview
+## Pipeline
 
-### 1. AI-Generated Text Detection (`ai_detector.py`)
-- **Transformer Classifier (70% weight):** Powered by `roberta-base-openai-detector`. Uses a 350-word sliding window with a 175-word stride to handle articles of arbitrary length (1,000–5,000+ words) without truncation.
-- **Statistical Linguistics (30% weight):** Uses `gpt2` (`GPT2LMHeadModel`) to compute:
-  - Document-level Perplexity (`doc_perplexity`).
-  - Sentence-level Perplexities (`sentence_perplexities`).
-  - Burstiness (`burstiness_std`): Standard deviation of sentence perplexities and sentence length variance.
-- **Sentence-Level Flagging:** Automatically extracts and flags individual sentences with low perplexity (`< 35.0`) and high AI confidence.
-
-### 2. Dual-Layer Plagiarism Detection (`plagiarism_detector.py`)
-- **Lexical Exact/Near-Match:** MinHash LSH with 5-word shingles (`datasketch`) with similarity threshold `> 0.75`.
-- **Semantic Paraphrase Match:** Dense vector embeddings using `sentence-transformers/all-MiniLM-L6-v2` with local persistent ChromaDB (`./vector_index`) cosine similarity `> 0.85`.
-- **Dynamic Corpus Indexing:** `add_to_index(article_id, text)` method adds newly published articles to the reference corpus in real time.
-
-### 3. Unified Analyzer Pipeline (`analyzer.py`)
-Single evaluation entrypoint `analyze_article(article_id, text)` returning the strict JSON schema with verdicts:
-- `REJECT_PLAGIARISM`
-- `REJECT_AI`
-- `MANUAL_REVIEW`
-- `PASS`
-
----
-
-## Directory Structure
 ```
-ai_plagiarism_engine/
-├── __init__.py
-├── requirements.txt
-├── download_weights.py        # Model weight downloader & cacher
-├── ai_detector.py             # AIDetectorModel (Transformer + PPL + Burstiness)
-├── plagiarism_detector.py     # PlagiarismModel (MinHash LSH + ChromaDB embeddings)
-├── analyzer.py                # ArticleAnalyzer unified interface
-├── api.py                     # FastAPI REST wrapper (POST /evaluate, POST /index)
-├── test_models.py             # Verification test suite
-└── vector_index/              # Persistent ChromaDB store
+text ─► text_prep ─┬─► AI ensemble (ai_detector.py) ───────────┐
+                   │    1 Desklib + RoBERTa logits, Binoculars   │
+                   │    2 3-sentence windows, burstiness         ├─► analyzer.py ─► report
+                   │    3 cliché / formula prior (capped)        │
+                   │    4 calibration.py: fitted weights,        │
+                   │      per-domain temperature, Proof of Craft │
+                   └─► plagiarism_detector.py ──────────────────┘
+                        L1 5-gram winnowing + MinHash LSH + per-sentence token overlap (>= 85%)
+                        L2 bge-base paragraph embeddings vs Prism corpus + external refs (cos > 0.84)
+                        L3 quotes & citations excluded upstream
 ```
 
----
+**text_prep.py** removes code (fences, `<pre>`, `<code>`, inline backticks, unfenced code runs) and
+attributed quotations (blockquotes, quoted spans with "said" / "(Smith, 2019)" / "[3]"), so neither
+counts toward the AI score or plagiarism. It also detects the domain: from the Prism topic tag when
+given (`programming`, `infrastructure`, `science`, `philosophy`, `policy`, …), else from vocabulary.
 
-## Setup & Running
+**AI ensemble.** Transformer signals are scored on ~180-word chunks; every 3-sentence window (stride 1)
+combines its chunk's classifier and Binoculars values with local and document burstiness and the
+cliché prior in a logistic model whose weights are fitted on benchmarks. The cliché prior's total
+contribution is capped at 1 logit, so stock phrases alone can't fail an essay. Each window then goes
+through the domain's temperature and bias. A sentence's probability is the mean of its windows, and
+`overallAiScore` is the word-weighted mean (the share of the text that reads as machine-written).
+Scores in the 18–25% band are nudged by Proof-of-Craft telemetry: up to −6 for organic typing,
+several sittings and cut/rewritten passages, and up to +3 for a mostly pasted draft.
 
-### 1. Install Dependencies
+Every model is optional. One that can't load is reported in `meta.models` and imputed with its
+calibration mean, so the service degrades instead of failing.
+
+| signal | model | CPU cost (≈300 words) |
+|---|---|---|
+| classifier | `desklib/ai-text-detector-v1.01` (DeBERTa-v3-large) | ~1.5 s |
+| classifier | `roberta-base-openai-detector` | ~0.2 s |
+| Binoculars | `Qwen/Qwen2.5-0.5B` observer / `Qwen2.5-0.5B-Instruct` performer | ~1 s |
+| embeddings | `BAAI/bge-base-en-v1.5` | ~0.1 s |
+
+The Binoculars pair is configurable in `detector_calibration.json` (`models.binoculars`). Larger pairs
+such as Falcon-7B / Falcon-7B-Instruct from the paper are stronger but need a GPU. Rerun the benchmark
+after changing models; the weights are fitted to the models in use.
+
+## Calibration & benchmark
+
 ```bash
 pip install -r requirements.txt
-```
-
-### 2. Download and Cache Models
-```bash
 python download_weights.py
+python ../scripts/fetch_benchmarks.py     # HC3, RAID, Ghostbuster, MAGE, FP-audit essays → benchmarks/data/
+python ../scripts/eval_detectors.py       # fit + tune + report → detector_calibration.json, benchmarks/REPORT.md
+npx tsx ../scripts/detector-benchmark.ts  # same data for the in-app heuristic fallback
 ```
 
-### 3. Run Verification Tests
+`eval_detectors.py` splits every dataset 50/50 into calibration and held-out test halves. It fits the
+ensemble weights on the calibration half and tunes each domain's temperature and bias so that FPR at
+20% stays under 1.5% there. Domains with fewer than 12 human samples inherit the global setting, and
+the others are shrunk toward it. The report covers the test half only: per domain, per dataset, per
+adversarial attack and per generator. It includes the false-positive audit set (non-native TOEFL
+essays, Stanford CS224N technical abstracts and college essays from Liang et al. 2023, all
+human-written) and the plagiarism pipeline: RAID paraphrase pairs, verbatim / light-edit / mosaic
+inserts, and unrelated human negatives.
+
+Proof-of-Craft telemetry doesn't exist in public datasets, so the craft adjustment isn't part of the
+benchmark. It only ever moves scores inside the 18–25 band.
+
+## API
+
 ```bash
-python test_models.py
+ENGINE_API_KEY=... uvicorn api:app --host 0.0.0.0 --port 8000
 ```
 
-### 4. Start the FastAPI Service
-```bash
-uvicorn api:app --host 0.0.0.0 --port 8000
-```
+When `ENGINE_API_KEY` is set, every call except `/health` needs `Authorization: Bearer <key>` or
+`x-api-key`. Point the app at it with `AI_DETECTION_API_URL=https://engine/evaluate` and
+`AI_DETECTION_API_KEY=<key>`.
 
-### 5. API Endpoints
-
-#### Evaluate Article
 `POST /evaluate`
+
 ```json
-{
-  "article_id": "art_101",
-  "text": "Your article content goes here..."
-}
+{ "article_id": "abc", "text": "markdown or HTML", "topic": "programming",
+  "craft": { "typedChars": 9000, "pastedChars": 120, "sessions": 3, "activeMs": 5400000, "growth": [] },
+  "external_refs": [{ "url": "https://…", "title": "…", "text": "reference passage" }] }
 ```
 
-Response:
+Response (abridged):
+
 ```json
 {
-  "article_id": "art_101",
   "verdict": "PASS | MANUAL_REVIEW | REJECT_AI | REJECT_PLAGIARISM",
-  "ai_detection": {
-    "is_ai_generated": true,
-    "overall_ai_probability": 0.87,
-    "transformer_score": 0.95,
-    "perplexity_score": 14.4,
-    "burstiness_std": 25.4,
-    "flagged_ai_sentences": [
-      {
-        "sentence": "It is important to note that artificial intelligence has become increasingly popular in recent years...",
-        "ai_Confidence": 0.87,
-        "perplexity": 7.3
-      }
-    ]
-  },
-  "plagiarism_detection": {
-    "is_plagiarized": false,
-    "overall_similarity_score": 0.03,
-    "matched_sources": []
-  }
+  "overallAiScore": 7.4, "plagiarismScore": 0.0,
+  "aiPassed": true, "plagiarismPassed": true,
+  "detectedDomain": "programming", "confidenceLevel": "High",
+  "flaggedSentences": [
+    { "text": "…", "aiProbability": 0.81, "reason": "Reads 81% machine-written — driven by Desklib classifier; stock phrasing: 'delve into'." },
+    { "text": "…", "aiProbability": 0.12, "plagiarismMatchUrl": "/ana/kafka-retries", "matchType": "PARAPHRASE",
+      "reason": "Paraphrase of a passage in “Kafka retries” (89% similar). Quote it with attribution or rewrite it." }
+  ],
+  "signals": { "classifier": {}, "binoculars": {}, "burstiness": {}, "cliche": {}, "craft": null },
+  "plagiarism": { "matches": [], "corpusParagraphs": 1234, "semantic": "ok" },
+  "meta": { "wordCount": 1200, "proseWordCount": 980, "codeBlocksStripped": 3, "quotesExcluded": 1, "models": {} }
 }
 ```
 
-#### Index Approved Article
-`POST /index`
-```json
-{
-  "article_id": "art_101",
-  "text": "Approved article text to store in plagiarism corpus..."
-}
-```
+`POST /index` `{article_id, text, url, title}` adds a published story to the corpus. The app calls it
+after a story publishes. `DELETE /index/{article_id}` removes one. `GET /health` reports the
+calibration version and corpus size.
 
+## Tests
+
+```bash
+python test_models.py --fast   # no model weights needed
+python test_models.py          # full models
+```

@@ -169,7 +169,16 @@ function QueueItem({ draft, active, onSelect }: { draft: Draft; active: boolean;
     >
       <div className="flex items-center justify-between gap-2">
         <StatusPill status={draft.status} />
-        {draft.phase1 && <span className="text-xs tabular-nums text-[var(--fg-muted)]">{Math.round(draft.phase1.humanPercent)}% human</span>}
+        {draft.phase1 && (
+          <span className="flex items-center gap-1.5 text-xs tabular-nums text-[var(--fg-muted)]">
+            {draft.phase1.manualReview && (
+              <span className="rounded-full border border-amber-400/60 px-1.5 py-px text-[10px] font-medium text-amber-700 dark:text-amber-400">
+                Manual review
+              </span>
+            )}
+            {Math.round(draft.phase1.humanPercent)}% human
+          </span>
+        )}
       </div>
       <p className="mt-2 font-semibold leading-snug line-clamp-2">{draft.title.trim() || "Untitled story"}</p>
       <div className="mt-2 flex items-center gap-2 text-xs text-[var(--fg-muted)]">

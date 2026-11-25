@@ -29,7 +29,9 @@ import { Avatar } from "@/components/ui/Avatar"
 import { useUIStore, type Profile } from "@/lib/store"
 import { dur, ease, spring } from "@/lib/motion"
 import { cn } from "@/lib/utils"
-import { Dialog } from "@/app/membership/_components/Dialog"
+import { Dialog } from "@/components/ui/Dialog"
+import { useSubscription } from "@/components/elite/hooks"
+import { ELITE_PRICE_USD } from "@/lib/elite/config"
 import { AvatarUploader } from "@/components/profile/AvatarUploader"
 import { cleanProfileFields, profileFieldErrors } from "@/components/profile/EditProfileDialog"
 import { SOCIALS } from "@/lib/social"
@@ -805,12 +807,12 @@ function ReadingPanel() {
         </div>
       </Section>
 
-      <ReadingPreview focusMode={focusMode} tts={ttsEnabled} />
+      <ReadingPreview focusMode={focusMode} />
     </div>
   )
 }
 
-function ReadingPreview({ focusMode, tts }: { focusMode: boolean; tts: boolean }) {
+function ReadingPreview({ focusMode }: { focusMode: boolean }) {
   return (
     <section aria-label="Preview of your reading settings" className="panel overflow-hidden">
       <div className="flex items-center justify-between gap-3 px-5 sm:px-7 pt-5">
@@ -832,21 +834,7 @@ function ReadingPreview({ focusMode, tts }: { focusMode: boolean; tts: boolean }
           <span className="ml-auto h-6 w-6 rounded-full bg-[var(--surface)]" />
         </div>
         <div className="px-5 sm:px-8 py-7">
-          <div className="flex items-center justify-between gap-3">
-            <p className="meta">Essay · 6 min read</p>
-            <AnimatePresence initial={false}>
-              {tts && (
-                <motion.span
-                  initial={{ opacity: 0, scale: 0.9 }}
-                  animate={{ opacity: 1, scale: 1, transition: spring.snappy }}
-                  exit={{ opacity: 0, scale: 0.95, transition: { duration: dur.fast, ease: ease.in } }}
-                  className="inline-flex items-center gap-1.5 h-8 px-3 rounded-full bg-[var(--fg)] text-[var(--bg)] text-xs font-medium"
-                >
-                  <Volume2 className="w-3.5 h-3.5" /> Listen
-                </motion.span>
-              )}
-            </AnimatePresence>
-          </div>
+          <p className="meta">Essay · 6 min read</p>
           <h3 className="display mt-3 text-[1.75rem] sm:text-[2rem]">The quiet economics of attention</h3>
           <div className="prose-prism mt-5">
             <p>
@@ -908,12 +896,10 @@ function NotificationsPanel() {
 
 /* ── Account ──────────────────────────────────────────────────────────── */
 
-const PLAN_NAME = { reader: "Reader", patron: "Patron" } as const
-
 function AccountPanel() {
   const router = useRouter()
   const { currentUser, signedOut } = useSession()
-  const plan = useUIStore((s) => s.plan)
+  const { isElite, subscription } = useSubscription()
   const displayName = useUIStore((s) => s.profile.displayName)
   const signOut = useUIStore((s) => s.signOut)
   const toast = useUIStore((s) => s.toast)
@@ -977,16 +963,18 @@ function AccountPanel() {
       <Section title="Membership">
         <div className="flex flex-wrap items-center gap-4 justify-between">
           <div>
-            <p className="font-medium">{plan ? `${PLAN_NAME[plan]} member` : "Free plan"}</p>
+            <p className="font-medium">{isElite ? "Elite" : "Free plan"}</p>
             <p className="text-sm text-[var(--fg-muted)]">
-              {plan ? `$${plan === "reader" ? 8 : 20}/month · simulated billing` : "Upgrade to read every member story."}
+              {isElite
+                ? `$${ELITE_PRICE_USD}/month${subscription.expiresAt ? ` · ${subscription.cancelAtPeriodEnd ? "ends" : "renews"} ${new Date(subscription.expiresAt).toLocaleDateString()}` : ""}`
+                : `Upgrade to Elite for $${ELITE_PRICE_USD}/month to read every member story and earn from your writing.`}
             </p>
           </div>
           <Link
-            href="/membership"
+            href="/elite"
             className="h-11 px-5 inline-flex items-center gap-2 rounded-full bg-[var(--fg)] text-[var(--bg)] font-medium hover:bg-[var(--fg-secondary)] transition-colors"
           >
-            {plan ? "Manage plan" : "See plans"} <ArrowRight className="w-4 h-4" />
+            {isElite ? "Manage Elite" : "Go Elite"} <ArrowRight className="w-4 h-4" />
           </Link>
         </div>
       </Section>

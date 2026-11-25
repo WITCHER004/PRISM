@@ -44,12 +44,34 @@ export async function activateSubscription(userId: string, provider: PaymentProv
       expiresAt: new Date(sub.expiresAt!),
       subscriptionProvider: provider,
       subscriptionRef: reference,
+      cancelAtPeriodEnd: false,
     },
   })
   await awardBadges(userId)
 }
 
-/** Cancels at once: paid features lock and badges stop displaying (they're kept for renewal) */
+/**
+ * User-initiated cancel: Elite stays active until expiresAt and then lapses (isEliteActive checks the
+ * date). With no paid period left, it ends at once. Real providers also need their own cancel-at-period-end
+ * call here once checkout is wired up (Stripe: subscriptions.update({ cancel_at_period_end: true })).
+ */
+export async function cancelSubscriptionAtPeriodEnd(userId: string) {
+  const user = await db.user.findUnique({ where: { id: userId }, select: { expiresAt: true } })
+  if (user?.expiresAt && user.expiresAt.getTime() > Date.now()) {
+    await db.user.update({ where: { id: userId }, data: { cancelAtPeriodEnd: true } })
+    return { cancelAtPeriodEnd: true, expiresAt: user.expiresAt }
+  }
+  await deactivateSubscription(userId)
+  return { cancelAtPeriodEnd: false, expiresAt: user?.expiresAt ?? null }
+}
+
+/** Undoes a pending cancellation while the period is still running */
+export async function resumeSubscription(userId: string) {
+  await db.user.update({ where: { id: userId }, data: { cancelAtPeriodEnd: false } })
+}
+
+/** Ends at once: paid features lock and badges stop displaying (they're kept for renewal). The provider
+ * webhook calls this when a subscription has actually ended. */
 export async function deactivateSubscription(userId: string) {
   await db.user.update({ where: { id: userId }, data: { subscriptionStatus: "INACTIVE" } })
 }

@@ -1,4 +1,5 @@
-import type { FlaggedPassage, Phase1Signal } from "./types"
+import calibration from "./heuristic_calibration.json"
+import type { DetectorDomain, FlaggedPassage, Phase1Signal } from "./types"
 
 /**
  * Heuristic AI-text detector. No model, no network: it measures surface statistics that
@@ -12,20 +13,35 @@ import type { FlaggedPassage, Phase1Signal } from "./types"
  *  - Voice:          contractions, first person, questions, concrete numbers and asides,
  *                    which human writers use far more often.
  *
- * Each signal maps to an AI-likelihood in [0, 1]. The text is scored in passages (~60+ words),
- * and the AI share is the word-weighted mean of passage scores — i.e. "how much of this text
- * reads as machine-written". It is a screening tool, not proof; Phase 2 is a human review.
+ * Each signal maps to an AI-likelihood in [0, 1]. The text is scored in overlapping 3-sentence
+ * windows (stride 1), each measured with its neighbouring sentences for context; a sentence's
+ * probability is the mean over the windows that contain it, and the AI share is the word-weighted
+ * mean over sentences — "how much of this text reads as machine-written". Per-domain temperature
+ * and bias come from heuristic_calibration.json (tuned by scripts/detector-benchmark.ts).
+ *
+ * Stock phrasing is a low-weight prior: its contribution is capped (STOCK_CAP) so a few clichés
+ * can't fail an otherwise human essay. It is a screening tool, not proof; Phase 2 is a human review.
  */
 
-const WEIGHTS: Record<Phase1Signal["key"], number> = {
-  burstiness: 0.25,
+type HeuristicKey = "burstiness" | "perplexity" | "repetition" | "stockPhrasing" | "voice"
+
+const WEIGHTS: Record<HeuristicKey, number> = {
+  burstiness: 0.3,
   perplexity: 0.2,
   repetition: 0.15,
-  stockPhrasing: 0.25,
-  voice: 0.15,
+  stockPhrasing: 0.15,
+  voice: 0.2,
 }
+/** Max share of the combined score stock phrasing can contribute */
+const STOCK_CAP = 0.1
 
-const SIGNAL_LABEL: Record<Phase1Signal["key"], string> = {
+interface DomainCal {
+  temperature: number
+  bias: number
+}
+const DOMAIN_CAL = (calibration as { domains: Record<string, DomainCal> }).domains
+
+const SIGNAL_LABEL: Record<HeuristicKey, string> = {
   burstiness: "Burstiness",
   perplexity: "Perplexity (predictability)",
   repetition: "Repetitive phrasing",
@@ -103,7 +119,7 @@ function countOccurrences(haystack: string, needles: string[]) {
   return n
 }
 
-type SignalValues = Record<Phase1Signal["key"], { ai: number; value: number; detail: string }>
+type SignalValues = Record<HeuristicKey, { ai: number; value: number; detail: string }>
 
 /** Measure every signal on one stretch of text */
 function measure(text: string): SignalValues {
@@ -186,11 +202,41 @@ function measure(text: string): SignalValues {
   }
 }
 
-function combine(v: SignalValues) {
+const WINDOW = 3
+const CONTEXT = 2
+
+/** Uncalibrated window logit: weighted signals, sharpened around 0.45 */
+function rawLogit(v: SignalValues) {
   let p = 0
-  for (const k of Object.keys(WEIGHTS) as Phase1Signal["key"][]) p += WEIGHTS[k] * v[k].ai
-  // Sharpen around 0.45 so clearly-human passages score near 0 and clearly-AI ones near 1
-  return 1 / (1 + Math.exp(-(p - 0.45) * 11))
+  for (const k of Object.keys(WEIGHTS) as HeuristicKey[]) {
+    const c = WEIGHTS[k] * v[k].ai
+    p += k === "stockPhrasing" ? Math.min(c, STOCK_CAP) : c
+  }
+  return (p - 0.45) * 11
+}
+
+export const calibrated = (z: number, cal: DomainCal) => 1 / (1 + Math.exp(-(z + cal.bias) / Math.max(0.25, cal.temperature)))
+
+/**
+ * Raw per-window logits and the sentence windows they cover. Exposed for the calibration benchmark
+ * (scripts/detector-benchmark.ts), which tunes per-domain temperature and bias on them.
+ */
+export function windowLogits(text: string) {
+  const sents = splitSentences(text)
+  const n = sents.length
+  const starts = n <= WINDOW ? [0] : Array.from({ length: n - WINDOW + 1 }, (_, i) => i)
+  return {
+    sents,
+    lens: sents.map((s) => words(s).length),
+    windows: starts.map((a) => {
+      const b = Math.min(n, a + WINDOW)
+      // Rhythm and voice need more than three sentences to mean anything: measure with context
+      const ctx = measure(sents.slice(Math.max(0, a - CONTEXT), Math.min(n, b + CONTEXT)).join(" "))
+      const own = measure(sents.slice(a, b).join(" "))
+      const v: SignalValues = { ...ctx, stockPhrasing: own.stockPhrasing }
+      return { a, b, z: rawLogit(v), v }
+    }),
+  }
 }
 
 /** Group paragraphs into passages of at least ~60 words so each has enough text to measure */
@@ -212,31 +258,69 @@ export function toPassages(text: string, minWords = 60) {
   return out
 }
 
+export interface HeuristicSentence {
+  text: string
+  words: number
+  aiProbability: number
+  reasons: string[]
+}
+
 export interface HeuristicResult {
   /** 0..1 word-weighted share judged machine-written */
   aiProbability: number
   wordCount: number
   signals: Phase1Signal[]
   flagged: FlaggedPassage[]
+  sentences: HeuristicSentence[]
 }
 
-export function analyzeHeuristically(text: string): HeuristicResult {
-  const all = words(text)
-  if (all.length === 0) return { aiProbability: 0, wordCount: 0, signals: [], flagged: [] }
 
-  const passages = toPassages(text)
-  let weighted = 0
-  const scored = passages.map((p) => {
-    const pw = words(p).length
-    const prob = combine(measure(p))
-    weighted += prob * pw
-    return { p, pw, prob }
-  })
-  const aiProbability = weighted / all.length
+/** Why a window reads machine-like, in words */
+function reasonsFor(v: SignalValues, text: string): string[] {
+  const out: string[] = []
+  if (v.stockPhrasing.ai >= 0.5) {
+    const lower = text.toLowerCase()
+    const hits = STOCK_PHRASES.filter((p) => countOccurrences(lower, [p]) > 0)
+    if (hits.length) out.push(`stock phrasing: ${hits.slice(0, 3).map((h) => `'${h}'`).join(", ")}`)
+  }
+  if (v.burstiness.ai >= 0.6) out.push("uniform sentence rhythm")
+  if (v.perplexity.ai >= 0.6) out.push("formulaic connectors")
+  if (v.repetition.ai >= 0.6) out.push("repeated phrasing / stock transitions")
+  if (v.voice.ai >= 0.85) out.push("no personal voice markers")
+  return out
+}
+
+export function analyzeHeuristically(text: string, domain: DetectorDomain = "general"): HeuristicResult {
+  const all = words(text)
+  if (all.length === 0) return { aiProbability: 0, wordCount: 0, signals: [], flagged: [], sentences: [] }
+  const cal = DOMAIN_CAL[domain] ?? DOMAIN_CAL.general ?? { temperature: 1, bias: 0 }
+
+  const { sents, lens, windows } = windowLogits(text)
+  const n = sents.length
+  const sum = new Array<number>(n).fill(0)
+  const cnt = new Array<number>(n).fill(0)
+  const reasons = sents.map(() => new Set<string>())
+  for (const { a, b, z, v } of windows) {
+    const p = calibrated(z, cal)
+    const r = p >= 0.5 ? reasonsFor(v, sents.slice(a, b).join(" ")) : []
+    for (let i = a; i < b; i++) {
+      sum[i] += p
+      cnt[i]++
+      r.forEach((x) => reasons[i].add(x))
+    }
+  }
+  const sentences: HeuristicSentence[] = sents.map((s, i) => ({
+    text: s,
+    words: lens[i],
+    aiProbability: round(cnt[i] ? sum[i] / cnt[i] : 0, 3),
+    reasons: [...reasons[i]],
+  }))
+  const totalWords = lens.reduce((a, b) => a + b, 0) || 1
+  const aiProbability = sentences.reduce((acc, s) => acc + s.aiProbability * s.words, 0) / totalWords
 
   // Document-level signals for the report
   const doc = measure(text)
-  const signals: Phase1Signal[] = (Object.keys(WEIGHTS) as Phase1Signal["key"][]).map((key) => ({
+  const signals: Phase1Signal[] = (Object.keys(WEIGHTS) as HeuristicKey[]).map((key) => ({
     key,
     label: SIGNAL_LABEL[key],
     aiLikelihood: round(doc[key].ai),
@@ -244,7 +328,13 @@ export function analyzeHeuristically(text: string): HeuristicResult {
     detail: doc[key].detail,
   }))
 
-  const flagged = scored
+  // Passage view (legacy reports): paragraphs grouped to ~60 words, scored by their sentences
+  const flagged = toPassages(text)
+    .map((p) => {
+      const inside = sentences.filter((s) => p.includes(s.text))
+      const w = inside.reduce((a, s) => a + s.words, 0) || 1
+      return { p, prob: inside.reduce((a, s) => a + s.aiProbability * s.words, 0) / w }
+    })
     .filter((s) => s.prob >= 0.5)
     .sort((a, b) => b.prob - a.prob)
     .slice(0, 5)
@@ -253,5 +343,5 @@ export function analyzeHeuristically(text: string): HeuristicResult {
       aiLikelihood: round(s.prob),
     }))
 
-  return { aiProbability: clamp01(aiProbability), wordCount: all.length, signals, flagged }
+  return { aiProbability: clamp01(aiProbability), wordCount: all.length, signals, flagged, sentences }
 }

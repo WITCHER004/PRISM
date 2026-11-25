@@ -12,6 +12,8 @@ export interface Subscription {
   provider?: string
   /** Checkout session / payment id from the provider */
   reference?: string
+  /** Cancelled: stays active until expiresAt, then lapses instead of renewing */
+  cancelAtPeriodEnd?: boolean
 }
 
 export const FREE_SUBSCRIPTION: Subscription = { tier: "FREE", subscriptionStatus: "INACTIVE" }

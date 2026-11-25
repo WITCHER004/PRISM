@@ -109,7 +109,7 @@ export async function submitArticle(user: SessionUser, postId: string) {
   if (report.wordCount < MIN_WORDS_FOR_SUBMISSION)
     throw new ActionError(`Articles need at least ${MIN_WORDS_FOR_SUBMISSION} words (this one has ${report.wordCount}).`, 422)
 
-  const next = phase1Outcome(report.aiPercent)
+  const next = phase1Outcome(report)
   await db.post.update({
       where: { id: post.id },
       data: {

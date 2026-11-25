@@ -1,7 +1,2 @@
-# AI & Plagiarism Engine Package
-from .ai_detector import AIDetectorModel
-from .plagiarism_detector import PlagiarismModel
-from .analyzer import ArticleAnalyzer
-
-__all__ = ["AIDetectorModel", "PlagiarismModel", "ArticleAnalyzer"]
-
+# Prism AI & plagiarism detection engine. Modules import each other by plain name, so run them with
+# this directory on sys.path (uvicorn api:app from here, or the scripts in ../scripts).

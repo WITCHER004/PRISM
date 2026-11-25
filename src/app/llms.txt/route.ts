@@ -15,7 +15,7 @@ export async function GET() {
 
 > Independent writing for curious readers. Discover stories across topics and follow the writers you value.
 
-Prism is a publishing platform for independent writers. Every story listed here was published by a member and passed Prism's review. Memberships and payouts shown in the interface are not live financial services.
+Prism is a publishing platform for independent writers. Every story listed here was published by a member and passed Prism's review. The Elite subscription and writer payouts shown in the interface are not live financial services.
 
 ## Public pages
 
@@ -23,7 +23,6 @@ Prism is a publishing platform for independent writers. Every story listed here 
 - [Explore](${u("/explore")}): Browse stories by topic.
 - [About](${u("/about")}): How Prism is designed to work.
 - [Elite for writers](${u("/elite")}): Paid views and peer review, simulated in the demo.
-- [Membership](${u("/membership")}): Membership options shown in the demo.
 - [XML sitemap](${u("/sitemap.xml")})
 
 ## Topics
@@ -40,7 +39,7 @@ ${posts.map((p) => `- [${p.title}](${u(`/${p.author.username}/${p.slug}`)}): by 
 - [Privacy Policy](${u("/privacy")})
 - [Content Policy](${u("/content-policy")})
 
-The legal pages are illustrative placeholders, not binding agreements or final policies. Membership checkout is simulated and does not take payments.
+The legal pages are illustrative placeholders, not binding agreements or final policies. Elite checkout is simulated unless a payment provider is configured.
 
 Only publicly published stories and public writer profiles should be treated as public content. Drafts and stories still under review are not published.
 `

@@ -3,6 +3,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { AnimatePresence, motion } from "motion/react"
 import { useUIStore } from "@/lib/store"
+import { isEliteActive } from "@/lib/elite/subscription"
 import { dur, ease } from "@/lib/motion"
 import { cn } from "@/lib/utils"
 import { usePaperAccess } from "@/components/papers/ElitePaper"
@@ -11,12 +12,12 @@ import { usePaperAccess } from "@/components/papers/ElitePaper"
 // the server to withhold the locked part until the reader is entitled to it.
 
 /**
- * True when the reader may see the whole story (free post, unlocked here, or any membership).
+ * True when the reader may see the whole story (free post, unlocked here, or an active Elite subscription).
  * Inside a <PaperScope> (Advanced Papers) only Elite, the author or the dev demo view unlock it.
  */
 export function usePostUnlocked(postId: string, paywalled: boolean) {
   const paper = usePaperAccess()
-  const open = useUIStore((s) => !paywalled || s.plan !== null || s.unlockedPosts.has(postId))
+  const open = useUIStore((s) => !paywalled || (!!s.currentUser && isEliteActive(s.subscriptions[s.currentUser])) || s.unlockedPosts.has(postId))
   return paper.scoped ? paper.canRead : open
 }
 

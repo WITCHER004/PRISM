@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { AnimatePresence, motion } from "motion/react"
-import { ArrowUpRight, ChevronDown, Clock, Flame, Link2, MessageCircle, MessagesSquare, PenLine, Trash2, X } from "lucide-react"
+import { ArrowUpRight, ChevronDown, Clock, Flame, Link2, MessageCircle, MessagesSquare, PenLine, Search, Trash2, X } from "lucide-react"
 import { PillTabs } from "@/components/discovery/PillTabs"
 import { EmptyState } from "@/components/discovery/EmptyState"
 import { Avatar } from "@/components/ui/Avatar"
@@ -352,14 +352,7 @@ function Composer({
           <label htmlFor="thread-article" className="meta">
             Linked article <span className="normal-case tracking-normal text-[var(--fg-subtle)]">(optional)</span>
           </label>
-          <select id="thread-article" value={linkedId} onChange={(e) => setLinkedId(e.target.value)} className={cn(field, "mt-1.5 h-10 text-sm")}>
-            <option value="">None</option>
-            {posts.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.title.length > 60 ? p.title.slice(0, 58) + "…" : p.title} — {p.author.displayName}
-              </option>
-            ))}
-          </select>
+          <ArticlePicker posts={posts} value={linkedId} onChange={setLinkedId} fieldClass={field} />
         </div>
       </div>
       <div className="flex justify-end gap-2">
@@ -375,6 +368,128 @@ function Composer({
         </button>
       </div>
     </form>
+  )
+}
+
+/** Searchable "linked article" field: type to filter published stories by title or author */
+function ArticlePicker({
+  posts,
+  value,
+  onChange,
+  fieldClass,
+}: {
+  posts: ReturnType<typeof usePublishedPosts>
+  value: string
+  onChange: (id: string) => void
+  fieldClass: string
+}) {
+  const [query, setQuery] = useState("")
+  const [open, setOpen] = useState(false)
+  const [active, setActive] = useState(0)
+  const selected = posts.find((p) => p.id === value)
+
+  const matches = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    const list = q
+      ? posts.filter((p) => p.title.toLowerCase().includes(q) || p.author.displayName.toLowerCase().includes(q) || p.author.username.toLowerCase().includes(q))
+      : posts
+    return list.slice(0, 8)
+  }, [posts, query])
+
+  const pick = (id: string) => {
+    onChange(id)
+    setQuery("")
+    setOpen(false)
+  }
+
+  if (selected) {
+    return (
+      <div className={cn(fieldClass, "mt-1.5 h-10 flex items-center gap-2 text-sm")}>
+        <Link2 className="w-3.5 h-3.5 shrink-0 text-[var(--fg-muted)]" aria-hidden />
+        <span className="truncate min-w-0 flex-1">
+          {selected.title} <span className="text-[var(--fg-subtle)]">· {selected.author.displayName}</span>
+        </span>
+        <button
+          type="button"
+          onClick={() => onChange("")}
+          aria-label="Remove linked article"
+          className="shrink-0 -mr-1.5 p-1.5 rounded-full text-[var(--fg-muted)] hover:text-[var(--fg)] hover:bg-[var(--surface)]"
+        >
+          <X className="w-3.5 h-3.5" />
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="relative">
+      <div className="relative mt-1.5">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[var(--fg-subtle)] pointer-events-none" aria-hidden />
+        <input
+          id="thread-article"
+          type="search"
+          role="combobox"
+          aria-expanded={open}
+          aria-controls="thread-article-list"
+          aria-autocomplete="list"
+          autoComplete="off"
+          value={query}
+          placeholder="Search articles by title or author"
+          onChange={(e) => {
+            setQuery(e.target.value)
+            setActive(0)
+            setOpen(true)
+          }}
+          onFocus={() => setOpen(true)}
+          onBlur={() => setOpen(false)}
+          onKeyDown={(e) => {
+            if (e.key === "ArrowDown") {
+              e.preventDefault()
+              setOpen(true)
+              setActive((i) => Math.min(i + 1, matches.length - 1))
+            } else if (e.key === "ArrowUp") {
+              e.preventDefault()
+              setActive((i) => Math.max(i - 1, 0))
+            } else if (e.key === "Enter" && open && matches[active]) {
+              e.preventDefault() // don't submit the form
+              pick(matches[active].id)
+            } else if (e.key === "Escape") {
+              setOpen(false)
+            }
+          }}
+          className={cn(fieldClass, "h-10 pl-8 text-sm")}
+        />
+      </div>
+      {open && (
+        <ul
+          id="thread-article-list"
+          role="listbox"
+          className="absolute z-20 left-0 right-0 mt-1 max-h-64 overflow-y-auto rounded-[var(--radius-ctl)] border border-[var(--border)] bg-[var(--panel)] shadow-lg py-1"
+        >
+          {matches.length === 0 ? (
+            <li className="px-3.5 py-2.5 text-sm text-[var(--fg-muted)]">No articles match “{query.trim()}”.</li>
+          ) : (
+            matches.map((p, i) => (
+              <li
+                key={p.id}
+                role="option"
+                aria-selected={i === active}
+                // mousedown, not click: it fires before the input's blur closes the list
+                onMouseDown={(e) => {
+                  e.preventDefault()
+                  pick(p.id)
+                }}
+                onMouseEnter={() => setActive(i)}
+                className={cn("px-3.5 py-2 cursor-pointer text-sm", i === active && "bg-[var(--surface)]")}
+              >
+                <span className="block truncate text-[var(--fg)]">{p.title}</span>
+                <span className="block truncate text-xs text-[var(--fg-subtle)]">{p.author.displayName}</span>
+              </li>
+            ))
+          )}
+        </ul>
+      )}
+    </div>
   )
 }
 
